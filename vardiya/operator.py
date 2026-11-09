@@ -28,6 +28,13 @@ def operator_adi(s: Optional[str]) -> str:
     return ad if any(c.isalpha() for c in ad) else ""
 
 
+PLANSIZ = tr_kucuk("İŞ EMRİ PLAN YOK")
+
+
+def plansiz_mi(tip: str) -> bool:
+    return PLANSIZ in tr_kucuk(tip)
+
+
 def setup_mi(tip: str) -> bool:
     t = tr_kucuk(tip)
     return "setup" in t or "kurulum" in t
@@ -75,6 +82,8 @@ class OperatorSonuc:
     hepsi_calisirken_sn: float = 0.0   # "boşta": tüm makineleri çalışıyor, operatörün yapacak işi yok
     aktif_sn: float = 0.0              # en az bir makinesinin çalışıp/durduğu (molada olmadığı) süre
     bosta_listesi: List["Episode"] = field(default_factory=list)
+    plansiz_sn: float = 0.0            # "İŞ EMRİ PLAN YOK" duruşunda, operatör makinede tanımlıyken geçen süre
+    plansiz_listesi: List["Episode"] = field(default_factory=list)
     belgesiz_sn: float = 0.0            # "Belgelenmemiş Duruş"
     en_uzun_durus_sn: float = 0.0
     durus_adedi: int = 0
@@ -153,6 +162,13 @@ def _bir_operator(ad: str, kayitlar: List[Tuple[str, str, datetime, datetime]], 
                     sonuc.belgesiz_sn += sn
                 if setup_mi(tip):
                     sonuc.setup_sn += sn
+                if plansiz_mi(tip):
+                    sonuc.plansiz_sn += sn
+                    son = sonuc.plansiz_listesi[-1] if sonuc.plansiz_listesi else None
+                    if son and son.duruslar[0][0] == makine and son.bit == a:
+                        son.bit = b
+                    else:
+                        sonuc.plansiz_listesi.append(Episode(a, b, ((makine, tip),), (), False))
                 # ardışık parçalar (vardiya sınırında bölünmüş) tek duruş sayılır
                 if onceki and onceki[0] == tip and onceki[1] == a:
                     onceki = (tip, b, onceki[2] + sn)

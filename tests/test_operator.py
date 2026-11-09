@@ -65,3 +65,11 @@ def test_vardiya_suzgeci():
     assert operatorleri_hesapla(k, g, vardiyalar={1})[A].durus_sn == 0
     assert operatorleri_hesapla(k, g, vardiyalar={2})[A].durus_sn == 3600
     assert A not in operatorleri_hesapla(k, g, vardiyalar={3})
+
+
+def test_is_emri_plan_yok_takibi():
+    A = "Ali"
+    k = [(A, "M1", "Çalışma", t(8), t(9)), (A, "M1", "İŞ EMRİ PLAN YOK", t(9), t(11)), (A, "M2", "iş emri plan yok", t(9), t(10))]
+    r = operatorleri_hesapla(k, [date(2026, 11, 9)])[A]
+    assert r.plansiz_sn == 3 * 3600
+    assert sorted((e.duruslar[0][0], e.sn) for e in r.plansiz_listesi) == [("M1", 7200), ("M2", 3600)]

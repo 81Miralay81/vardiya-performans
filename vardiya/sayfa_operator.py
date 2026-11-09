@@ -14,7 +14,7 @@ from .sayfa_kayitlar import _Oge
 from .sayfa_ortak import CizimWidget, etiket, kart, tablo_menusu
 
 BASLIKLAR = ["Operatör", "Makine", "Gün", "Kayıtlı süre", "Çalışma %", "Duruş %", "Mola %", "Toplam duruş", "Çakışan duruş",
-             "Ayar kaybı", "Boşta süre", "Boşta %", "Belgesiz duruş", "En uzun duruş", "Duruş adedi", "Ort. makine"]
+             "Ayar kaybı", "Boşta süre", "Boşta %", "Belgesiz duruş", "İş emri yok", "En uzun duruş", "Duruş adedi", "Ort. makine"]
 BASLIK_ACIKLAMA = {
     "Kayıtlı süre": "Operatörün makinelerinde kayıtlı olduğu toplam süre (çalışma + duruş + mola, saat:dakika)",
     "Toplam duruş": "Operatörün makinelerindeki duruşların toplamı (mola hariç)",
@@ -23,11 +23,12 @@ BASLIK_ACIKLAMA = {
     "Boşta süre": "Operatörün molada olmayan TÜM makineleri aynı anda çalışırken geçen süre: yapacak işi yok, boşta. Tıklayınca liste açılır.",
     "Boşta %": "Boşta süre, operatörün aktif olduğu süreye oranı",
     "Belgesiz duruş": "Duruş nedeni girilmemiş süre (Belgelenmemiş Duruş)",
+    "İş emri yok": "Operatör makinede tanımlıyken 'İŞ EMRİ PLAN YOK' duruşunda geçen süre. İş emri yoksa operatörün makineden çıkış yapması beklenir. Tıklayınca liste açılır.",
     "En uzun duruş": "Tek seferdeki en uzun duruş",
     "Duruş adedi": "Duruş sayısı",
     "Ort. makine": "Operatör çalışırken aynı anda ortalama kaç makineye bakıyor",
 }
-CAKISMA, AYAR_KAYBI, BOSTA, DURUS_SUTUN, CALISMA_SUTUN = 8, 9, 10, 5, 4
+CAKISMA, AYAR_KAYBI, BOSTA, PLANSIZ, DURUS_SUTUN, CALISMA_SUTUN = 8, 9, 10, 13, 5, 4
 ACIKLAMA = (
     "ORANLAR (Çalışma %, Duruş %, Mola %)\\n"
     "Operatörün çalıştığı her makine ve vardiya için net süre (varsayılan 7,33 saat) esas alınır. Operatör o makinede vardiyanın "
@@ -155,14 +156,18 @@ def gun_grafigi(p, rect, r: OperatorSonuc):
 class CakismaDialog(QDialog):
     """Bir operatörün çakışan duruşları: hangi makineler aynı anda hangi duruşta."""
 
-    def __init__(self, parent, r: OperatorSonuc, sadece_ayar: bool = False, bosta: bool = False):
+    def __init__(self, parent, r: OperatorSonuc, sadece_ayar: bool = False, bosta: bool = False, plansiz: bool = False):
         super().__init__(parent)
         self.r = r
         self.bosta = bosta
-        self.setWindowTitle(f"{'Boşta kaldığı zamanlar' if bosta else 'Çakışan duruşlar'} – {r.ad}")
+        self.plansiz = plansiz
+        self.setWindowTitle(f"{'İş emri plan yok' if plansiz else 'Boşta kaldığı zamanlar' if bosta else 'Çakışan duruşlar'} – {r.ad}")
         self.resize(1000, 600)
         l = QVBoxLayout(self)
-        if bosta:
+        if plansiz:
+            l.addWidget(etiket(f"{r.ad}: makinede tanımlıyken 'İŞ EMRİ PLAN YOK' duruşunda geçen zamanlar. İş emri yoksa operatörün "
+                               "makineden çıkış yapması beklenir.", "AltBaslik"))
+        elif bosta:
             l.addWidget(etiket(f"{r.ad}: molada olmayan tüm makineleri aynı anda çalışırken geçen zamanlar (boşta).", "AltBaslik"))
         else:
             l.addWidget(etiket(f"{r.ad}: aynı anda en az iki makinesi duruşta olan zamanlar. Üç makineden biri durup ikisi çalışıyorsa "
@@ -171,10 +176,10 @@ class CakismaDialog(QDialog):
         self.min_sure = QComboBox()
         for ad, sn in (("Tümü", 0), ("1 dakikadan uzun", 60), ("5 dakikadan uzun", 300), ("15 dakikadan uzun", 900)):
             self.min_sure.addItem(ad, sn)
-        self.min_sure.setCurrentIndex(2 if bosta else 1)
+        self.min_sure.setCurrentIndex(2 if bosta else 0 if plansiz else 1)
         self.ayar = QCheckBox("Yalnız ayar (setup) içerenler")
         self.ayar.setChecked(sadece_ayar)
-        self.ayar.setVisible(not bosta)
+        self.ayar.setVisible(not (bosta or plansiz))
         f.addWidget(etiket("Süre", "KartBaslik", kelime=False))
         f.addWidget(self.min_sure)
         f.addWidget(self.ayar)
@@ -182,7 +187,8 @@ class CakismaDialog(QDialog):
         self.ozet = etiket("", "AltBaslik", kelime=False)
         f.addWidget(self.ozet)
         l.addLayout(f)
-        self.tablo = _tablo(["Başlangıç", "Bitiş", "Süre", "Çalışan makineler"] if bosta else
+        self.tablo = _tablo(["Makine", "Başlangıç", "Bitiş", "Süre"] if plansiz else
+                            ["Başlangıç", "Bitiş", "Süre", "Çalışan makineler"] if bosta else
                             ["Başlangıç", "Bitiş", "Süre", "Duruşta olan makineler", "O sırada çalışan makineler", "Ayar var"])
         l.addWidget(self.tablo, 1)
         self.min_sure.currentIndexChanged.connect(self.doldur)
@@ -191,10 +197,17 @@ class CakismaDialog(QDialog):
 
     def doldur(self):
         asgari = self.min_sure.currentData()
-        kaynak = self.r.bosta_listesi if self.bosta else self.r.cakismalar
-        liste = [e for e in kaynak if e.sn >= asgari and (self.bosta or not self.ayar.isChecked() or e.setup_var)]
+        kaynak = self.r.plansiz_listesi if self.plansiz else self.r.bosta_listesi if self.bosta else self.r.cakismalar
+        liste = [e for e in kaynak if e.sn >= asgari and (self.bosta or self.plansiz or not self.ayar.isChecked() or e.setup_var)]
         satirlar = []
         for e in liste[:5000]:
+            if self.plansiz:
+                satirlar.append([
+                    (e.duruslar[0][0], e.duruslar[0][0], False),
+                    (e.bas.strftime("%d.%m.%Y %H:%M:%S"), e.bas.timestamp(), False),
+                    (e.bit.strftime("%d.%m.%Y %H:%M:%S"), e.bit.timestamp(), False),
+                    (f"{int(e.sn // 60)} dk {int(e.sn % 60):02d} sn", e.sn, True)])
+                continue
             if self.bosta:
                 satirlar.append([
                     (e.bas.strftime("%d.%m.%Y %H:%M:%S"), e.bas.timestamp(), False),
@@ -209,8 +222,8 @@ class CakismaDialog(QDialog):
                 ("   ".join(f"{m}: {tip}" for m, tip in e.duruslar), None, False),
                 (", ".join(e.calisanlar) or "-", None, False),
                 ("Evet" if e.setup_var else "", None, False)])
-        _doldur(self.tablo, satirlar, (150, 150, 100, 380, 200))
-        self.tablo.sortByColumn(2, Qt.DescendingOrder)
+        _doldur(self.tablo, satirlar, (90, 160, 160, 110) if self.plansiz else (150, 150, 100, 380, 200))
+        self.tablo.sortByColumn(3 if self.plansiz else 2, Qt.DescendingOrder)
         toplam = sum(e.sn for e in liste)
         self.ozet.setText(f"{len(liste)} {'kayıt' if self.bosta else 'çakışma'} · toplam {hm(toplam)} (saat:dakika)")
 
@@ -378,12 +391,12 @@ class OperatorSayfasi(QWidget):
                  (hm(r.durus_sn), r.durus_sn, True), (hm(r.cakisan_sn), r.cakisan_sn, True),
                  (hm(r.setup_kayip_sn), r.setup_kayip_sn, True), (hm(r.hepsi_calisirken_sn), r.hepsi_calisirken_sn, True),
                  (tema.yuzde(r.bosta_orani, 1) if r.bosta_orani is not None else "", r.bosta_orani or 0.0, True),
-                 (hm(r.belgesiz_sn), r.belgesiz_sn, True), (hm(r.en_uzun_durus_sn), r.en_uzun_durus_sn, True),
+                 (hm(r.belgesiz_sn), r.belgesiz_sn, True), (hm(r.plansiz_sn), r.plansiz_sn, True), (hm(r.en_uzun_durus_sn), r.en_uzun_durus_sn, True),
                  (str(r.durus_adedi), r.durus_adedi, True), (f"{r.ort_makine:.1f}".replace(".", ","), r.ort_makine, True)]
             satirlar.append(s)
-        _doldur(self.tablo, satirlar, (170, 70, 50, 100, 105, 95, 85, 115, 120, 95, 100, 80, 135, 120, 110))
+        _doldur(self.tablo, satirlar, (170, 70, 50, 100, 105, 95, 85, 115, 120, 95, 100, 80, 135, 110, 120, 110))
         for i in range(self.tablo.rowCount()):
-            for j in (CAKISMA, AYAR_KAYBI, BOSTA):
+            for j in (CAKISMA, AYAR_KAYBI, BOSTA, PLANSIZ):
                 it = self.tablo.item(i, j)
                 if it:
                     f = QFont(it.font())
@@ -409,14 +422,14 @@ class OperatorSayfasi(QWidget):
         return self._sonuc.get(it.text()) if it else None
 
     def _tiklandi(self, satir: int, sutun: int):
-        if sutun not in (CAKISMA, AYAR_KAYBI, BOSTA):
+        if sutun not in (CAKISMA, AYAR_KAYBI, BOSTA, PLANSIZ):
             return
         r = self._sonuc_al(satir)
         if r:
-            CakismaDialog(self, r, sadece_ayar=(sutun == AYAR_KAYBI), bosta=(sutun == BOSTA)).exec()
+            CakismaDialog(self, r, sadece_ayar=(sutun == AYAR_KAYBI), bosta=(sutun == BOSTA), plansiz=(sutun == PLANSIZ)).exec()
 
     def _cift_tik(self, satir: int, sutun: int):
-        if sutun in (CAKISMA, AYAR_KAYBI, BOSTA):
+        if sutun in (CAKISMA, AYAR_KAYBI, BOSTA, PLANSIZ):
             return
         r = self._sonuc_al(satir)
         if r:
@@ -444,11 +457,11 @@ class OperatorSayfasi(QWidget):
         ws = wb.create_sheet("Operatörler")
         ws.append(BASLIKLAR[:3] + ["Kayıtlı süre (saat)", "Çalışma", "Duruş", "Mola", "Toplam duruş (saat)", "Çakışan duruş (saat)",
                                    "Ayar sırasında diğer makine kaybı (saat)", "Boşta (saat)", "Boşta %",
-                                   "Belgelenmemiş duruş (saat)", "En uzun duruş (saat)", "Duruş adedi", "Aynı anda ort. makine"])
+                                   "Belgelenmemiş duruş (saat)", "İş emri plan yok (saat)", "En uzun duruş (saat)", "Duruş adedi", "Aynı anda ort. makine"])
         for r in sorted(self._sonuc.values(), key=lambda x: -x.durus_orani):
             ws.append([r.ad, r.makine_sayisi, r.gun_sayisi, (r.calisma_sn + r.durus_sn + r.mola_sn) / 3600, r.calisma_orani, r.durus_orani, r.mola_orani,
                        r.durus_sn / 3600, r.cakisan_sn / 3600, r.setup_kayip_sn / 3600, r.hepsi_calisirken_sn / 3600, r.bosta_orani,
-                       r.belgesiz_sn / 3600, r.en_uzun_durus_sn / 3600, r.durus_adedi, r.ort_makine])
+                       r.belgesiz_sn / 3600, r.plansiz_sn / 3600, r.en_uzun_durus_sn / 3600, r.durus_adedi, r.ort_makine])
         ws2 = wb.create_sheet("Çakışan duruşlar")
         ws2.append(["Operatör", "Başlangıç", "Bitiş", "Süre (dk)", "Duruşta olan makineler", "Çalışan makineler", "Ayar var"])
         for r in self._sonuc.values():
