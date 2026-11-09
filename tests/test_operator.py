@@ -73,3 +73,30 @@ def test_is_emri_plan_yok_takibi():
     r = operatorleri_hesapla(k, [date(2026, 11, 9)])[A]
     assert r.plansiz_sn == 3 * 3600
     assert sorted((e.duruslar[0][0], e.sn) for e in r.plansiz_listesi) == [("M1", 7200), ("M2", 3600)]
+
+
+def test_haric_tutulan_durus_hesaptan_cikar():
+    A = "Ali"
+    # 08-12 çalışma, 12-16 "İŞ EMRİ PLAN YOK": hariç tutulunca oranlar yalnız çalışılan süreye göre çıkar
+    k = [(A, "M1", "Çalışma", t(8), t(12)), (A, "M1", "İŞ EMRİ PLAN YOK", t(12), t(16))]
+    g = [date(2026, 11, 9)]
+    r0 = operatorleri_hesapla(k, g)[A]
+    r1 = operatorleri_hesapla(k, g, haric_duruslar=["iş emri plan yok"])[A]
+    net = 440 * 60
+    assert abs(r0.durus_orani - 4 * 3600 / net) < 1e-9
+    assert r1.durus_sn == 0 and r1.durus_orani == 0
+    assert r1.haric_sn == 4 * 3600 and r1.haric_tipleri == {"İŞ EMRİ PLAN YOK": 4 * 3600}
+    assert abs(r1.gunler[g[0]]["calisma"] - 4 * 3600 / (net * 0.5)) < 1e-9     # pay yarıya düştü (dönem değeri %100'de kesilir)
+    assert r1.plansiz_sn == 4 * 3600                                  # hariç olsa da izlenir
+    # yalnızca hariç tutulan süreden oluşan operatör listeden düşer
+    assert operatorleri_hesapla([(A, "M1", "İŞ EMRİ PLAN YOK", t(8), t(16))], g, haric_duruslar=["İŞ EMRİ PLAN YOK"]) == {}
+
+
+def test_haric_durus_cakisma_ve_bosta_saymaz():
+    A = "Ali"
+    k = [(A, "M1", "Çalışma", t(8), t(10)), (A, "M2", "Çalışma", t(8), t(10)),
+         (A, "M3", "İŞ EMRİ PLAN YOK", t(8), t(10))]
+    g = [date(2026, 11, 9)]
+    assert operatorleri_hesapla(k, g)[A].hepsi_calisirken_sn == 0            # M3 duruşta: boşta değil
+    r = operatorleri_hesapla(k, g, haric_duruslar=["İŞ EMRİ PLAN YOK"])[A]
+    assert r.hepsi_calisirken_sn == 7200                                       # M3 hesap dışı: M1+M2 çalışıyor

@@ -18,6 +18,7 @@ VARSAYILAN_MAKINELER = [
 VARSAYILAN_AYAR = {
     "esik": 0.60,
     "hesap_kurali": "gunluk",
+    "operator_haric_durus": [],
     "cormind_adres": "http://192.168.0.39",
     "cormind_makine_idleri": [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 18, 19, 20, 21, 22, 23, 24, 25, 26, 28, 29, 30, 31, 32, 33, 34, 35, 80, 15],
     "vardiya_dk": 480,

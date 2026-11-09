@@ -19,6 +19,7 @@ from typing import Dict, Iterable, List, Optional, Tuple
 from .hesap import CALISIYOR, DURUS, MOLA, HesapAyar, statu_bul, tr_kucuk
 
 _ONCELIK = {CALISIYOR: 0, MOLA: 1, DURUS: 2}
+HARIC = "Hariç"      # kullanıcının hesap dışı bıraktığı duruşlar (mola gibi: ne duruş ne aktif sayılır)
 VARDIYA_SN = 8 * 3600
 
 
@@ -82,6 +83,8 @@ class OperatorSonuc:
     hepsi_calisirken_sn: float = 0.0   # "boşta": tüm makineleri çalışıyor, operatörün yapacak işi yok
     aktif_sn: float = 0.0              # en az bir makinesinin çalışıp/durduğu (molada olmadığı) süre
     bosta_listesi: List["Episode"] = field(default_factory=list)
+    haric_sn: float = 0.0               # hesap dışı bırakılan duruşların toplamı
+    haric_tipleri: Dict[str, float] = field(default_factory=dict)
     plansiz_sn: float = 0.0            # "İŞ EMRİ PLAN YOK" duruşunda, operatör makinede tanımlıyken geçen süre
     plansiz_listesi: List["Episode"] = field(default_factory=list)
     belgesiz_sn: float = 0.0            # "Belgelenmemiş Duruş"
@@ -124,7 +127,7 @@ def _makine_parcalari(kayitlar: List[Tuple[str, datetime, datetime]]):
 
 
 def _bir_operator(ad: str, kayitlar: List[Tuple[str, str, datetime, datetime]], gunler: set, ayar: HesapAyar,
-                  vardiyalar: Optional[set] = None) -> OperatorSonuc:
+                  vardiyalar: Optional[set] = None, haric: frozenset = frozenset()) -> OperatorSonuc:
     sonuc = OperatorSonuc(ad)
     net_sn, mola_kap = ayar.net_saat * 3600.0, ayar.mola_saat * 3600.0
     makineye: Dict[str, list] = {}
@@ -138,7 +141,7 @@ def _bir_operator(ad: str, kayitlar: List[Tuple[str, str, datetime, datetime]], 
         for t0, t1, durum, tip in _makine_parcalari(liste):
             for a, b, gun, v in _vardiya_parcala(t0, t1):
                 if gun in gunler and (vardiyalar is None or v in vardiyalar):
-                    kes.append((a, b, durum, tip, gun, v))
+                    kes.append((a, b, HARIC if durum == DURUS and tr_kucuk(tip) in haric else durum, tip, gun, v))
         if kes:
             parcalar[makine] = kes
     if not parcalar:
@@ -147,28 +150,32 @@ def _bir_operator(ad: str, kayitlar: List[Tuple[str, str, datetime, datetime]], 
     # (gün, vardiya, makine) birimleri
     birim: Dict[Tuple[date, int, str], Dict[str, float]] = {}
     for makine, kes in parcalar.items():
-        mk = sonuc.makineler.setdefault(makine, {"calisma": 0.0, "durus": 0.0, "mola": 0.0})
+        mk = sonuc.makineler.setdefault(makine, {"calisma": 0.0, "durus": 0.0, "mola": 0.0, "haric": 0.0})
         onceki = None
         for a, b, durum, tip, gun, v in kes:
             sn = (b - a).total_seconds()
-            u = birim.setdefault((gun, v, makine), {"kayit": 0.0, "calisma": 0.0, "durus": 0.0, "mola": 0.0})
+            u = birim.setdefault((gun, v, makine), {"kayit": 0.0, "calisma": 0.0, "durus": 0.0, "mola": 0.0, "haric": 0.0})
             u["kayit"] += sn
-            anahtar = {CALISIYOR: "calisma", DURUS: "durus", MOLA: "mola"}[durum]
+            anahtar = {CALISIYOR: "calisma", DURUS: "durus", MOLA: "mola", HARIC: "haric"}[durum]
             u[anahtar] += sn
             mk[anahtar] += sn
-            if durum == DURUS:
+            if durum in (DURUS, HARIC) and plansiz_mi(tip):       # hariç tutulsa bile izlenir
+                sonuc.plansiz_sn += sn
+                son = sonuc.plansiz_listesi[-1] if sonuc.plansiz_listesi else None
+                if son and son.duruslar[0][0] == makine and son.bit == a:
+                    son.bit = b
+                else:
+                    sonuc.plansiz_listesi.append(Episode(a, b, ((makine, tip),), (), False))
+            if durum == HARIC:
+                sonuc.haric_sn += sn
+                sonuc.haric_tipleri[tip] = sonuc.haric_tipleri.get(tip, 0.0) + sn
+                onceki = None
+            elif durum == DURUS:
                 sonuc.durus_tipleri[tip] = sonuc.durus_tipleri.get(tip, 0.0) + sn
                 if tr_kucuk(tip) == tr_kucuk("Belgelenmemiş Duruş"):
                     sonuc.belgesiz_sn += sn
                 if setup_mi(tip):
                     sonuc.setup_sn += sn
-                if plansiz_mi(tip):
-                    sonuc.plansiz_sn += sn
-                    son = sonuc.plansiz_listesi[-1] if sonuc.plansiz_listesi else None
-                    if son and son.duruslar[0][0] == makine and son.bit == a:
-                        son.bit = b
-                    else:
-                        sonuc.plansiz_listesi.append(Episode(a, b, ((makine, tip),), (), False))
                 # ardışık parçalar (vardiya sınırında bölünmüş) tek duruş sayılır
                 if onceki and onceki[0] == tip and onceki[1] == a:
                     onceki = (tip, b, onceki[2] + sn)
@@ -185,7 +192,7 @@ def _bir_operator(ad: str, kayitlar: List[Tuple[str, str, datetime, datetime]], 
     # günlük oranlar: önce her gün ayrı, sonra günlerin ortalaması
     gun_toplam: Dict[date, List[float]] = {}
     for (gun, v, makine), u in birim.items():
-        pay = min(1.0, u["kayit"] / VARDIYA_SN)
+        pay = min(1.0, (u["kayit"] - u["haric"]) / VARDIYA_SN)     # hariç tutulan süre paydadan da düşer
         if pay <= 0:
             continue
         g = gun_toplam.setdefault(gun, [0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
@@ -193,6 +200,8 @@ def _bir_operator(ad: str, kayitlar: List[Tuple[str, str, datetime, datetime]], 
         g[3] += net_sn * pay; g[4] += mola_kap * pay
         g[5] += 1
         sonuc.mola_asimi_sn += max(0.0, u["mola"] - mola_kap)
+    if not gun_toplam:                 # tüm süresi hariç tutulan duruşlardan oluşan operatör
+        return OperatorSonuc(ad)
     cs, ds, ms = [], [], []
     for gun, g in sorted(gun_toplam.items()):
         c, d, m = g[0] / g[3], g[1] / g[3], (g[2] / g[4] if g[4] else 0.0)
@@ -267,7 +276,8 @@ def _bir_operator(ad: str, kayitlar: List[Tuple[str, str, datetime, datetime]], 
 
 
 def operatorleri_hesapla(kayitlar: Iterable[Tuple[str, str, str, datetime, datetime]], gunler: List[date],
-                         ayar: Optional[HesapAyar] = None, vardiyalar: Optional[set] = None) -> Dict[str, OperatorSonuc]:
+                         ayar: Optional[HesapAyar] = None, vardiyalar: Optional[set] = None,
+                         haric_duruslar: Iterable[str] = ()) -> Dict[str, OperatorSonuc]:
     """kayitlar: (operatör, makine, tip, başlangıç, bitiş). Operatörü boş kayıtlar atlanır."""
     ayar = ayar or HesapAyar()
     gruplar: Dict[str, list] = {}
@@ -276,9 +286,10 @@ def operatorleri_hesapla(kayitlar: Iterable[Tuple[str, str, str, datetime, datet
         if ad:
             gruplar.setdefault(ad, []).append((makine, tip, bas, bit))
     gset = set(gunler)
+    haric = frozenset(tr_kucuk(x) for x in haric_duruslar)
     sonuc = {}
     for ad, liste in gruplar.items():
-        r = _bir_operator(ad, liste, gset, ayar, vardiyalar)
+        r = _bir_operator(ad, liste, gset, ayar, vardiyalar, haric)
         if r.makineler:
             sonuc[ad] = r
     return sonuc

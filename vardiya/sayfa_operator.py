@@ -5,8 +5,8 @@ from typing import Dict, List
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QFont
-from PySide6.QtWidgets import (QAbstractItemView, QApplication, QCheckBox, QComboBox, QDialog, QFileDialog, QHBoxLayout,
-                               QHeaderView, QLabel, QMessageBox, QPushButton, QTableWidget, QTabWidget, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QAbstractItemView, QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog,
+                               QHBoxLayout, QHeaderView, QLabel, QListWidget, QListWidgetItem, QMessageBox, QPushButton, QTableWidget, QTabWidget, QVBoxLayout, QWidget)
 
 from . import tema, veritabani as vt
 from .operator import OperatorSonuc, operator_adi, operatorleri_hesapla
@@ -14,7 +14,7 @@ from .sayfa_kayitlar import _Oge
 from .sayfa_ortak import CizimWidget, etiket, kart, tablo_menusu
 
 BASLIKLAR = ["Operatör", "Makine", "Gün", "Kayıtlı süre", "Çalışma %", "Duruş %", "Mola %", "Toplam duruş", "Çakışan duruş",
-             "Ayar kaybı", "Boşta süre", "Boşta %", "Belgesiz duruş", "İş emri yok", "En uzun duruş", "Duruş adedi", "Ort. makine"]
+             "Ayar kaybı", "Boşta süre", "Boşta %", "Belgesiz duruş", "İş emri yok", "Hariç tutulan", "En uzun duruş", "Duruş adedi", "Ort. makine"]
 BASLIK_ACIKLAMA = {
     "Kayıtlı süre": "Operatörün makinelerinde kayıtlı olduğu toplam süre (çalışma + duruş + mola, saat:dakika)",
     "Toplam duruş": "Operatörün makinelerindeki duruşların toplamı (mola hariç)",
@@ -24,11 +24,12 @@ BASLIK_ACIKLAMA = {
     "Boşta %": "Boşta süre, operatörün aktif olduğu süreye oranı",
     "Belgesiz duruş": "Duruş nedeni girilmemiş süre (Belgelenmemiş Duruş)",
     "İş emri yok": "Operatör makinede tanımlıyken 'İŞ EMRİ PLAN YOK' duruşunda geçen süre. İş emri yoksa operatörün makineden çıkış yapması beklenir. Tıklayınca liste açılır.",
+    "Hariç tutulan": "'Hariç tutulacak duruşlar' düğmesiyle hesap dışı bırakılan duruşların toplamı (üzerine gelince dökümü görünür)",
     "En uzun duruş": "Tek seferdeki en uzun duruş",
     "Duruş adedi": "Duruş sayısı",
     "Ort. makine": "Operatör çalışırken aynı anda ortalama kaç makineye bakıyor",
 }
-CAKISMA, AYAR_KAYBI, BOSTA, PLANSIZ, DURUS_SUTUN, CALISMA_SUTUN = 8, 9, 10, 13, 5, 4
+CAKISMA, AYAR_KAYBI, BOSTA, PLANSIZ, HARIC_SUTUN, DURUS_SUTUN, CALISMA_SUTUN = 8, 9, 10, 13, 14, 5, 4
 ACIKLAMA = (
     "ORANLAR (Çalışma %, Duruş %, Mola %)\\n"
     "Operatörün çalıştığı her makine ve vardiya için net süre (varsayılan 7,33 saat) esas alınır. Operatör o makinede vardiyanın "
@@ -264,12 +265,51 @@ class DetayDialog(QDialog):
         sekme.addTab(t3, "Duruş nedenleri")
 
 
+class HaricDialog(QDialog):
+    """Hesaptan çıkarılacak duruş türlerini işaretletir (dönemdeki süreleriyle birlikte)."""
+
+    def __init__(self, parent, sureler: Dict[str, float], secili: List[str]):
+        super().__init__(parent)
+        self.setWindowTitle("Hariç tutulacak duruşlar")
+        self.resize(460, 560)
+        l = QVBoxLayout(self)
+        l.addWidget(etiket("İşaretlediğiniz duruşlar operatör hesabından çıkarılır: duruş sayılmaz, o süre paydada yer almaz ve o sırada "
+                           "makine 'aktif' sayılmaz. Süreler seçili dönemdeki operatörlü kayıtlara aittir (saat:dakika).", "AltBaslik"))
+        self.liste = QListWidget()
+        kucuk = {x.casefold() for x in secili}
+        adlar = set(sureler) | set(secili)
+        for tip in sorted(adlar, key=lambda x: -sureler.get(x, 0.0)):
+            o = QListWidgetItem(f"{tip}    —    {hm(sureler.get(tip, 0.0))}")
+            o.setFlags(o.flags() | Qt.ItemIsUserCheckable)
+            o.setCheckState(Qt.Checked if tip.casefold() in kucuk or tip in secili else Qt.Unchecked)
+            o.setData(Qt.UserRole, tip)
+            self.liste.addItem(o)
+        l.addWidget(self.liste, 1)
+        alt = QHBoxLayout()
+        b = QPushButton("Hepsini kaldır")
+        b.clicked.connect(lambda: [self.liste.item(i).setCheckState(Qt.Unchecked) for i in range(self.liste.count())])
+        alt.addWidget(b)
+        alt.addStretch(1)
+        bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        bb.button(QDialogButtonBox.Ok).setText("Tamam")
+        bb.button(QDialogButtonBox.Cancel).setText("Vazgeç")
+        bb.accepted.connect(self.accept)
+        bb.rejected.connect(self.reject)
+        alt.addWidget(bb)
+        l.addLayout(alt)
+
+    def secilenler(self) -> List[str]:
+        return [self.liste.item(i).data(Qt.UserRole) for i in range(self.liste.count())
+                if self.liste.item(i).checkState() == Qt.Checked]
+
+
 class OperatorSayfasi(QWidget):
     def __init__(self, ana):
         super().__init__()
         self.ana = ana
         self._sonuc: Dict[str, OperatorSonuc] = {}
         self._kisa: List[str] = []
+        self._kayit, self._gunler = [], []
         self._kirli = True
         kok = QVBoxLayout(self)
         kok.setContentsMargins(26, 22, 26, 22)
@@ -280,11 +320,13 @@ class OperatorSayfasi(QWidget):
         sol.addWidget(etiket("Kayıttaki operatörler, baktıkları makineler ve duruşları. Dönem, üstteki seçime göre; oranlar gün gün "
                              "hesaplanıp ortalaması alınır. Sayıya tıklayınca ayrıntı açılır.", "AltBaslik"))
         ust.addLayout(sol, 1)
+        self.b_haric = QPushButton("Hariç tutulacak duruşlar…")
+        self.b_haric.clicked.connect(self.haric_sec)
         self.b_bilgi = QPushButton("Nasıl hesaplanıyor?")
         self.b_excel = QPushButton("Excel'e Aktar")
         self.b_bilgi.clicked.connect(self.bilgi_goster)
         self.b_excel.clicked.connect(self.excele_aktar)
-        for b in (self.b_bilgi, self.b_excel):
+        for b in (self.b_haric, self.b_bilgi, self.b_excel):
             ust.addWidget(b, 0, Qt.AlignTop)
         kok.addLayout(ust)
         gl = QHBoxLayout()
@@ -294,7 +336,7 @@ class OperatorSayfasi(QWidget):
             self.gorunum.addItem(ad, v)
         self.gorunum.activated.connect(lambda _=0: self.yenile())
         gl.addWidget(self.gorunum)
-        self.ozet = etiket("", "AltBaslik", kelime=False)
+        self.ozet = etiket("", "AltBaslik")
         gl.addSpacing(12)
         gl.addWidget(self.ozet, 1)
         kok.addLayout(gl)
@@ -305,7 +347,19 @@ class OperatorSayfasi(QWidget):
         self.tablo.setSortingEnabled(True)
         self.tablo.cellClicked.connect(self._tiklandi)
         self.tablo.cellDoubleClicked.connect(self._cift_tik)
-        kok.addWidget(self.tablo, 1)
+        orta = QHBoxLayout()
+        orta.setSpacing(12)
+        orta.addWidget(self.tablo, 1)
+        self.yan = kart(kenar=12)
+        self.yan.setFixedWidth(290)
+        self.yan.layout().addWidget(etiket("HARİÇ TUTULAN DURUŞLAR", "KartBaslik"))
+        self.yan_not = etiket("", "AltBaslik")
+        self.yan.layout().addWidget(self.yan_not)
+        self.yan_tablo = _tablo(["Duruş", "Süre"])
+        self.yan_tablo.setSortingEnabled(True)
+        self.yan.layout().addWidget(self.yan_tablo, 1)
+        orta.addWidget(self.yan)
+        kok.addLayout(orta, 1)
 
     # ------------------------------------------------------------------
     def showEvent(self, e):
@@ -324,15 +378,17 @@ class OperatorSayfasi(QWidget):
             gorunum = self.gorunum.currentData()
             self.kars.setVisible(gorunum == 4)
             self.tablo.setVisible(gorunum != 4)
+            self.yan.setVisible(gorunum != 4)
             if gunler:
                 kayit = vt.kayitlari_getir_operatorlu(self.ana.con, min(gunler), max(gunler))
+                self._kayit, self._gunler = kayit, gunler
                 ayar = self.ana.hesap_ayar()
                 operatorsuz = sum(1 for k in kayit if not operator_adi(k[0]))
                 if gorunum == 4:
                     self._karsilastir(kayit, gunler, ayar)
                     self._sonuc = {}
                 else:
-                    tum = operatorleri_hesapla(kayit, gunler, ayar, {gorunum} if gorunum else None)
+                    tum = operatorleri_hesapla(kayit, gunler, ayar, {gorunum} if gorunum else None, self._haric())
                     esik = ASGARI_SN if not gorunum else ASGARI_SN / 3
                     self._kisa = sorted(ad for ad, r in tum.items() if r.calisma_sn + r.durus_sn + r.mola_sn < esik)
                     self._sonuc = {ad: r for ad, r in tum.items() if ad not in self._kisa}
@@ -341,6 +397,7 @@ class OperatorSayfasi(QWidget):
                 self.kars.setRowCount(0)
             if gorunum != 4:
                 self._tabloyu_doldur()
+                self._yan_doldur()
         finally:
             QApplication.restoreOverrideCursor()
         if gorunum == 4:
@@ -358,7 +415,7 @@ class OperatorSayfasi(QWidget):
         self.ozet.setText(metin)
 
     def _karsilastir(self, kayit, gunler, ayar):
-        sonuclar = {v: operatorleri_hesapla(kayit, gunler, ayar, {v}) for v in (1, 2, 3)}
+        sonuclar = {v: operatorleri_hesapla(kayit, gunler, ayar, {v}, self._haric()) for v in (1, 2, 3)}
         adlar = sorted({ad for d in sonuclar.values() for ad, r in d.items() if r.calisma_sn + r.durus_sn + r.mola_sn >= ASGARI_SN / 3})
         satirlar = []
         for ad in adlar:
@@ -391,10 +448,11 @@ class OperatorSayfasi(QWidget):
                  (hm(r.durus_sn), r.durus_sn, True), (hm(r.cakisan_sn), r.cakisan_sn, True),
                  (hm(r.setup_kayip_sn), r.setup_kayip_sn, True), (hm(r.hepsi_calisirken_sn), r.hepsi_calisirken_sn, True),
                  (tema.yuzde(r.bosta_orani, 1) if r.bosta_orani is not None else "", r.bosta_orani or 0.0, True),
-                 (hm(r.belgesiz_sn), r.belgesiz_sn, True), (hm(r.plansiz_sn), r.plansiz_sn, True), (hm(r.en_uzun_durus_sn), r.en_uzun_durus_sn, True),
+                 (hm(r.belgesiz_sn), r.belgesiz_sn, True), (hm(r.plansiz_sn), r.plansiz_sn, True),
+                 (hm(r.haric_sn) if r.haric_sn else "", r.haric_sn, True), (hm(r.en_uzun_durus_sn), r.en_uzun_durus_sn, True),
                  (str(r.durus_adedi), r.durus_adedi, True), (f"{r.ort_makine:.1f}".replace(".", ","), r.ort_makine, True)]
             satirlar.append(s)
-        _doldur(self.tablo, satirlar, (170, 70, 50, 100, 105, 95, 85, 115, 120, 95, 100, 80, 135, 110, 120, 110))
+        _doldur(self.tablo, satirlar, (170, 70, 50, 100, 105, 95, 85, 115, 120, 95, 100, 80, 135, 110, 120, 120, 110, 110))
         for i in range(self.tablo.rowCount()):
             for j in (CAKISMA, AYAR_KAYBI, BOSTA, PLANSIZ):
                 it = self.tablo.item(i, j)
@@ -404,6 +462,11 @@ class OperatorSayfasi(QWidget):
                     it.setFont(f)
                     it.setForeground(QColor(tema.LACIVERT))
                     it.setToolTip("Tıklayın: hangi makineler aynı anda hangi duruşta")
+            hc = self.tablo.item(i, HARIC_SUTUN)
+            r_ = self._sonuc_al(i)
+            if hc and r_ and r_.haric_tipleri:
+                hc.setToolTip("\n".join(f"{tip}: {hm(sn)}" for tip, sn in sorted(r_.haric_tipleri.items(), key=lambda x: -x[1])))
+                hc.setBackground(QColor("#F2F2F2"))
             d = self.tablo.item(i, DURUS_SUTUN)
             if d:
                 d.setBackground(QColor("#FBE3E0"))
@@ -416,6 +479,41 @@ class OperatorSayfasi(QWidget):
                 h.setToolTip(BASLIK_ACIKLAMA[ad])
         self.tablo.sortByColumn(DURUS_SUTUN, Qt.DescendingOrder)   # en çok duruştan en aza
         self.tablo.horizontalHeader().setSortIndicator(DURUS_SUTUN, Qt.DescendingOrder)
+
+    def _haric(self) -> List[str]:
+        return list(self.ana.ayar.get("operator_haric_durus") or [])
+
+    def _yan_doldur(self):
+        haric = self._haric()
+        toplam: Dict[str, float] = {}
+        for r in self._sonuc.values():
+            for tip, sn in r.haric_tipleri.items():
+                toplam[tip] = toplam.get(tip, 0.0) + sn
+        if not haric:
+            self.yan_not.setText("Hariç tutulan duruş yok. Hesaba katmak istemediğiniz duruşları üstteki 'Hariç tutulacak duruşlar' düğmesiyle seçin.")
+        else:
+            self.yan_not.setText(f"{len(haric)} duruş türü hesaptan çıkarıldı. Toplam {hm(sum(toplam.values()))} (saat:dakika).")
+        satirlar = [[(tip, tip, False), (hm(toplam.get(tip, 0.0)), toplam.get(tip, 0.0), True)]
+                    for tip in sorted(haric, key=lambda x: -toplam.get(x, 0.0))]
+        _doldur(self.yan_tablo, satirlar, (135,))
+        self.yan_tablo.sortByColumn(1, Qt.DescendingOrder)
+
+    def haric_sec(self):
+        if not self._kayit:
+            self.ana.mesaj("Önce bir dönem seçin; seçenekler o dönemdeki duruşlardan listelenir.")
+            return
+        tum = operatorleri_hesapla(self._kayit, self._gunler, self.ana.hesap_ayar(), None, self._haric())
+        sureler: Dict[str, float] = {}
+        for r in tum.values():
+            for tip, sn in list(r.durus_tipleri.items()) + list(r.haric_tipleri.items()):
+                sureler[tip] = sureler.get(tip, 0.0) + sn
+        d = HaricDialog(self, sureler, self._haric())
+        if d.exec():
+            secilen = d.secilenler()
+            vt.ayar_yaz(self.ana.con, "operator_haric_durus", secilen)
+            self.ana.ayar["operator_haric_durus"] = secilen
+            self.yenile()
+            self.ana.mesaj(f"{len(secilen)} duruş türü hesaptan çıkarıldı." if secilen else "Hariç tutulan duruş kalmadı.")
 
     def _sonuc_al(self, satir: int):
         it = self.tablo.item(satir, 0)
@@ -457,11 +555,11 @@ class OperatorSayfasi(QWidget):
         ws = wb.create_sheet("Operatörler")
         ws.append(BASLIKLAR[:3] + ["Kayıtlı süre (saat)", "Çalışma", "Duruş", "Mola", "Toplam duruş (saat)", "Çakışan duruş (saat)",
                                    "Ayar sırasında diğer makine kaybı (saat)", "Boşta (saat)", "Boşta %",
-                                   "Belgelenmemiş duruş (saat)", "İş emri plan yok (saat)", "En uzun duruş (saat)", "Duruş adedi", "Aynı anda ort. makine"])
+                                   "Belgelenmemiş duruş (saat)", "İş emri plan yok (saat)", "Hariç tutulan (saat)", "En uzun duruş (saat)", "Duruş adedi", "Aynı anda ort. makine"])
         for r in sorted(self._sonuc.values(), key=lambda x: -x.durus_orani):
             ws.append([r.ad, r.makine_sayisi, r.gun_sayisi, (r.calisma_sn + r.durus_sn + r.mola_sn) / 3600, r.calisma_orani, r.durus_orani, r.mola_orani,
                        r.durus_sn / 3600, r.cakisan_sn / 3600, r.setup_kayip_sn / 3600, r.hepsi_calisirken_sn / 3600, r.bosta_orani,
-                       r.belgesiz_sn / 3600, r.plansiz_sn / 3600, r.en_uzun_durus_sn / 3600, r.durus_adedi, r.ort_makine])
+                       r.belgesiz_sn / 3600, r.plansiz_sn / 3600, r.haric_sn / 3600, r.en_uzun_durus_sn / 3600, r.durus_adedi, r.ort_makine])
         ws2 = wb.create_sheet("Çakışan duruşlar")
         ws2.append(["Operatör", "Başlangıç", "Bitiş", "Süre (dk)", "Duruşta olan makineler", "Çalışan makineler", "Ayar var"])
         for r in self._sonuc.values():
