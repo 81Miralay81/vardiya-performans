@@ -155,8 +155,9 @@ class CormindKarti(QFrame):
 
     def _bitti(self, r: dict):
         tip = ", ".join(f"{ad}: {n}" for ad, n in list(r["tipler"].items())[:12])
-        metin = (f"{r['toplam']} kayıt alındı: {r['yeni']} yeni, {r['guncel']} güncellendi, {r['ayni']} zaten vardı"
-                 + (f", {r['atlanan']} atlandı (sürmekte olan kayıtlar)" if r["atlanan"] else "") + f".\nTip dağılımı: {tip}")
+        metin = (f"{r['toplam']} kayıt alındı ve kaydedildi"
+                 + (f" (seçilen günlerde daha önce kayıtlı olan {r['silinen']} kayıt Cormind'dekiyle değiştirildi)" if r.get("silinen") else "")
+                 + (f"; {r['atlanan']} kayıt atlandı (sürmekte olan kayıtlar)" if r["atlanan"] else "") + f".\nTip dağılımı: {tip}")
         if r["yeni_makineler"]:
             metin += "\nMakine listesine eklendi: " + ", ".join(r["yeni_makineler"])
         self._son(metin)

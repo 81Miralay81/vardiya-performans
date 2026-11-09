@@ -52,17 +52,22 @@ def _ad(d: Optional[dict], *alanlar) -> str:
     return ""
 
 
+# Sabit durum numaraları. Excel çıktısıyla aynı güne ait sayılar karşılaştırılarak doğrulandı:
+# 105 = YEMEK MOLASI (62), 106 = ÇAY MOLASI (47), 6 = Kalite Kontrol (41), -1 = Çalışmıyor, 5 = Kurulum.
+SABIT_TIPLER = {0: "Çalışma", -1: "Çalışmıyor", 5: "Kurulum", 6: "Kalite Kontrol",
+                105: "YEMEK MOLASI", 106: "ÇAY MOLASI"}
+
+
 def tip_adi(kayit: dict, ariza_adlari: Dict[int, str]) -> str:
-    """0 -> Çalışma; 1 -> arıza türünün adı (yoksa 'Belgelenmemiş Duruş'); diğerleri 'Tip n'."""
+    """Duruş (type 1): arıza türünün adı, yoksa 'Belgelenmemiş Duruş'. Diğerleri sabit tablodan; bilinmeyen 'Tip n'."""
     t = kayit.get("type")
-    if t == 0:
-        return "Çalışma"
     et = kayit.get("entity_type")
-    if et is not None and int(et) in ariza_adlari:
-        return ariza_adlari[int(et)]
     if t == 1:
-        return "Belgelenmemiş Duruş"
-    return f"Tip {t}"
+        if et is None:
+            return "Belgelenmemiş Duruş"
+        ad = ariza_adlari.get(int(et), "")
+        return ad or f"Arıza {int(et)}"
+    return SABIT_TIPLER.get(t, f"Tip {t}")
 
 
 def kayit_satiri(k: dict, makine_adlari: Dict[int, str], ariza_adlari: Dict[int, str]) -> Optional[tuple]:
@@ -143,7 +148,18 @@ class Istemci:
             d = self._graphql("FailureType", {"limit": 1000, "offset": 0})
         except CormindHata:
             return {}
-        return {int(x["id"]): _ad(x, "name", "title", "description") for x in d.get("entities", []) if x.get("id") is not None}
+        sonuc = {}
+        for x in d.get("entities", []):
+            if x.get("id") is None:
+                continue
+            ad = _ad(x, "name", "title", "label", "text", "display_name", "description")
+            if not ad:      # ad başka bir alandaysa: renk/tarih/kod olmayan ilk anlamlı metin
+                for k, v in x.items():
+                    if isinstance(v, str) and v.strip() and not any(z in k for z in ("color", "_at", "code", "uuid", "icon")):
+                        ad = v.strip()
+                        break
+            sonuc[int(x["id"])] = ad
+        return sonuc
 
     def hareketler(self, ilk: date, son: date, makine_idleri: List[int],
                    ilerleme: Optional[Callable[[int, int], None]] = None) -> List[dict]:
@@ -186,6 +202,15 @@ def cek(con, adres: str, kullanici: str, sifre: str, ilk: date, son: date, makin
             continue
         satirlar.append(s)
         tipler[s[4]] = tipler.get(s[4], 0) + 1
+    # O günlerin eski kayıtları (Excel'den ya da önceki çekimden) silinip Cormind'dekiyle değiştirilir:
+    # saniye yuvarlama farkından çift kayıt oluşmasın, düzeltilmiş tip adları eskilerin yerine geçsin.
+    silinen = 0
+    if satirlar:
+        silinen = con.execute("SELECT COUNT(*) FROM kayit WHERE baslangic >= ? AND baslangic < ?",
+                              (ilk.strftime("%Y-%m-%d 00:00:00"), (son + timedelta(days=1)).strftime("%Y-%m-%d 00:00:00"))).fetchone()[0]
+        con.execute("DELETE FROM kayit WHERE baslangic >= ? AND baslangic < ?",
+                    (ilk.strftime("%Y-%m-%d 00:00:00"), (son + timedelta(days=1)).strftime("%Y-%m-%d 00:00:00")))
+        con.commit()
     yeni, guncel, ayni = vt.kayit_yaz(con, satirlar)
     ay = vt.ayar_oku(con)
     bilinen = set(ay["makineler"])
@@ -196,5 +221,5 @@ def cek(con, adres: str, kullanici: str, sifre: str, ilk: date, son: date, makin
     son_g = max((s[1] for s in satirlar), default=None)
     vt.aktarim_kaydet(con, f"Cormind ({ilk:%d.%m.%Y}–{son:%d.%m.%Y})", len(ham), yeni, guncel, ayni, atlanan,
                       ilk_g.strftime("%Y-%m-%d") if ilk_g else None, son_g.strftime("%Y-%m-%d") if son_g else None)
-    return {"toplam": len(ham), "yeni": yeni, "guncel": guncel, "ayni": ayni, "atlanan": atlanan,
+    return {"toplam": len(ham), "yeni": yeni, "guncel": guncel, "ayni": ayni, "atlanan": atlanan, "silinen": silinen,
             "tipler": dict(sorted(tipler.items(), key=lambda x: -x[1])), "yeni_makineler": eklenen}

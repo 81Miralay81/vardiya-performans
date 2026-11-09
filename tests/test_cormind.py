@@ -79,9 +79,20 @@ def test_cek_yazar_ve_tekrarda_cogalmaz(tmp_path):
         assert satir["baslangic"] == "2026-11-09 08:00:00" and satir["operator"] == "Ali Veli"
         assert satir["is_emri"] == "54524896" and satir["urun_kodu"] == "DK1"
         r2 = cormind.cek(con, adres, "u", "p", date(2026, 11, 9), date(2026, 11, 9), [5, 6])
-        assert (r2["yeni"], r2["ayni"]) == (0, 3)
+        assert (r2["yeni"], r2["silinen"]) == (3, 3)           # aynı günler silinip yeniden yazılır, çoğalmaz
+        assert con.execute("SELECT COUNT(*) FROM kayit").fetchone()[0] == 3
     finally:
         s.shutdown()
+
+
+def test_sabit_tipler():
+    adlar = {7: "Kısa Duruş"}
+    assert cormind.tip_adi({"type": 105}, adlar) == "YEMEK MOLASI"
+    assert cormind.tip_adi({"type": 106}, adlar) == "ÇAY MOLASI"
+    assert cormind.tip_adi({"type": 1, "entity_type": 7}, adlar) == "Kısa Duruş"
+    assert cormind.tip_adi({"type": 1, "entity_type": 9}, adlar) == "Arıza 9"
+    assert cormind.tip_adi({"type": 1}, adlar) == "Belgelenmemiş Duruş"
+    assert cormind.tip_adi({"type": -1}, adlar) == "Çalışmıyor"
 
 
 def test_yanlis_sifre(tmp_path):
