@@ -102,17 +102,19 @@ def test_haric_durus_cakisma_ve_bosta_saymaz():
     assert r.hepsi_calisirken_sn == 7200                                       # M3 hesap dışı: M1+M2 çalışıyor
 
 
-def test_mum_verisi():
+def test_grafik_verisi():
     from datetime import date as _d
     from vardiya.operator import OperatorSonuc
-    from vardiya.operator_grafik import METRIK, mum_verisi
-    def r(ad, c):
+    from vardiya.operator_grafik import METRIK, gun_veri, toplu_veri
+    def r(ad, c, d):
         o = OperatorSonuc(ad)
-        o.gunler[_d(2026, 11, 2)] = {"calisma": c, "durus": 1 - c, "mola": 0.2, "birim": 1}
+        o.calisma_orani, o.durus_orani = c, d
+        o.gunler[_d(2026, 11, 2)] = {"calisma": c, "durus": d, "mola": 0.2, "birim": 1}
+        o.gunler[_d(2026, 11, 3)] = {"calisma": c / 2, "durus": d, "mola": 0.2, "birim": 1}
         return o
-    vs = {1: {"A": r("A", 0.5), "B": r("B", 0.7)}, 2: {"A": r("A", 0.9)}, 3: {}}
-    m = mum_verisi(vs, "A", METRIK["calisma"])[0]
-    assert (m.acilis, m.kapanis, m.yuksek, m.dusuk) == (0.5, 0.9, 0.9, 0.5)
-    t = mum_verisi(vs, None, METRIK["calisma"])[0]
-    assert abs(t.acilis - 0.6) < 1e-9 and t.kapanis == 0.9 and t.dusuk == 0.5 and t.yuksek == 0.9
-    assert mum_verisi(vs, None, METRIK["calisma"], ["B"])[0].kapanis == 0.7
+    sonuc = {"A": r("A", 0.5, 0.3), "B": r("B", 0.9, 0.1)}
+    liste, genel = toplu_veri(sonuc, METRIK["calisma"])
+    assert [a for a, _ in liste] == ["B", "A"] and abs(genel - 0.7) < 1e-9
+    gunler, ort = gun_veri(sonuc["A"], METRIK["calisma"])
+    assert [round(v, 2) for _, v in gunler] == [0.5, 0.25] and abs(ort - 0.375) < 1e-9
+    assert gun_veri(sonuc["A"], METRIK["ayar"]) is None
