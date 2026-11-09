@@ -100,3 +100,19 @@ def test_haric_durus_cakisma_ve_bosta_saymaz():
     assert operatorleri_hesapla(k, g)[A].hepsi_calisirken_sn == 0            # M3 duruşta: boşta değil
     r = operatorleri_hesapla(k, g, haric_duruslar=["İŞ EMRİ PLAN YOK"])[A]
     assert r.hepsi_calisirken_sn == 7200                                       # M3 hesap dışı: M1+M2 çalışıyor
+
+
+def test_mum_verisi():
+    from datetime import date as _d
+    from vardiya.operator import OperatorSonuc
+    from vardiya.operator_grafik import METRIK, mum_verisi
+    def r(ad, c):
+        o = OperatorSonuc(ad)
+        o.gunler[_d(2026, 11, 2)] = {"calisma": c, "durus": 1 - c, "mola": 0.2, "birim": 1}
+        return o
+    vs = {1: {"A": r("A", 0.5), "B": r("B", 0.7)}, 2: {"A": r("A", 0.9)}, 3: {}}
+    m = mum_verisi(vs, "A", METRIK["calisma"])[0]
+    assert (m.acilis, m.kapanis, m.yuksek, m.dusuk) == (0.5, 0.9, 0.9, 0.5)
+    t = mum_verisi(vs, None, METRIK["calisma"])[0]
+    assert abs(t.acilis - 0.6) < 1e-9 and t.kapanis == 0.9 and t.dusuk == 0.5 and t.yuksek == 0.9
+    assert mum_verisi(vs, None, METRIK["calisma"], ["B"])[0].kapanis == 0.7

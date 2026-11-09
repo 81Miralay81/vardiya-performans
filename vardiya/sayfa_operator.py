@@ -6,10 +6,11 @@ from typing import Dict, List
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog,
-                               QHBoxLayout, QHeaderView, QLabel, QListWidget, QListWidgetItem, QMessageBox, QPushButton, QTableWidget, QTabWidget, QVBoxLayout, QWidget)
+                               QHBoxLayout, QHeaderView, QLabel, QListWidget, QListWidgetItem, QMessageBox, QPushButton, QScrollArea, QTableWidget, QTabWidget, QVBoxLayout, QWidget)
 
 from . import tema, veritabani as vt
 from .operator import OperatorSonuc, operator_adi, operatorleri_hesapla
+from .operator_grafik import METRIKLER, METRIK, mum_grafigi, mum_verisi
 from .sayfa_kayitlar import _Oge
 from .sayfa_ortak import CizimWidget, etiket, kart, tablo_menusu
 
@@ -332,7 +333,7 @@ class OperatorSayfasi(QWidget):
         gl = QHBoxLayout()
         gl.addWidget(etiket("Görünüm", "KartBaslik", kelime=False))
         self.gorunum = QComboBox()
-        for ad, v in (("Tüm vardiyalar", 0), ("1. vardiya", 1), ("2. vardiya", 2), ("3. vardiya", 3), ("Vardiya karşılaştırması", 4)):
+        for ad, v in (("Tüm vardiyalar", 0), ("1. vardiya", 1), ("2. vardiya", 2), ("3. vardiya", 3), ("Vardiya karşılaştırması", 4), ("Grafik (mum)", 5)):
             self.gorunum.addItem(ad, v)
         self.gorunum.activated.connect(lambda _=0: self.yenile())
         gl.addWidget(self.gorunum)
@@ -343,11 +344,14 @@ class OperatorSayfasi(QWidget):
         self.kars = _tablo(["Operatör"] + [f"{v}.V {m}" for v in (1, 2, 3) for m in ("Çalışma", "Duruş", "Boşta")])
         self.kars.hide()
         kok.addWidget(self.kars, 1)
+        self._graf_kur(kok)
         self.tablo = _tablo(BASLIKLAR)
         self.tablo.setSortingEnabled(True)
         self.tablo.cellClicked.connect(self._tiklandi)
         self.tablo.cellDoubleClicked.connect(self._cift_tik)
-        orta = QHBoxLayout()
+        self.orta_kutu = QWidget()
+        orta = QHBoxLayout(self.orta_kutu)
+        orta.setContentsMargins(0, 0, 0, 0)
         orta.setSpacing(12)
         orta.addWidget(self.tablo, 1)
         self.yan = kart(kenar=12)
@@ -359,7 +363,7 @@ class OperatorSayfasi(QWidget):
         self.yan_tablo.setSortingEnabled(True)
         self.yan.layout().addWidget(self.yan_tablo, 1)
         orta.addWidget(self.yan)
-        kok.addLayout(orta, 1)
+        kok.addWidget(self.orta_kutu, 1)
 
     # ------------------------------------------------------------------
     def showEvent(self, e):
@@ -377,8 +381,8 @@ class OperatorSayfasi(QWidget):
         try:
             gorunum = self.gorunum.currentData()
             self.kars.setVisible(gorunum == 4)
-            self.tablo.setVisible(gorunum != 4)
-            self.yan.setVisible(gorunum != 4)
+            self.graf_kutu.setVisible(gorunum == 5)
+            self.orta_kutu.setVisible(gorunum not in (4, 5))
             if gunler:
                 kayit = vt.kayitlari_getir_operatorlu(self.ana.con, min(gunler), max(gunler))
                 self._kayit, self._gunler = kayit, gunler
@@ -387,6 +391,8 @@ class OperatorSayfasi(QWidget):
                 if gorunum == 4:
                     self._karsilastir(kayit, gunler, ayar)
                     self._sonuc = {}
+                elif gorunum == 5:
+                    self._graf_hazirla(kayit, gunler, ayar)
                 else:
                     tum = operatorleri_hesapla(kayit, gunler, ayar, {gorunum} if gorunum else None, self._haric())
                     esik = ASGARI_SN if not gorunum else ASGARI_SN / 3
@@ -395,11 +401,17 @@ class OperatorSayfasi(QWidget):
             else:
                 self._sonuc, operatorsuz, self._kisa = {}, 0, []
                 self.kars.setRowCount(0)
-            if gorunum != 4:
+                self._vs = {}
+                if gorunum == 5:
+                    self._graf_ciz()
+            if gorunum not in (4, 5):
                 self._tabloyu_doldur()
                 self._yan_doldur()
         finally:
             QApplication.restoreOverrideCursor()
+        if gorunum == 5:
+            self.ozet.setText(f"{len(self._sonuc)} operatör · {len(gunler)} gün" if gunler else "Önce bir dönem seçin.")
+            return
         if gorunum == 4:
             self.ozet.setText(f"{self.kars.rowCount()} operatör · 1.V = 1. vardiya (00-08), 2.V = 08-16, 3.V = 16-24 · çalışma ve duruş yüzde, boşta saat:dakika")
             return
@@ -497,6 +509,82 @@ class OperatorSayfasi(QWidget):
                     for tip in sorted(haric, key=lambda x: -toplam.get(x, 0.0))]
         _doldur(self.yan_tablo, satirlar, (135,))
         self.yan_tablo.sortByColumn(1, Qt.DescendingOrder)
+
+    # ------------------------------------------------------------------ mum grafiği
+    def _graf_kur(self, kok):
+        self._vs: Dict[int, Dict[str, OperatorSonuc]] = {}
+        self._graf_bloke = False
+        self.graf_kutu = QWidget()
+        gl = QVBoxLayout(self.graf_kutu)
+        gl.setContentsMargins(0, 0, 0, 0)
+        gl.setSpacing(8)
+        sat = QHBoxLayout()
+        sat.addWidget(etiket("Kimin grafiği", "KartBaslik", kelime=False))
+        self.graf_op = QComboBox()
+        self.graf_op.setMinimumWidth(220)
+        self.graf_op.activated.connect(lambda _=0: self._graf_ciz())
+        sat.addWidget(self.graf_op)
+        sat.addSpacing(16)
+        sat.addWidget(etiket("Grafikte olsun", "KartBaslik", kelime=False))
+        secili = self.ana.ayar.get("operator_grafik_olcu")
+        secili = set(secili) if isinstance(secili, list) else {"calisma", "durus"}
+        self.graf_olcu = {}
+        for m in METRIKLER:
+            c = QCheckBox(m.ad)
+            c.setChecked(m.anahtar in secili)
+            c.toggled.connect(self._graf_olcu_degisti)
+            self.graf_olcu[m.anahtar] = c
+            sat.addWidget(c)
+        sat.addStretch(1)
+        gl.addLayout(sat)
+        gl.addWidget(etiket("Her mum bir gündür. Gövde: o gün operatörün çalıştığı ilk vardiyadan son vardiyaya değişim. Fitil: günün en "
+                            "düşük ve en yüksek değeri. 'Tüm operatörler'de gövde operatörlerin vardiya ortalaması, fitil en düşük ve en yüksek "
+                            "operatör değeridir. Sağ tıklayınca resim olarak kopyalanır.", "AltBaslik"))
+        self.grafik = CizimWidget(self._graf_ciz_fn, 380, 400, kopya_resim=lambda: self.grafik.resim(2.0))
+        kaydir = QScrollArea()
+        kaydir.setWidgetResizable(True)
+        kaydir.setFrameShape(QScrollArea.NoFrame)
+        kaydir.setWidget(self.grafik)
+        gl.addWidget(kaydir, 1)
+        self.graf_kutu.hide()
+        kok.addWidget(self.graf_kutu, 1)
+        self._graf_veri: Dict[str, list] = {}
+        self._graf_baslik = ""
+        self._graf_secili: list = []
+
+    def _graf_olcu_degisti(self):
+        liste = [a for a, c in self.graf_olcu.items() if c.isChecked()]
+        vt.ayar_yaz(self.ana.con, "operator_grafik_olcu", liste)
+        self.ana.ayar["operator_grafik_olcu"] = liste
+        self._graf_ciz()
+
+    def _graf_hazirla(self, kayit, gunler, ayar):
+        haric = self._haric()
+        tum = operatorleri_hesapla(kayit, gunler, ayar, None, haric)
+        kisa = sorted(ad for ad, r in tum.items() if r.calisma_sn + r.durus_sn + r.mola_sn < ASGARI_SN)
+        self._sonuc = {ad: r for ad, r in tum.items() if ad not in kisa}
+        self._vs = {v: operatorleri_hesapla(kayit, gunler, ayar, {v}, haric) for v in (1, 2, 3)}
+        onceki = self.graf_op.currentData()
+        self.graf_op.clear()
+        self.graf_op.addItem("Tüm operatörler (toplu)", None)
+        for ad in sorted(self._sonuc):
+            self.graf_op.addItem(ad, ad)
+        i = self.graf_op.findData(onceki)
+        self.graf_op.setCurrentIndex(max(0, i))
+        self._graf_ciz()
+
+    def _graf_ciz(self):
+        op = self.graf_op.currentData()
+        secili = [METRIK[a] for a in METRIK if self.graf_olcu[a].isChecked()]
+        izinli = set(self._sonuc)
+        self._graf_veri = {m.anahtar: mum_verisi(self._vs, op, m, izinli) for m in secili}
+        self._graf_secili = secili
+        self._graf_baslik = (op or "Tüm operatörler (toplu)") + " – gün gün mum grafiği"
+        self.grafik.setMinimumHeight(max(380, 310 * len(secili) + 50))
+        self.grafik.update()
+
+    def _graf_ciz_fn(self, p, rect):
+        mum_grafigi(p, rect, self._graf_baslik, self._graf_secili, self._graf_veri)
 
     def haric_sec(self):
         if not self._kayit:
