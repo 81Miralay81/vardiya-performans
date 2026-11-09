@@ -16,12 +16,13 @@ from .hesap import HesapAyar, hesapla
 from .sayfa_analiz import AnalizSayfasi
 from .sayfa_ayar import AyarSayfasi
 from .sayfa_gecmis import GecmisSayfasi
+from .sayfa_kayitlar import KayitlarSayfasi
 from .sayfa_rapor import RaporSayfasi
 from .sayfa_veri import VeriSayfasi
 from .surum import SURUM
 from . import guncelleme
 
-MENU = (("veri", "Veri Aktar"), ("performans", "Performans"), ("durus", "Genel Duruş"), ("mola", "Mola"),
+MENU = (("veri", "Veri Aktar"), ("kayitlar", "Kayıtlar"), ("performans", "Performans"), ("durus", "Genel Duruş"), ("mola", "Mola"),
         ("rapor", "Raporlar"), ("gecmis", "Geçmiş"), ("ayar", "Ayarlar"))
 DONEMLI = {"performans", "durus", "mola"}
 
@@ -104,6 +105,7 @@ class AnaPencere(QMainWindow):
         self.yigin = QStackedWidget()
         self.sayfalar = {
             "veri": VeriSayfasi(self),
+            "kayitlar": KayitlarSayfasi(self),
             "performans": AnalizSayfasi(self, 0),
             "durus": AnalizSayfasi(self, 1),
             "mola": AnalizSayfasi(self, 2),
