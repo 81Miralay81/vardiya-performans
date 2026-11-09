@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QFileDialog, QHBoxLayout, QHea
                                QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
 
 from . import veritabani as vt
-from .sayfa_ortak import etiket, kart
+from .sayfa_ortak import etiket, kart, tablo_menusu
 
 
 class GecmisSayfasi(QWidget):
@@ -35,6 +35,7 @@ class GecmisSayfasi(QWidget):
         for i in (1, 2, 3, 4):
             self.tablo.horizontalHeader().setSectionResizeMode(i, QHeaderView.ResizeToContents)
         self.tablo.doubleClicked.connect(lambda _: self.ac())
+        tablo_menusu(self.tablo)
         k.layout().addWidget(self.tablo)
         kok.addWidget(k, 1)
         alt = QHBoxLayout()

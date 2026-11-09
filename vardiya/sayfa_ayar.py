@@ -74,6 +74,13 @@ class AyarSayfasi(QWidget):
         self.cay_dk.setSuffix(" dk")
         self.net = QLabel("")
         self.net.setObjectName("AltBaslik")
+        self.kural = QComboBox()
+        for anahtar, ad in tema.KURALLAR:
+            self.kural.addItem(ad, anahtar)
+        self.kural_aciklama = etiket("", "AltBaslik")
+        self.kural.currentIndexChanged.connect(lambda _=0: self.kural_aciklama.setText(tema.KURAL_ACIKLAMA[self.kural.currentData()]))
+        f.addRow("Hesap kuralı", self.kural)
+        f.addRow("", self.kural_aciklama)
         f.addRow("Eşik (makine sayılması için en az)", self.esik)
         f.addRow("Vardiya uzunluğu", self.vardiya_dk)
         f.addRow("Yemek molası (her vardiyada 1 kez)", self.yemek_dk)
@@ -204,6 +211,8 @@ class AyarSayfasi(QWidget):
     def yenile(self):
         a = self.ana.ayar
         self.esik.setValue(round(a["esik"] * 100))
+        self.kural.setCurrentIndex(max(0, self.kural.findData(a.get("hesap_kurali", "gunluk"))))
+        self.kural_aciklama.setText(tema.KURAL_ACIKLAMA[self.kural.currentData()])
         self.vardiya_dk.setValue(a["vardiya_dk"])
         self.yemek_dk.setValue(a["yemek_dk"])
         self.cay_dk.setValue(a["cay_dk"])
@@ -221,6 +230,7 @@ class AyarSayfasi(QWidget):
     def kaydet(self):
         con = self.ana.con
         vt.ayar_yaz(con, "esik", self.esik.value() / 100.0)
+        vt.ayar_yaz(con, "hesap_kurali", self.kural.currentData())
         vt.ayar_yaz(con, "vardiya_dk", self.vardiya_dk.value())
         vt.ayar_yaz(con, "yemek_dk", self.yemek_dk.value())
         vt.ayar_yaz(con, "cay_dk", self.cay_dk.value())

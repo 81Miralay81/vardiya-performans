@@ -122,3 +122,18 @@ QListWidget::item:selected {{ background: #E3E7F5; color: {YAZI}; }}
 QScrollArea {{ border: none; background: transparent; }}
 QToolTip {{ background: {LACIVERT}; color: white; border: none; padding: 6px; }}
 """
+
+
+KURALLAR = (("gunluk", "Günlük kural"), ("donem", "Dönem kuralı (Excel gibi)"))
+KURAL_ACIKLAMA = {
+    "gunluk": (
+        "GÜNLÜK KURAL: %60 eşiği her gün ve her vardiya için ayrı uygulanır. Bir makine, o gün o vardiyada net sürenin "
+        "en az %60'ını çalıştıysa o günün ortalamasına girer; çalışmadıysa o gün sayılmaz. Haftalık ya da aylık "
+        "sonuç, günlük sonuçların ortalamasıdır ve makine sayısı günden güne değişir. Zayıf geçen günler makineyi "
+        "ortalamadan çıkardığı için rakamlar daha yüksek çıkar."),
+    "donem": (
+        "DÖNEM KURALI (eski Excel gibi): Bir makinenin dönem boyunca toplam çalışma süresi, net süre ile kayıtlı gün "
+        "sayısının çarpımına bölünür. Çalışmadığı günler 0 sayılır. Bu oran %60'ı geçen makine tüm dönem boyunca "
+        "sayılır; makine sayısı dönem boyunca sabittir. Zayıf günler ortalamayı düşürür. Rakamlar eski Excel'inizle "
+        "karşılaştırılabilir."),
+}

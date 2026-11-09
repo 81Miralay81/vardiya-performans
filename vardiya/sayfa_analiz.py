@@ -49,16 +49,15 @@ class AnalizSayfasi(QWidget):
         ust = QHBoxLayout()
         sol = QVBoxLayout()
         sol.addWidget(etiket(BASLIK[secim], "Baslik"))
-        sol.addWidget(etiket(ALT[secim], "AltBaslik"))
+        self.alt_etiket = etiket(ALT[secim], "AltBaslik")
+        sol.addWidget(self.alt_etiket)
         ust.addLayout(sol, 1)
-        self.b_kopya = QPushButton("Tabloyu Resim Kopyala")
         self.b_excel = QPushButton("Excel'e Aktar")
         self.b_rapor = QPushButton("Rapor Hazırla")
         self.b_rapor.setObjectName("Lacivert")
-        self.b_kopya.clicked.connect(self.resmi_kopyala)
         self.b_excel.clicked.connect(self.excele_aktar)
         self.b_rapor.clicked.connect(lambda: ana.sayfa_ac("rapor"))
-        for b in (self.b_kopya, self.b_excel, self.b_rapor):
+        for b in (self.b_excel, self.b_rapor):
             ust.addWidget(b, 0, Qt.AlignTop)
         kok.addLayout(ust)
 
@@ -86,7 +85,7 @@ class AnalizSayfasi(QWidget):
         orta = QHBoxLayout()
         orta.setSpacing(12)
         # sol: Excel görünümlü tablo
-        self.tablo_w = CizimWidget(self._tablo_ciz, 300, 360)
+        self.tablo_w = CizimWidget(self._tablo_ciz, 300, 360, kopya_resim=self._tablo_resmi)
         self.tablo_w.setSizePolicy(self.tablo_w.sizePolicy().horizontalPolicy(), self.tablo_w.sizePolicy().verticalPolicy())
         self.tablo_w.setFixedWidth(400)
         sc = QScrollArea()
@@ -128,6 +127,9 @@ class AnalizSayfasi(QWidget):
     def yenile(self):
         s = self.ana.sonuc
         olcu = OLCU[self.secim]
+        if self.secim == 0:
+            self.alt_etiket.setText(ALT[0] if self.ana.ayar.get("hesap_kurali") != "donem" else
+                                    "Makine ve vardiya bazında çalışma oranı: bir makine, dönem ortalaması eşiği geçtiyse sayılır (Excel gibi).")
         if not s:
             self.k_genel.d.setText("-")
             self.k_genel.a.setText("Önce Veri Aktar sayfasından dosya yükleyin" if not self.ana.kapsam() else "Gün seçilmedi")
@@ -141,7 +143,8 @@ class AnalizSayfasi(QWidget):
         g = s.genel[self.secim]
         gun = s.hesap_gunu()
         self.k_genel.d.setText(tema.yuzde(g) if g is not None else "-")
-        self.k_genel.a.setText(f"{gun} gün · eşik %{self.ana.ayar['esik'] * 100:.0f}")
+        kural = "dönem kuralı (Excel gibi)" if self.ana.ayar.get("hesap_kurali") == "donem" else "günlük kural"
+        self.k_genel.a.setText(f"{gun} gün · eşik %{self.ana.ayar['esik'] * 100:.0f} · {kural}")
         for v in VARDIYALAR:
             oz = s.vardiyalar[v]
             d = getattr(oz, olcu)
@@ -150,8 +153,6 @@ class AnalizSayfasi(QWidget):
             self.k_v[v].a.setText(f"{ms}{oz.gun_sayisi} gün")
             self.combolar[v].yenile(self.ana.seflar.get(v, ""))
         notlar = []
-        if s.verisiz_gunler:
-            notlar.append("Kaydı olmayan günler hesaba girmedi: " + ", ".join(d.strftime("%d.%m") for d in s.verisiz_gunler))
         gun_bos = {}
         for d, v in s.bos_vardiyalar:
             gun_bos.setdefault(d, []).append(v)
@@ -172,12 +173,10 @@ class AnalizSayfasi(QWidget):
             w.update()
 
     # ---------------------------------------------------------------- işlemler
-    def resmi_kopyala(self):
+    def _tablo_resmi(self):
         if not self.ana.sonuc:
-            return
-        img = cizim.tablo_resmi(self.ana.sonuc, self.ana.ayar["makineler"], self.secim, 700)
-        QGuiApplication.clipboard().setImage(img)
-        self.ana.mesaj("Tablo resim olarak panoya kopyalandı. İstediğiniz yere Ctrl+V ile yapıştırabilirsiniz.")
+            return None
+        return cizim.tablo_resmi(self.ana.sonuc, self.ana.ayar["makineler"], self.secim, 700)
 
     def excele_aktar(self):
         s = self.ana.sonuc

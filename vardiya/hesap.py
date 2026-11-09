@@ -82,6 +82,7 @@ class HesapAyar:
     bolme: bool = True          # kayıtları vardiya sınırlarında böl
     cakisma_coz: bool = True    # aynı anda birden fazla kayıt varsa bir kez say (Çalışma > Mola > Duruş)
     net_saat_zorla: Optional[float] = None   # yalnızca testlerde (örn. Excel'deki 7,33)
+    kural: str = "gunluk"       # "gunluk": %60 her gün ayrı | "donem": Excel gibi, dönem ortalamasına göre
 
     @property
     def net_saat(self) -> float:
@@ -154,6 +155,7 @@ class GunVardiya:
     gun: date
     vardiya: int
     makineler: Dict[str, Tuple[float, float, float]] = field(default_factory=dict)  # geçerli makineler: çalışma%, duruş%, mola%
+    ham: Dict[str, Tuple[float, float, float]] = field(default_factory=dict)        # eşiğe bakmadan tüm makineler
     sayi: int = 0
     calisma: Optional[float] = None   # vardiya ortalaması (en çok %100)
     durus: Optional[float] = None
@@ -167,6 +169,7 @@ def gunluk_hesapla(toplam: Toplam, ayar: HesapAyar) -> Dict[Tuple[date, int], Gu
         gv = GunVardiya(gun, v)
         for m, (c, d, mo) in makineler.items():
             oran = c / net
+            gv.ham[m] = (oran, d / net, mo / mola_kap)
             if c > 0 and oran >= ayar.esik:
                 gv.makineler[m] = (oran, d / net, mo / mola_kap)
         gv.sayi = len(gv.makineler)
@@ -212,12 +215,69 @@ def _ort(xs: List[float]) -> Optional[float]:
     return sum(xs) / len(xs) if xs else None
 
 
+def _donem_kurali(gunluk, gunler: List[date], kayitli_gunler: set, esik: float) -> DonemSonuc:
+    """Excel'deki gibi: bir makinenin vardiya ortalaması = dönemdeki toplamı / (net süre x kayıtlı gün sayısı).
+    Kaydı olmayan ya da çalışmadığı günler 0 sayılır. Ortalaması eşiği geçen makine dönem boyunca sayılır."""
+    gunler = sorted(set(gunler))
+    gecerli_gunler = [g for g in gunler if g in kayitli_gunler]
+    n = len(gecerli_gunler)
+    vardiyalar: Dict[int, VardiyaOzet] = {}
+    hucreler: Dict[str, Dict[int, Tuple[float, float, float]]] = {}
+    bos: List[Tuple[date, int]] = []
+    for v in VARDIYALAR:
+        oz = VardiyaOzet(v)
+        toplam: Dict[str, List[float]] = {}
+        for g in gecerli_gunler:
+            gv = gunluk.get((g, v))
+            if gv is None:
+                continue
+            for m, (c, d, mo) in gv.ham.items():
+                t = toplam.setdefault(m, [0.0, 0.0, 0.0])
+                t[0] += c
+                t[1] += d
+                t[2] += mo
+        gecerli = {}
+        for m, t in toplam.items():
+            if n and t[0] > 0 and t[0] / n >= esik:
+                gecerli[m] = (t[0] / n, t[1] / n, t[2] / n)
+        for m, deger in gecerli.items():
+            hucreler.setdefault(m, {})[v] = deger
+        if gecerli:
+            oz.gun_sayisi = n
+            oz.gunler = list(gecerli_gunler)
+            oz.makine_sayisi = float(len(gecerli))
+            c_ort = sum(x[0] for x in gecerli.values()) / len(gecerli)
+            oz.calisma = min(1.0, c_ort)
+            oz.durus = sum(x[1] for x in gecerli.values()) / len(gecerli)
+            oz.mola = sum(x[2] for x in gecerli.values()) / len(gecerli)
+            for g in gecerli_gunler:
+                gv = gunluk.get((g, v))
+                oz.gunluk_sayilar[g] = sum(1 for m in gecerli if gv and m in gv.makineler)
+        else:
+            bos.extend((g, v) for g in gecerli_gunler)
+        vardiyalar[v] = oz
+    makine_ort = {}
+    for m, vd in hucreler.items():
+        c_ort = _ort([x[0] for x in vd.values()])
+        makine_ort[m] = (min(1.0, c_ort) if c_ort is not None else None,
+                         _ort([x[1] for x in vd.values()]), _ort([x[2] for x in vd.values()]))
+    vc = [o.calisma for o in vardiyalar.values() if o.calisma is not None]
+    vd_ = [o.durus for o in vardiyalar.values() if o.durus is not None]
+    vm = [o.mola for o in vardiyalar.values() if o.mola is not None]
+    genel_c = _ort(vc)
+    genel = (min(1.0, genel_c) if genel_c is not None else None, _ort(vd_), _ort(vm))
+    verisiz = [g for g in gunler if g not in kayitli_gunler]
+    return DonemSonuc(gunler, vardiyalar, hucreler, makine_ort, genel, verisiz, bos)
+
+
 def donem_hesapla(gunluk: Dict[Tuple[date, int], GunVardiya], gunler: List[date],
-                  veri_gunleri: Optional[set] = None) -> DonemSonuc:
+                  veri_gunleri: Optional[set] = None, kural: str = "gunluk", esik: float = 0.60) -> DonemSonuc:
     """veri_gunleri: kaydı o gün başlayan günler. Verilirse, yalnızca önceki günden uzayan kayıtlarla görünen
     günler (tatil, hafta sonu) 'kayıtsız' sayılır."""
     gunler = sorted(set(gunler))
     kayitli_gunler = set(veri_gunleri) if veri_gunleri is not None else {g for (g, _v) in gunluk.keys()}
+    if kural == "donem":
+        return _donem_kurali(gunluk, gunler, kayitli_gunler, esik)
     vardiyalar: Dict[int, VardiyaOzet] = {}
     makine_hucre: Dict[str, Dict[int, List[Tuple[float, float, float]]]] = {}
     bos: List[Tuple[date, int]] = []
@@ -275,4 +335,4 @@ def donem_hesapla(gunluk: Dict[Tuple[date, int], GunVardiya], gunler: List[date]
 def hesapla(kayitlar, gunler: List[date], ayar: Optional[HesapAyar] = None, veri_gunleri: Optional[set] = None) -> DonemSonuc:
     ayar = ayar or HesapAyar()
     gunluk = gunluk_hesapla(topla(kayitlar, ayar), ayar)
-    return donem_hesapla(gunluk, gunler, veri_gunleri)
+    return donem_hesapla(gunluk, gunler, veri_gunleri, ayar.kural, ayar.esik)

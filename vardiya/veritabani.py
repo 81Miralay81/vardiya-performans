@@ -17,6 +17,7 @@ VARSAYILAN_MAKINELER = [
 
 VARSAYILAN_AYAR = {
     "esik": 0.60,
+    "hesap_kurali": "gunluk",
     "vardiya_dk": 480,
     "yemek_dk": 30,
     "cay_dk": 10,

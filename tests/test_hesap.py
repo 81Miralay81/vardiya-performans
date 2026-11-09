@@ -158,3 +158,22 @@ def test_yalnizca_onceki_gunden_uzayan_kayit_gunu_kayitsiz_sayilir():
     s = hesapla(kay, [date(2026, 11, 3), date(2026, 11, 4)], a, veri_gunleri={date(2026, 11, 3)})
     assert s.verisiz_gunler == [date(2026, 11, 4)]
     assert all(g != date(2026, 11, 4) for g, _ in s.bos_vardiyalar)
+
+
+def test_donem_kurali_makine_donem_boyunca_sayilir():
+    from datetime import datetime, date
+    from vardiya import hesap as h
+    # IM1 iki gün %100, IM2 bir gün %100 bir gün 0 (dönem ort. %50 -> sayılmaz), IM3 bir gün %100 bir gün %30 (ort. %65 -> sayılır)
+    def kayit(m, gun, saat):
+        b = datetime(2026, 11, gun, 8, 0)
+        return (m, "Çalışma", b, b.replace(hour=8, minute=0) + __import__("datetime").timedelta(hours=saat))
+    k = [kayit("IM1", 2, 7.34), kayit("IM1", 3, 7.34), kayit("IM2", 2, 7.34), kayit("IM2", 3, 0.1),
+         kayit("IM3", 2, 7.34), kayit("IM3", 3, 2.2), kayit("IM2", 3, 0.1)]
+    gunler = [date(2026, 11, 2), date(2026, 11, 3)]
+    gun = h.hesapla(k, gunler, h.HesapAyar(kural="gunluk"))
+    don = h.hesapla(k, gunler, h.HesapAyar(kural="donem"))
+    assert gun.vardiyalar[2].gunluk_sayilar == {date(2026, 11, 2): 3, date(2026, 11, 3): 1}
+    assert "IM2" in gun.hucreler                            # günlük kuralda IM2 iyi günüyle sayılır
+    assert don.vardiyalar[2].makine_sayisi == 2.0           # dönem kuralında IM1 ve IM3; IM2 ortalaması %50
+    assert "IM2" not in don.hucreler
+    assert abs(don.hucreler["IM3"][2][0] - (1.0 + 0.2998) / 2) < 5e-3

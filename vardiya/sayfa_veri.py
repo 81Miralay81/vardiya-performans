@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (QApplication, QFileDialog, QFrame, QHBoxLayout, Q
                                QTableWidgetItem, QVBoxLayout, QWidget, QHeaderView, QAbstractItemView)
 
 from . import ice_aktar, tema, veritabani as vt
-from .sayfa_ortak import etiket, kart
+from .sayfa_ortak import etiket, kart, tablo_menusu
 
 
 class BirakAlani(QFrame):
@@ -94,6 +94,7 @@ class VeriSayfasi(QWidget):
         t.setSelectionMode(QAbstractItemView.NoSelection)
         t.horizontalHeader().setStretchLastSection(True)
         t.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        tablo_menusu(t)
         return t
 
     def dosya_sec(self):

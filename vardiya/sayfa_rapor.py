@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (QApplication, QButtonGroup, QComboBox, QDateEdit,
 from . import cizim, tema, veritabani as vt
 from .donem import ay_sonu, hafta_basi, pd, qd
 from .hesap import VARDIYALAR, hesapla
-from .sayfa_ortak import SefCombo, etiket, kart
+from .sayfa_ortak import SefCombo, etiket, kart, resim_menusu
 
 TURLER = ("Günlük", "Haftalık", "Aylık", "Özel aralık")
 
@@ -210,6 +210,7 @@ class RaporSayfasi(QWidget):
         self.onizleme = QLabel()
         self.onizleme.setAlignment(Qt.AlignCenter)
         self.onizleme.setStyleSheet("background: transparent;")
+        resim_menusu(self.onizleme, self._rapor_resmi)
         sc = QScrollArea()
         sc.setWidgetResizable(True)
         sc.setWidget(self.onizleme)
@@ -439,6 +440,10 @@ class RaporSayfasi(QWidget):
             p.setRenderHint(QPainter.SmoothPixmapTransform, True)
             cizim.rapor_ciz(p, QRectF(0, 0, yz.width(), yz.height()), dict(r, yer_tutucu=False))
             p.end()
+
+    def _rapor_resmi(self):
+        r = self._hazir()
+        return cizim.rapor_resmi(dict(r, yer_tutucu=False), 2400) if r else None
 
     def resim_kopyala(self):
         r = self._hazir()

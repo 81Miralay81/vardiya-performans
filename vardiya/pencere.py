@@ -96,9 +96,10 @@ class AnaPencere(QMainWindow):
         sag = QVBoxLayout()
         sag.setContentsMargins(26, 18, 26, 10)
         sag.setSpacing(10)
-        self.donem = DonemCubugu(lambda: vt.gun_kapsami(self.con), self.ayar["esik"])
+        self.donem = DonemCubugu(lambda: vt.gun_kapsami(self.con), self.ayar["esik"], kural=self.ayar.get("hesap_kurali", "gunluk"))
         self.donem.degisti.connect(self.yenile)
         self.donem.esik_degisti.connect(self._esik_degisti)
+        self.donem.kural_degisti.connect(self._kural_degisti)
         sag.addWidget(self.donem)
         self.yigin = QStackedWidget()
         self.sayfalar = {
@@ -173,7 +174,8 @@ class AnaPencere(QMainWindow):
 
     def hesap_ayar(self) -> HesapAyar:
         a = self.ayar
-        return HesapAyar(esik=a["esik"], vardiya_dk=a["vardiya_dk"], yemek_dk=a["yemek_dk"], cay_dk=a["cay_dk"])
+        return HesapAyar(esik=a["esik"], vardiya_dk=a["vardiya_dk"], yemek_dk=a["yemek_dk"], cay_dk=a["cay_dk"],
+                          kural=a.get("hesap_kurali", "gunluk"))
 
     def mesaj(self, metin: str):
         self.mesaj_etiketi.setText(metin)
@@ -207,7 +209,17 @@ class AnaPencere(QMainWindow):
     def ayar_degisti(self):
         self.ayar = vt.ayar_oku(self.con)
         self.donem.esik.setValue(round(self.ayar["esik"] * 100))
+        self.donem.kural.setCurrentIndex(max(0, self.donem.kural.findData(self.ayar.get("hesap_kurali", "gunluk"))))
         self.yenile()
+
+    def _kural_degisti(self, kural: str):
+        if kural == self.ayar.get("hesap_kurali"):
+            return
+        vt.ayar_yaz(self.con, "hesap_kurali", kural)
+        self.ayar["hesap_kurali"] = kural
+        self.yenile()
+        self.sayfalar["ayar"].yenile()
+        self.mesaj({"gunluk": "Günlük kural uygulanıyor.", "donem": "Dönem kuralı (Excel gibi) uygulanıyor."}[kural])
 
     def _esik_degisti(self, deger: float):
         if abs(deger - self.ayar["esik"]) < 1e-9:

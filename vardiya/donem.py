@@ -5,7 +5,7 @@ from datetime import date, timedelta
 from typing import Dict, List, Optional
 
 from PySide6.QtCore import QDate, Qt, Signal
-from PySide6.QtWidgets import (QButtonGroup, QDateEdit, QDialog, QDialogButtonBox, QDoubleSpinBox, QFrame, QHBoxLayout,
+from PySide6.QtWidgets import (QButtonGroup, QComboBox, QDateEdit, QDialog, QDialogButtonBox, QDoubleSpinBox, QFrame, QHBoxLayout,
                                QLabel, QListWidget, QListWidgetItem, QPushButton, QVBoxLayout, QWidget)
 
 from . import tema
@@ -80,8 +80,9 @@ class GunlerDialog(QDialog):
 class DonemCubugu(QFrame):
     degisti = Signal()
     esik_degisti = Signal(float)
+    kural_degisti = Signal(str)
 
-    def __init__(self, kapsam_getir, esik: float, parent: Optional[QWidget] = None):
+    def __init__(self, kapsam_getir, esik: float, parent: Optional[QWidget] = None, kural: str = "gunluk"):
         super().__init__(parent)
         self.setObjectName("Kart")
         self._kapsam_getir = kapsam_getir
@@ -126,6 +127,14 @@ class DonemCubugu(QFrame):
         self.esik.setToolTip("Bir makinenin o gün o vardiyada sayılması için gereken en düşük çalışma oranı")
         self.esik.editingFinished.connect(lambda: self.esik_degisti.emit(self.esik.value() / 100.0))
         lay.addWidget(self.esik)
+        lay.addWidget(self._etiket("Kural"))
+        self.kural = QComboBox()
+        for anahtar, ad in tema.KURALLAR:
+            self.kural.addItem(ad, anahtar)
+        self.kural.setToolTip("\n\n".join(tema.KURAL_ACIKLAMA.values()))
+        self.kural.setCurrentIndex(max(0, self.kural.findData(kural)))
+        self.kural.activated.connect(lambda _=0: self.kural_degisti.emit(self.kural.currentData()))
+        lay.addWidget(self.kural)
         lay2.addWidget(self._etiket("Tarih aralığı"))
         self.bas = QDateEdit()
         self.bit = QDateEdit()
