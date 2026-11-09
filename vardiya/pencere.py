@@ -81,6 +81,15 @@ class AnaPencere(QMainWindow):
         self.alt_bilgi.setWordWrap(True)
         yl.addWidget(self.alt_bilgi)
         yl.addWidget(QLabel(f"Sürüm {SURUM}"))
+        self.gunc_btn = QPushButton("Güncellemeyi denetle")
+        self.gunc_btn.setObjectName("Hizli")
+        self.gunc_btn.setCursor(Qt.PointingHandCursor)
+        self.gunc_btn.clicked.connect(lambda: self._guncelleme_baslat(elle=True))
+        yl.addWidget(self.gunc_btn)
+        self.gunc_durum = QLabel("")
+        self.gunc_durum.setObjectName("AltBaslik")
+        self.gunc_durum.setWordWrap(True)
+        yl.addWidget(self.gunc_durum)
         kok.addWidget(yan)
 
         # ------------------------------------------------ sağ taraf
@@ -122,12 +131,19 @@ class AnaPencere(QMainWindow):
         self.yenile()
         self.sayfa_ac("performans" if self.kapsam() else "veri")
         self._guncelleme = None
-        exe = guncelleme.calisan_exe()
-        if exe and not os.environ.get("VARDIYA_GUNCELLEME_YOK"):
-            QTimer.singleShot(2500, lambda: self._guncelleme_baslat(exe))
+        if guncelleme.calisan_exe() and not os.environ.get("VARDIYA_GUNCELLEME_YOK"):
+            QTimer.singleShot(2500, lambda: self._guncelleme_baslat(elle=False))
 
-    def _guncelleme_baslat(self, exe: str):
+    def _guncelleme_baslat(self, elle: bool = False):
+        exe = guncelleme.calisan_exe()
+        if not exe:
+            self.gunc_durum.setText("Güncelleme yalnızca kurulu (exe) programda çalışır")
+            return
+        if self._guncelleme is not None and self._guncelleme.isRunning():
+            return
+        self.gunc_durum.setText("")
         self._guncelleme = guncelleme.GuncellemeKontrol(exe, self)
+        self._guncelleme.durum.connect(self.gunc_durum.setText)
         self._guncelleme.hazir.connect(lambda surum, dosya: self._guncelleme_hazir(exe, surum, dosya))
         self._guncelleme.start()
 

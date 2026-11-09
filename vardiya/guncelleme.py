@@ -106,8 +106,10 @@ def calisan_exe() -> Optional[str]:
 
 
 class GuncellemeKontrol(QThread):
-    """Arka planda sürümü denetler; yenisi varsa indirir ve hazir(sürüm, dosya) sinyalini yollar."""
+    """Arka planda sürümü denetler; yenisi varsa indirir ve hazir(sürüm, dosya) sinyalini yollar.
+    durum(metin): kullanıcıya gösterilecek sonuç (güncel / hata nedeni)."""
     hazir = Signal(str, str)
+    durum = Signal(str)
 
     def __init__(self, exe: str, parent=None):
         super().__init__(parent)
@@ -115,6 +117,7 @@ class GuncellemeKontrol(QThread):
 
     def run(self):
         try:
+            self.durum.emit("Denetleniyor…")
             yeni = self.exe + YENI_UZANTI
             iz = yeni + ".surum"
             if os.path.exists(yeni) and os.path.exists(iz):      # daha önce indirilmiş, uygulanamamış
@@ -123,11 +126,16 @@ class GuncellemeKontrol(QThread):
                     self.hazir.emit(s, yeni)
                     return
             bilgi = son_surum()
-            if not bilgi or not daha_yeni(bilgi[0], SURUM):
+            if not bilgi:
+                self.durum.emit("Sürüm bilgisi okunamadı")
                 return
+            if not daha_yeni(bilgi[0], SURUM):
+                self.durum.emit(f"Güncel ({SURUM})")
+                return
+            self.durum.emit(f"{bilgi[0]} indiriliyor…")
             indir(bilgi[1], yeni)
             with open(iz, "w", encoding="utf8") as f:
                 f.write(bilgi[0])
             self.hazir.emit(bilgi[0], yeni)
-        except Exception:  # noqa: BLE001 - ağ yok / depo özel / dosya kilitli: sessizce geç
-            return
+        except Exception as e:  # noqa: BLE001 - ağ yok / dosya kilitli / klasör yazılamaz
+            self.durum.emit(f"Hata: {type(e).__name__}: {e}"[:160])
