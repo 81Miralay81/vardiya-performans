@@ -2,14 +2,16 @@
 from __future__ import annotations
 
 import os
-from datetime import timedelta
+import base64
+import sqlite3
+from datetime import date, timedelta
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QDate, QSettings, QThread, Qt, Signal
 from PySide6.QtGui import QColor
-from PySide6.QtWidgets import (QApplication, QFileDialog, QFrame, QHBoxLayout, QLabel, QPushButton, QTableWidget,
-                               QTableWidgetItem, QVBoxLayout, QWidget, QHeaderView, QAbstractItemView)
+from PySide6.QtWidgets import (QApplication, QDateEdit, QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton,
+                               QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget, QHeaderView, QAbstractItemView)
 
-from . import ice_aktar, tema, veritabani as vt
+from . import cormind, ice_aktar, tema, veritabani as vt
 from .sayfa_ortak import etiket, kart, tablo_menusu
 
 
@@ -48,6 +50,130 @@ class BirakAlani(QFrame):
             self.yukle_fn(yollar)
 
 
+class CormindIs(QThread):
+    """Cormind'den çekme işi arka planda yürür (pencere donmaz). Kendi veritabanı bağlantısını açar."""
+    bitti = Signal(dict)
+    hata = Signal(str)
+
+    def __init__(self, db_yolu, adres, kullanici, sifre, ilk, son, idler, parent=None):
+        super().__init__(parent)
+        self.a = (db_yolu, adres, kullanici, sifre, ilk, son, idler)
+
+    def run(self):
+        db_yolu, adres, kullanici, sifre, ilk, son, idler = self.a
+        try:
+            con = vt.ac(db_yolu)
+            try:
+                self.bitti.emit(cormind.cek(con, adres, kullanici, sifre, ilk, son, idler))
+            finally:
+                con.close()
+        except cormind.CormindHata as e:
+            self.hata.emit(str(e))
+        except Exception as e:  # noqa: BLE001
+            self.hata.emit(f"Beklenmeyen hata: {type(e).__name__}: {e}")
+
+
+class CormindKarti(QFrame):
+    """Cormind'e doğrudan bağlanıp seçilen günlerin verisini çeker. Kullanıcı adı/şifre yalnızca bu bilgisayarda saklanır."""
+
+    def __init__(self, ana):
+        super().__init__()
+        self.ana = ana
+        self.setObjectName("Kart")
+        self._is = None
+        self._ayar = QSettings("Teknorot", "VardiyaPerformans")
+        l = QVBoxLayout(self)
+        l.setContentsMargins(16, 12, 16, 12)
+        l.setSpacing(8)
+        l.addWidget(etiket("CORMIND'DEN DOĞRUDAN ÇEK", "KartBaslik"))
+        l.addWidget(etiket("Excel indirmeden, seçtiğiniz günlerin makine hareketlerini Cormind'den alır. Aynı kayıt tekrar gelirse çoğalmaz. "
+                           "Kullanıcı adı ve şifre yalnızca bu bilgisayarda saklanır, veritabanına yazılmaz.", "AltBaslik"))
+        s1 = QHBoxLayout()
+        s1.setSpacing(8)
+        self.adres = QLineEdit(ana.ayar.get("cormind_adres", cormind.VARSAYILAN_ADRES))
+        self.adres.setMinimumWidth(190)
+        self.kullanici = QLineEdit(self._ayar.value("cormind/kullanici", ""))
+        self.kullanici.setPlaceholderText("Kullanıcı adı")
+        self.sifre = QLineEdit(self._sifre_oku())
+        self.sifre.setPlaceholderText("Şifre")
+        self.sifre.setEchoMode(QLineEdit.Password)
+        for etk, w in (("Adres", self.adres), ("Kullanıcı", self.kullanici), ("Şifre", self.sifre)):
+            s1.addWidget(etiket(etk, "KartBaslik", kelime=False))
+            s1.addWidget(w, 1)
+        l.addLayout(s1)
+        s2 = QHBoxLayout()
+        s2.setSpacing(8)
+        self.bas, self.bit = QDateEdit(), QDateEdit()
+        for e in (self.bas, self.bit):
+            e.setCalendarPopup(True)
+            e.setDisplayFormat("dd.MM.yyyy")
+            e.setFixedWidth(132)
+        dun = date.today() - timedelta(days=1)
+        self.bas.setDate(QDate(dun.year, dun.month, dun.day))
+        self.bit.setDate(QDate(dun.year, dun.month, dun.day))
+        self.btn = QPushButton("Cormind'den çek")
+        self.btn.setObjectName("Ana")
+        self.btn.clicked.connect(self.cek)
+        s2.addWidget(etiket("Tarih aralığı", "KartBaslik", kelime=False))
+        s2.addWidget(self.bas)
+        s2.addWidget(QLabel("–"))
+        s2.addWidget(self.bit)
+        s2.addWidget(self.btn)
+        s2.addStretch(1)
+        l.addLayout(s2)
+        self.durum = etiket("", "AltBaslik")
+        self.durum.hide()
+        l.addWidget(self.durum)
+
+    def _sifre_oku(self) -> str:
+        try:
+            return base64.b64decode(self._ayar.value("cormind/sifre", "")).decode("utf8")
+        except Exception:  # noqa: BLE001
+            return ""
+
+    def cek(self):
+        if self._is is not None and self._is.isRunning():
+            return
+        k, s = self.kullanici.text().strip(), self.sifre.text()
+        if not k or not s:
+            self._yaz("Kullanıcı adı ve şifre girin.", hata=True)
+            return
+        ilk = date(self.bas.date().year(), self.bas.date().month(), self.bas.date().day())
+        son = date(self.bit.date().year(), self.bit.date().month(), self.bit.date().day())
+        if son < ilk:
+            ilk, son = son, ilk
+        self._ayar.setValue("cormind/kullanici", k)
+        self._ayar.setValue("cormind/sifre", base64.b64encode(s.encode("utf8")).decode())
+        vt.ayar_yaz(self.ana.con, "cormind_adres", self.adres.text().strip())
+        self.btn.setEnabled(False)
+        self._yaz("Cormind'e bağlanılıyor, veriler çekiliyor… (gün sayısı çoksa birkaç dakika sürebilir)")
+        idler = self.ana.ayar.get("cormind_makine_idleri") or cormind.VARSAYILAN_MAKINE_IDLERI
+        self._is = CormindIs(self.ana.db_yolu, self.adres.text(), k, s, ilk, son, idler, self)
+        self._is.bitti.connect(self._bitti)
+        self._is.hata.connect(lambda m: self._son(m, hata=True))
+        self._is.start()
+
+    def _bitti(self, r: dict):
+        tip = ", ".join(f"{ad}: {n}" for ad, n in list(r["tipler"].items())[:12])
+        metin = (f"{r['toplam']} kayıt alındı: {r['yeni']} yeni, {r['guncel']} güncellendi, {r['ayni']} zaten vardı"
+                 + (f", {r['atlanan']} atlandı (sürmekte olan kayıtlar)" if r["atlanan"] else "") + f".\nTip dağılımı: {tip}")
+        if r["yeni_makineler"]:
+            metin += "\nMakine listesine eklendi: " + ", ".join(r["yeni_makineler"])
+        self._son(metin)
+        self.ana.ayar = vt.ayar_oku(self.ana.con)
+        self.ana.veri_yenilendi()
+
+    def _son(self, metin: str, hata: bool = False):
+        self.btn.setEnabled(True)
+        self._yaz(metin, hata)
+
+    def _yaz(self, metin: str, hata: bool = False):
+        self.durum.setObjectName("Uyari" if hata else "Basari")
+        self.durum.setStyle(self.durum.style())
+        self.durum.setText(metin)
+        self.durum.show()
+
+
 class VeriSayfasi(QWidget):
     def __init__(self, ana):
         super().__init__()
@@ -56,8 +182,10 @@ class VeriSayfasi(QWidget):
         kok.setContentsMargins(26, 22, 26, 22)
         kok.setSpacing(14)
         kok.addWidget(etiket("Veri Aktar", "Baslik"))
-        kok.addWidget(etiket("Cormind'den aldığınız Excel listesini yükleyin. Aynı gün ve aynı kayıt tekrar gelirse çoğalmaz; "
+        kok.addWidget(etiket("Veriyi Cormind'den doğrudan çekin ya da Excel listesini yükleyin. Aynı gün ve aynı kayıt tekrar gelirse çoğalmaz; "
                              "formül hatası olan satırlar atlanır.", "AltBaslik"))
+        self.cormind = CormindKarti(ana)
+        kok.addWidget(self.cormind)
         self.alan = BirakAlani(self.dosya_sec, self.yukle)
         kok.addWidget(self.alan)
         self.sonuc = QLabel("")
