@@ -24,6 +24,10 @@ def test_cakisma_ve_setup_kaybi():
     e = r.cakismalar[0]
     assert dict(e.duruslar) == {"M1": "SETUP", "M2": "Kısa Duruş"} and e.calisanlar == ("M3",) and e.setup_var
     assert r.durus_adedi == 2 and r.en_uzun_durus_sn == 3600
+    assert r.aktif_sn == 4 * 3600 and abs(r.bosta_orani - 9000 / 14400) < 1e-9
+    assert [(e.bas, e.bit) for e in r.bosta_listesi] == [(t(8), t(9)), (t(10, 30), t(12))]
+    g = r.gunler[date(2026, 11, 9)]
+    assert g["bosta_sn"] == 9000 and g["cakisan_sn"] == 1800
 
 
 def test_tek_makine_durus_cakisma_sayilmaz():
@@ -52,3 +56,12 @@ def test_operatorsuz_kayit_atlanir_ve_secili_gun_disi():
     k = [("", "M1", "Çalışma", t(8), t(9)), ("A", "M1", "Çalışma", t(8), t(9))]
     assert list(operatorleri_hesapla(k, [date(2026, 11, 9)])) == ["A"]
     assert operatorleri_hesapla(k, [date(2026, 11, 8)]) == {}
+
+
+def test_vardiya_suzgeci():
+    A = "Ali"
+    k = [(A, "M1", "Çalışma", t(6), t(7)), (A, "M1", "Kısa Duruş", t(9), t(10)), (A, "M1", "Çalışma", t(10), t(11))]
+    g = [date(2026, 11, 9)]
+    assert operatorleri_hesapla(k, g, vardiyalar={1})[A].durus_sn == 0
+    assert operatorleri_hesapla(k, g, vardiyalar={2})[A].durus_sn == 3600
+    assert A not in operatorleri_hesapla(k, g, vardiyalar={3})
