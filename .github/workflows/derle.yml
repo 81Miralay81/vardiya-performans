@@ -19,7 +19,7 @@ jobs:
       - name: Bağımlılıkları kur
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt pyinstaller pytest
+          pip install -r requirements.txt pyinstaller pytest xlwt
       - name: Sürüm damgası
         shell: pwsh
         run: |

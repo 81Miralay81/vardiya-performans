@@ -78,10 +78,81 @@ class AktarimSonuc:
                 f"{self.ayni} zaten vardı, {len(self.atlanan)} hatalı satır atlandı.")
 
 
+def _xls_oku(yol: str):
+    import xlrd
+    kitap = xlrd.open_workbook(yol)
+    adaylar = sorted(kitap.sheets(), key=lambda w: 0 if tr_kucuk(w.name) == "sayfa1" else 1)
+    for sh in adaylar:
+        kaynak = []
+        for r in range(sh.nrows):
+            satir = []
+            for c in range(sh.ncols):
+                hucre = sh.cell(r, c)
+                if hucre.ctype == xlrd.XL_CELL_DATE:
+                    try:
+                        satir.append(xlrd.xldate_as_datetime(hucre.value, kitap.datemode))
+                        continue
+                    except Exception:  # noqa: BLE001
+                        pass
+                satir.append(None if hucre.ctype in (xlrd.XL_CELL_EMPTY, xlrd.XL_CELL_BLANK) else hucre.value)
+            kaynak.append(satir)
+        sonuc = list(_baslik_ve_veri(enumerate(kaynak, start=1), sessiz=True))
+        if sonuc:
+            yield from sonuc
+            return
+
+
+def _html_oku(yol: str):
+    from html.parser import HTMLParser
+
+    class Tablo(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.satirlar, self.satir, self.hucre = [], None, None
+
+        def handle_starttag(self, t, a):
+            if t == "tr":
+                self.satir = []
+            elif t in ("td", "th") and self.satir is not None:
+                self.hucre = []
+
+        def handle_endtag(self, t):
+            if t in ("td", "th") and self.hucre is not None and self.satir is not None:
+                self.satir.append("".join(self.hucre).strip())
+                self.hucre = None
+            elif t == "tr" and self.satir is not None:
+                self.satirlar.append(self.satir)
+                self.satir = None
+
+        def handle_data(self, d):
+            if self.hucre is not None:
+                self.hucre.append(d)
+
+    ham = open(yol, "rb").read()
+    for kod in ("utf-8-sig", "cp1254"):
+        try:
+            metin = ham.decode(kod)
+            break
+        except UnicodeDecodeError:
+            continue
+    t = Tablo()
+    t.feed(metin)
+    yield from _baslik_ve_veri(enumerate(t.satirlar, start=1), sessiz=True)
+
+
 def _satirlar(yol: str):
     """(satır_no, hücre listesi) üretir; başlık satırını bulup yalnızca veri satırlarını döndürür."""
     uzanti = os.path.splitext(yol)[1].lower()
-    if uzanti == ".csv":
+    with open(yol, "rb") as f:
+        imza = f.read(8)
+    if imza.startswith(b"\xd0\xcf\x11\xe0"):          # eski .xls (OLE)
+        yield from _xls_oku(yol)
+        return
+    html = imza.lstrip()[:5].lower() in (b"<html", b"<!doc", b"<tabl", b"<?xml")
+    if html and not imza.startswith(b"PK"):             # Cormind bazen .xls adıyla HTML tablo verir
+        yield from _html_oku(yol)
+        return
+    if uzanti == ".csv" or (not imza.startswith(b"PK")):
         ham = open(yol, "rb").read()
         for kod in ("utf-8-sig", "cp1254"):
             try:

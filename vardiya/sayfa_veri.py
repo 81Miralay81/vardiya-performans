@@ -26,7 +26,7 @@ class BirakAlani(QFrame):
         b = etiket("Cormind'den aldığınız Excel dosyasını buraya sürükleyin", "KartDeger", kelime=False)
         b.setStyleSheet(f"font-size: 18px; font-weight: 700; color: {tema.LACIVERT};")
         b.setAlignment(Qt.AlignCenter)
-        a = etiket("ya da düğmeye basıp dosyayı seçin (.xlsx, .xlsm veya .csv)", "AltBaslik", kelime=False)
+        a = etiket("ya da düğmeye basıp dosyayı seçin (.xls, .xlsx, .xlsm veya .csv)", "AltBaslik", kelime=False)
         a.setAlignment(Qt.AlignCenter)
         self.btn = QPushButton("Excel dosyası seç…")
         self.btn.setObjectName("Ana")
@@ -98,7 +98,7 @@ class VeriSayfasi(QWidget):
 
     def dosya_sec(self):
         yollar, _ = QFileDialog.getOpenFileNames(self, "Cormind dosyasını seç", "",
-                                                 "Excel / CSV (*.xlsx *.xlsm *.csv);;Tüm dosyalar (*.*)")
+                                                 "Excel / CSV (*.xls *.xlsx *.xlsm *.csv);;Tüm dosyalar (*.*)")
         if yollar:
             self.yukle(yollar)
 

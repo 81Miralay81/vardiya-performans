@@ -73,3 +73,30 @@ def test_csv_ve_basliksiz_dosya_hatasi(tmp_path):
         assert False
     except ValueError:
         pass
+
+
+def test_eski_xls_ve_html(tmp_path):
+    import pytest
+    baslik = ["Makine Adı", "Operatör", "Tip", "İş Emri", "Ürün Adı", "Ürün Kodu", "Süre (saat)", "Başlangıç Tarihi", "Bitiş Tarihi"]
+    satir = ["IM21", "A", "Çalışma", "1", "K", "DK1", 0.1, "03.11.2026 08:00:00", "03.11.2026 09:00:00"]
+    # Cormind bazen .xls adıyla HTML tablo verir
+    h = tmp_path / "b.xls"
+    h.write_text("<html><body><table><tr>" + "".join(f"<th>{x}</th>" for x in baslik) + "</tr><tr>"
+                 + "".join(f"<td>{x}</td>" for x in satir) + "</tr></table></body></html>", encoding="utf8")
+    con = vt.ac(str(tmp_path / "h.db"))
+    assert ia.aktar(con, str(h)).yeni == 1
+    xlwt = pytest.importorskip("xlwt")
+    wb = xlwt.Workbook()
+    ws = wb.add_sheet("Sayfa1")
+    for j, x in enumerate(baslik):
+        ws.write(0, j, x)
+    for j, x in enumerate(satir):
+        ws.write(1, j, x)
+    ws.write(2, 0, "IM22"); ws.write(2, 2, "Çalışma")
+    ws.write(2, 7, datetime(2026, 11, 3, 8, 0), xlwt.easyxf(num_format_str="DD.MM.YYYY HH:MM:SS"))
+    ws.write(2, 8, datetime(2026, 11, 3, 9, 0), xlwt.easyxf(num_format_str="DD.MM.YYYY HH:MM:SS"))
+    f = tmp_path / "c.xls"
+    wb.save(str(f))
+    con2 = vt.ac(str(tmp_path / "x.db"))
+    s = ia.aktar(con2, str(f))
+    assert s.yeni == 2 and not s.atlanan
