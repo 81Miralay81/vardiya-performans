@@ -17,14 +17,15 @@ from .sayfa_analiz import AnalizSayfasi
 from .sayfa_ayar import AyarSayfasi
 from .sayfa_gecmis import GecmisSayfasi
 from .sayfa_kayitlar import KayitlarSayfasi
+from .sayfa_operator import OperatorSayfasi
 from .sayfa_rapor import RaporSayfasi
 from .sayfa_veri import VeriSayfasi
 from .surum import SURUM
 from . import guncelleme
 
 MENU = (("veri", "Veri Aktar"), ("kayitlar", "Kayıtlar"), ("performans", "Performans"), ("durus", "Genel Duruş"), ("mola", "Mola"),
-        ("rapor", "Raporlar"), ("gecmis", "Geçmiş"), ("ayar", "Ayarlar"))
-DONEMLI = {"performans", "durus", "mola"}
+        ("operator", "Operatör"), ("rapor", "Raporlar"), ("gecmis", "Geçmiş"), ("ayar", "Ayarlar"))
+DONEMLI = {"performans", "durus", "mola", "operator"}
 
 
 class AnaPencere(QMainWindow):
@@ -109,6 +110,7 @@ class AnaPencere(QMainWindow):
             "performans": AnalizSayfasi(self, 0),
             "durus": AnalizSayfasi(self, 1),
             "mola": AnalizSayfasi(self, 2),
+            "operator": OperatorSayfasi(self),
             "rapor": RaporSayfasi(self),
             "gecmis": GecmisSayfasi(self),
             "ayar": AyarSayfasi(self),
@@ -253,7 +255,7 @@ class AnaPencere(QMainWindow):
                 self.alt_bilgi.setText("Henüz veri yok")
         finally:
             QApplication.restoreOverrideCursor()
-        for a in ("performans", "durus", "mola"):
+        for a in ("performans", "durus", "mola", "operator"):
             self.sayfalar[a].yenile()
         self.sayfalar["veri"].yenile()
         if hasattr(self, "sayfalar") and self.yigin.currentWidget() is self.sayfalar["rapor"]:

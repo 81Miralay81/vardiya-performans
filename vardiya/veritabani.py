@@ -157,6 +157,14 @@ def kayitlari_getir(con: sqlite3.Connection, ilk: date, son: date) -> List[Tuple
     return sonuc
 
 
+def kayitlari_getir_operatorlu(con: sqlite3.Connection, ilk: date, son: date):
+    """[ilk, son] günlerine değen kayıtlar, operatör adıyla: (operatör, makine, tip, başlangıç, bitiş)."""
+    bas = ilk.strftime("%Y-%m-%d 00:00:00")
+    bit = (son + timedelta(days=1)).strftime("%Y-%m-%d 00:00:00")
+    return [(r["operator"] or "", r["makine"], r["tip"], datetime.strptime(r["baslangic"], BICIM), datetime.strptime(r["bitis"], BICIM))
+            for r in con.execute("SELECT operator, makine, tip, baslangic, bitis FROM kayit WHERE baslangic < ? AND bitis >= ?", (bit, bas))]
+
+
 def gun_kapsami(con: sqlite3.Connection) -> Dict[date, int]:
     """Başlangıç gününe göre kayıt sayısı (takvimde 'verisi olan günler' için)."""
     return {
