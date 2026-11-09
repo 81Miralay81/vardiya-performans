@@ -20,6 +20,12 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt pyinstaller pytest
+      - name: Sürüm damgası
+        shell: pwsh
+        run: |
+          $s = "1.0.${{ github.run_number }}"
+          (Get-Content vardiya/surum.py) -replace 'SURUM = ".*"', "SURUM = `"$s`"" | Set-Content vardiya/surum.py -Encoding utf8
+          Get-Content vardiya/surum.py
       - name: Testler
         run: python -m pytest -q tests
       - name: Exe derle
@@ -42,6 +48,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: guncel
-          name: Son sürüm (${{ github.sha }})
+          name: Son sürüm 1.0.${{ github.run_number }}
+          body: "SURUM=1.0.${{ github.run_number }}"
           files: dist/VardiyaPerformans.exe
           prerelease: false

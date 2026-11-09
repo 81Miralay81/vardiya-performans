@@ -33,3 +33,8 @@ python main.py --kendini-sina    # ekran açmadan tüm sayfaları + PDF'i dener 
 ```
 `VARDIYA_ORNEK=<örnek xlsm>` ortam değişkeni verilirse hesap testleri Excel'deki 3 Kasım sonuçlarıyla karşılaştırır.
 Exe, GitHub Actions ile (Windows) derlenir; çıktı "Actions → Artifacts" ve "Releases → guncel" altındadır.
+
+## Otomatik güncelleme
+
+Program açıldıktan birkaç saniye sonra GitHub'daki `guncel` sürümünü arka planda denetler. Yeni sürüm varsa indirir, "Güncelle" denince kapanır, exe'nin yerine yenisini koyar ve programı yeniden açar. İnternet yoksa sessizce atlanır.
+Not: depo özel (private) ise bu denetim yetki olmadan sürümü okuyamaz; güncelleme için depo herkese açık olmalı (ya da başka bir dağıtım yolu seçilmeli).

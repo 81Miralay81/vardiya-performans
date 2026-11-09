@@ -18,6 +18,7 @@ def uygulama_klasoru() -> str:
 def kendini_sina() -> int:
     """Derlenen exe'nin sağlam olup olmadığını denetler (ekran açmadan): tüm sayfalar, içe aktarma, PDF."""
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    os.environ["VARDIYA_GUNCELLEME_YOK"] = "1"
     import tempfile
     from datetime import datetime, timedelta
     from openpyxl import Workbook

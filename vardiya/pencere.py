@@ -18,8 +18,9 @@ from .sayfa_ayar import AyarSayfasi
 from .sayfa_gecmis import GecmisSayfasi
 from .sayfa_rapor import RaporSayfasi
 from .sayfa_veri import VeriSayfasi
+from .surum import SURUM
+from . import guncelleme
 
-SURUM = "1.0.0"
 MENU = (("veri", "Veri Aktar"), ("performans", "Performans"), ("durus", "Genel Duruş"), ("mola", "Mola"),
         ("rapor", "Raporlar"), ("gecmis", "Geçmiş"), ("ayar", "Ayarlar"))
 DONEMLI = {"performans", "durus", "mola"}
@@ -120,6 +121,28 @@ class AnaPencere(QMainWindow):
         self.donem.veri_yenilendi(ilk_secim=True)
         self.yenile()
         self.sayfa_ac("performans" if self.kapsam() else "veri")
+        self._guncelleme = None
+        exe = guncelleme.calisan_exe()
+        if exe and not os.environ.get("VARDIYA_GUNCELLEME_YOK"):
+            QTimer.singleShot(2500, lambda: self._guncelleme_baslat(exe))
+
+    def _guncelleme_baslat(self, exe: str):
+        self._guncelleme = guncelleme.GuncellemeKontrol(exe, self)
+        self._guncelleme.hazir.connect(lambda surum, dosya: self._guncelleme_hazir(exe, surum, dosya))
+        self._guncelleme.start()
+
+    def _guncelleme_hazir(self, exe: str, surum: str, dosya: str):
+        from PySide6.QtWidgets import QMessageBox
+        kutu = QMessageBox(self)
+        kutu.setIcon(QMessageBox.Information)
+        kutu.setWindowTitle("Yeni sürüm")
+        kutu.setText(f"Programın yeni sürümü ({surum}) indirildi.\nŞu anki sürüm: {SURUM}.\n\nGüncellenip yeniden açılacak.")
+        kutu.setInformativeText("Aynı klasörden başka biri programı açıksa güncelleme onlar kapanınca tamamlanır.")
+        kutu.setStandardButtons(QMessageBox.Ok)
+        kutu.button(QMessageBox.Ok).setText("Güncelle")
+        kutu.exec()
+        guncelleme.uygula(dosya, exe)
+        QApplication.quit()
 
     # ------------------------------------------------ API (sayfalar kullanır)
     def kapsam(self):
