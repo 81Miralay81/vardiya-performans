@@ -165,7 +165,9 @@ def _satirlar(yol: str):
         yield from _baslik_ve_veri(enumerate(kaynak, start=1))
         return
     from openpyxl import load_workbook
-    wb = load_workbook(yol, read_only=True, data_only=True)
+    # Dosya nesnesiyle açılır: Cormind'in .xls adıyla verdiği yeni biçim (xlsx) dosyalar da okunur
+    dosya = open(yol, "rb")
+    wb = load_workbook(dosya, read_only=True, data_only=True)
     try:
         adaylar = sorted(wb.worksheets, key=lambda w: 0 if tr_kucuk(w.title) == "sayfa1" else 1)
         for ws in adaylar:
@@ -175,6 +177,7 @@ def _satirlar(yol: str):
                 return
     finally:
         wb.close()
+        dosya.close()
 
 
 def _baslik_ve_veri(satirlar, sessiz=False):

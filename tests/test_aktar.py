@@ -100,3 +100,12 @@ def test_eski_xls_ve_html(tmp_path):
     con2 = vt.ac(str(tmp_path / "x.db"))
     s = ia.aktar(con2, str(f))
     assert s.yeni == 2 and not s.atlanan
+
+
+def test_xlsx_icerik_xls_adli(tmp_path):
+    f = tmp_path / "d.xlsx"
+    _xlsx(f, [["IM21", "A", "Çalışma", "1", "K", "DK1", 0.1, "03.11.2026 08:00:00", "03.11.2026 09:00:00"]])
+    g = tmp_path / "d.xls"
+    f.rename(g)
+    con = vt.ac(str(tmp_path / "z.db"))
+    assert ia.aktar(con, str(g)).yeni == 1
