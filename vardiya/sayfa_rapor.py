@@ -441,15 +441,25 @@ class RaporSayfasi(QWidget):
         r = self._hazir()
         if not r:
             return
-        from PySide6.QtPrintSupport import QPrinter, QPrintPreviewDialog
+        from PySide6.QtPrintSupport import QPrintDialog, QPrinter
         
         # Yazıcı nesnesi ve varsayılan A3 Yatay ayarı
         yz = QPrinter(QPrinter.HighResolution)
         yz.setPageLayout(QPageLayout(QPageSize(QPageSize.A3), QPageLayout.Landscape, QMarginsF(0, 0, 0, 0)))
         yz.setDocName(r["baslik"])
 
-        # Önizleme penceresi içinde çizimi tetikleyen fonksiyon
-        def _onizleme_ciz(printer):
+        # Doğrudan ilk ekranda yazıcı, kağıt ve yön seçim penceresini açar
+        dialog = QPrintDialog(yz, self)
+        dialog.setWindowTitle("Yazdır")
+        
+        if dialog.exec() == QPrintDialog.Accepted:
+            p = QPainter(yz)
+            p.setRenderHint(QPainter.Antialiasing, True)
+            p.setRenderHint(QPainter.SmoothPixmapTransform, True)
+            cizim.rapor_ciz(p, QRectF(0, 0, yz.width(), yz.height()), dict(r, yer_tutucu=False))
+            p.end()
+            self.ana.mesaj("Rapor yazdırıldı.")
+     def _onizleme_ciz(printer):
             p = QPainter(printer)
             p.setRenderHint(QPainter.Antialiasing, True)
             p.setRenderHint(QPainter.SmoothPixmapTransform, True)
