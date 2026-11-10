@@ -12,7 +12,7 @@ from PySide6.QtGui import (QGuiApplication, QImage, QKeySequence, QPageLayout, Q
                            QShortcut)
 from PySide6.QtWidgets import (QApplication, QButtonGroup, QComboBox, QDateEdit, QFileDialog, QFrame, QHBoxLayout, QLabel,
                                QLineEdit, QMessageBox, QPushButton, QScrollArea, QSpinBox, QStackedWidget, QVBoxLayout,
-                               QWidget)
+                               QWidget, QSizePolicy)
 
 from . import cizim, tema, veritabani as vt
 from .donem import ay_sonu, hafta_basi, pd, qd
