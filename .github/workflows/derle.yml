@@ -31,8 +31,8 @@ jobs:
       - name: Exe derle
         shell: pwsh
         run: |
-          pyinstaller --noconfirm --onefile --windowed --name VardiyaPerformans `
-            --icon assets/uygulama.ico --add-data "assets;assets" main.py
+            pyinstaller --noconfirm --onefile --windowed --name VardiyaPerformans `
+            --icon assets/uygulama.ico --add-data "assets;assets" --add-data "vardiya;vardiya" main.py  
       - name: Exe kendini sınasın
         shell: pwsh
         run: |
