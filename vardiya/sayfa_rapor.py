@@ -441,16 +441,27 @@ class RaporSayfasi(QWidget):
         r = self._hazir()
         if not r:
             return
-        from PySide6.QtPrintSupport import QPrintDialog, QPrinter
+        from PySide6.QtPrintSupport import QPrinter, QPrintPreviewDialog
+        
+        # Yazıcı nesnesi ve varsayılan A3 Yatay ayarı
         yz = QPrinter(QPrinter.HighResolution)
         yz.setPageLayout(QPageLayout(QPageSize(QPageSize.A3), QPageLayout.Landscape, QMarginsF(0, 0, 0, 0)))
         yz.setDocName(r["baslik"])
-        if QPrintDialog(yz, self).exec():
-            p = QPainter(yz)
+
+        # Önizleme penceresi içinde çizimi tetikleyen fonksiyon
+    def _onizleme_ciz(printer):
+            p = QPainter(printer)
             p.setRenderHint(QPainter.Antialiasing, True)
             p.setRenderHint(QPainter.SmoothPixmapTransform, True)
-            cizim.rapor_ciz(p, QRectF(0, 0, yz.width(), yz.height()), dict(r, yer_tutucu=False))
+            cizim.rapor_ciz(p, QRectF(0, 0, printer.width(), printer.height()), dict(r, yer_tutucu=False))
             p.end()
+
+        # Önizleme ve Ayar Diyaloğunu Aç
+        dialog = QPrintPreviewDialog(yz, self)
+        dialog.setWindowTitle("Rapor Yazdırma Önizleme ve Ayarlar")
+        dialog.resize(1200, 800) # Pencereyi geniş başlat
+        dialog.paintRequested.connect(_onizleme_ciz)
+        dialog.exec()
 
     def _rapor_resmi(self):
         r = self._hazir()
