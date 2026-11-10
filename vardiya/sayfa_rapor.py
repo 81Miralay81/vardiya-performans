@@ -210,6 +210,10 @@ class RaporSayfasi(QWidget):
         self.onizleme = QLabel()
         self.onizleme.setAlignment(Qt.AlignCenter)
         self.onizleme.setStyleSheet("background: transparent;")
+        # --- BURAYI EKLEYİN: Resmin etiket alanına tam yayılmasını sağlar ---
+        self.onizleme.setScaledContents(True)
+        self.onizleme.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        # ------------------------------------------------------------------
         resim_menusu(self.onizleme, self._rapor_resmi)
         sc = QScrollArea()
         sc.setWidgetResizable(True)
@@ -324,13 +328,20 @@ class RaporSayfasi(QWidget):
             self.onizleme.setStyleSheet("background: transparent; color: #6B7285; font-size: 15px;")
             return
         self.onizleme.setStyleSheet("background: transparent;")
-        genislik = max(600, self.sc.viewport().width() - 24)
+        
+        # Alanı tam doldurması için viewport genişliğini doğrudan baz alıyoruz:
+        genislik = max(800, self.sc.viewport().width())
         dpr = self.devicePixelRatioF()
+        
         img = cizim.rapor_resmi(self._r, int(genislik * dpr))
         pm = QPixmap.fromImage(img)
         pm.setDevicePixelRatio(dpr)
         self.onizleme.setText("")
         self.onizleme.setPixmap(pm)
+        
+        # Önizleme QLabel boyutunu A3 oranına (yatay) sabitleyerek yan boşlukları yok edelim:
+        # A3 oranına göre yükseklik hesaplanır (En / 1.414)
+        self.onizleme.setFixedSize(self.sc.viewport().width(), int(self.sc.viewport().width() / 1.414))
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
