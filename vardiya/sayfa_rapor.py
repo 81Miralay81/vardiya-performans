@@ -449,17 +449,17 @@ class RaporSayfasi(QWidget):
         yz.setDocName(r["baslik"])
 
         # Önizleme penceresi içinde çizimi tetikleyen fonksiyon
-    def _onizleme_ciz(printer):
+        def _onizleme_ciz(printer):
             p = QPainter(printer)
             p.setRenderHint(QPainter.Antialiasing, True)
             p.setRenderHint(QPainter.SmoothPixmapTransform, True)
             cizim.rapor_ciz(p, QRectF(0, 0, printer.width(), printer.height()), dict(r, yer_tutucu=False))
             p.end()
 
-        # Önizleme ve Ayar Diyaloğunu Aç
+        # Önizleme ve Ayار Diyaloğunu Aç
         dialog = QPrintPreviewDialog(yz, self)
         dialog.setWindowTitle("Rapor Yazdırma Önizleme ve Ayarlar")
-        dialog.resize(1200, 800) # Pencereyi geniş başlat
+        dialog.resize(1200, 800)
         dialog.paintRequested.connect(_onizleme_ciz)
         dialog.exec()
 
