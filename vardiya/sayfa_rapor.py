@@ -324,13 +324,12 @@ class RaporSayfasi(QWidget):
     def _boya(self):
         if not self._r:
             self.onizleme.setPixmap(QPixmap())
-            self.onizleme.setText("Seçilen dönemde kayıt yok.\nBaşka bir gün ya da hafta seçin; veri yoksa önce Veri Aktar sayfasından yükleyin.")
+            self.onizleme.setText("Seçilen dönemde kayıt yok.\nBaşka bir gün ya da hafta seçin.")
             self.onizleme.setStyleSheet("background: transparent; color: #6B7285; font-size: 15px;")
             return
         self.onizleme.setStyleSheet("background: transparent;")
         
-        # Alanı tam doldurması için viewport genişliğini doğrudan baz alıyoruz:
-        genislik = max(800, self.sc.viewport().width())
+        genislik = max(1400, self.sc.viewport().width() * 2) # Çözünürlüğü yüksek tutuyoruz
         dpr = self.devicePixelRatioF()
         
         img = cizim.rapor_resmi(self._r, int(genislik * dpr))
@@ -338,10 +337,6 @@ class RaporSayfasi(QWidget):
         pm.setDevicePixelRatio(dpr)
         self.onizleme.setText("")
         self.onizleme.setPixmap(pm)
-        
-        # Önizleme QLabel boyutunu A3 oranına (yatay) sabitleyerek yan boşlukları yok edelim:
-        # A3 oranına göre yükseklik hesaplanır (En / 1.414)
-        self.onizleme.setFixedSize(self.sc.viewport().width(), int(self.sc.viewport().width() / 1.414))
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
