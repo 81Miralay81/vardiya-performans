@@ -235,3 +235,64 @@ def metne_cevir(ic: dict) -> str:
         s.append("İYİLEŞTİRME VE AKSİYON ÖNERİLERİ")
         s += [f"- {o}" for o in ic["oneriler"]]
     return "\n".join(s).strip()
+
+
+# --------------------------------------------------------------------------- Copilot komutları (unutulmasın diye programda saklanır)
+KOMUT_SAYIM = """{ilk} ile {son} arasında "Kalip Uretim" adresinden gelen ve konusunda "OEE" geçen
+bütün e-postaları bul. Hiçbirini atlama. Yalnızca şu listeyi ver, başka bir şey yazma:
+sıra no | tarih | saat | konu
+En sona toplam e-posta sayısını yaz."""
+
+KOMUT_FORM = """Az önce listelediğin e-postaların HEPSİNİ, listedeki sıra numarasına göre (eskiden yeniye)
+aşağıdaki forma dönüştür. Hiçbirini atlama, birleştirme.
+
+Her e-posta için AYRI bir blok yaz. Blok "=== KOT ===" satırıyla başlar, "=== SON ===" satırıyla biter.
+Blokların dışında hiçbir açıklama, giriş cümlesi ya da yorum yazma.
+En sona tek satır ekle: TOPLAM KOT: (blok sayısı)
+Yanıt uzunluk sınırına takılırsa bloğu yarıda kesme. Son tamamladığın bloktan sonra
+"DEVAMI VAR: kalan e-posta sayısı" yaz. "devam" dediğimde kaldığın yerden sürdür.
+
+KURALLAR
+1. Kaynak işareti, köşeli parantezli referans, dipnot ya da bağlantı EKLEME.
+2. Kalın, italik, madde imi, tablo ya da başka biçimlendirme KULLANMA. Düz metin yaz.
+3. Her tezgâh için AYRI bir TEZGAH satırı yaz. E-postada iki tezgâh birlikte anlatılsa bile ayır.
+4. Her TEZGAH satırı TEK satır olsun. Alanları " | " (boşluk, dik çizgi, boşluk) ile ayır.
+   Alanların içinde dik çizgi ve satır sonu kullanma.
+5. ACIKLAMA alanına e-postada yazanı değiştirmeden aktar. Yalnızca yazım hatalarını düzelt.
+   Kendi yorumunu, tahminini ya da e-postada olmayan bir bilgiyi EKLEME.
+6. E-postada bulunmayan bilgi için "-" yaz. Boş bırakma, uydurma.
+7. TEZGAH kodunu büyük harfle ve boşluksuz yaz: IM54, IM84. Varsa CNC kodunu KOD alanına yaz.
+8. KATEGORI alanına YALNIZCA şu listeden birini yaz:
+   SETUP, ARIZA, PLANLAMA, KALIP KONTROL, REVIZYON, MALZEME-TAKIM, ELEMAN, KALITE, DIGER
+   - SETUP: bağlama, aparat, mengene, ayar, sıfırlama, hazırlık süresi
+   - ARIZA: mekanik ya da elektrik arıza, spindle, pens, bakım
+   - PLANLAMA: iş emri yok, plan yok, iş bitti, program bitti, sıradaki iş bekleniyor
+   - KALIP KONTROL: kalıp kontrolü, ölçüm, onay ya da yazı bekleme
+   - REVIZYON: tamir, revizyon, yeniden işleme, kalıp parçaları arasında uyumsuzluk
+   - MALZEME-TAKIM: malzeme, kesici takım, uç bekleme
+   - ELEMAN: operatör yok, izin, eleman yetersizliği
+   - KALITE: kalite kontrol, uygunsuzluk
+   - DIGER: yukarıdakilere uymayanlar
+9. VARDIYA alanını e-postanın GÖNDERİLME saatine göre yaz:
+   00:00-07:59 arası 1, 08:00-15:59 arası 2, 16:00-23:59 arası 3
+10. KOT NO alanını e-postanın gönderilme tarih ve saatinden üret: YYYY-AAGG-SSDD
+    Örnek: 09.11.2026 07:27 için 2026-1109-0727
+11. GRUP LIDERI alanına gönderen adresini ("Kalip Uretim") YAZMA. E-posta metninin sonundaki
+    imzada, "Saygılarımla" ya da "Best Regards" satırından sonra gelen kişi adını yaz.
+    İmzada kişi adı yoksa "-" yaz.
+12. DURUM alanına ACIK, DEVAM ya da TAMAMLANDI yaz. E-postada belirtilmemişse ACIK yaz.
+
+FORM
+=== KOT ===
+KOT NO: 
+TARIH: GG.AA.YYYY
+SAAT: SS:DD
+VARDIYA: 
+KONU: 
+GRUP LIDERI: 
+--- TEZGAHLAR ---
+TEZGAH: IMxx | KOD: CNCxx | OLAY SAATI: SS:DD | KATEGORI: ... | NEDEN: ... | ACIKLAMA: ... | AKSIYON: ...
+--- SONUC ---
+(tek cümle)
+DURUM: 
+=== SON ==="""

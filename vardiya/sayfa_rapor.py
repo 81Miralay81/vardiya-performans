@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (QApplication, QButtonGroup, QComboBox, QDateEdit,
 from . import cizim, tema, veritabani as vt
 from .donem import ay_sonu, hafta_basi, pd, qd
 from .hesap import VARDIYALAR, cormind_hesabi, hesapla
-from .kot import idari_icerik, kot_coz, metne_cevir
+from .kot import KOMUT_FORM, KOMUT_SAYIM, idari_icerik, kot_coz, metne_cevir
 from .sayfa_ortak import SefCombo, etiket, kart, resim_menusu
 
 TURLER = ("Günlük", "Haftalık", "Aylık", "Özel aralık")
@@ -238,6 +238,10 @@ class RaporSayfasi(QWidget):
         self.b_kot_sil = QPushButton("KOT'ları Sil")
         self.b_kot_sil.setToolTip("Seçili dönemin KOT kayıtlarını siler")
         self.b_kot_sil.setObjectName("Tehlike")
+        self.b_komut = QPushButton("Copilot Komutları…")
+        self.b_komut.setToolTip("Outlook'taki Copilot'a verilecek iki komut (seçili dönemin tarihleriyle); kopyalayıp yapıştırırsınız")
+        self.b_komut.clicked.connect(self.komutlari_goster)
+        il.addWidget(self.b_komut)
         il.addWidget(self.b_kot)
         i1 = QHBoxLayout()
         i1.addWidget(self.b_metin)
@@ -427,6 +431,35 @@ class RaporSayfasi(QWidget):
     @staticmethod
     def _metin_anahtar(ilk, son) -> str:
         return f"idari|{ilk.isoformat()}|{son.isoformat()}"
+
+    def komutlari_goster(self):
+        ilk, son = self._donem()
+        d = QDialog(self)
+        d.setWindowTitle("Copilot komutları")
+        d.resize(860, 640)
+        l = QVBoxLayout(d)
+        l.addWidget(etiket("Outlook'taki Copilot'a sırayla verin. Önce 1. komutla mailleri saydırın ve sayının doğru olduğuna bakın; sonra aynı "
+                           "sohbette 2. komutu verin. Çıkan blokların hepsini kopyalayıp 'KOT Yapıştır' ile programa alın. "
+                           "Tarihler seçili rapor dönemine göre yazıldı; kutuda değiştirebilirsiniz.", "AltBaslik"))
+        for baslik, metin, yuk in (("1. KOMUT: MAİLLERİ SAY", KOMUT_SAYIM.format(ilk=f"{ilk:%d.%m.%Y}", son=f"{son:%d.%m.%Y}"), 110),
+                                   ("2. KOMUT: KOT FORMUNA DÖK", KOMUT_FORM, 0)):
+            sat = QHBoxLayout()
+            sat.addWidget(etiket(baslik, "KartBaslik"), 1)
+            b = QPushButton("Kopyala")
+            sat.addWidget(b)
+            l.addLayout(sat)
+            kutu = QPlainTextEdit()
+            kutu.setPlainText(metin)
+            if yuk:
+                kutu.setFixedHeight(yuk)
+            l.addWidget(kutu, 0 if yuk else 1)
+            b.clicked.connect(lambda _=False, k=kutu, a=baslik: (QGuiApplication.clipboard().setText(k.toPlainText()),
+                                                                 self.ana.mesaj(a.split(":")[0].capitalize() + " panoya kopyalandı.")))
+        kapat = QDialogButtonBox(QDialogButtonBox.Close)
+        kapat.button(QDialogButtonBox.Close).setText("Kapat")
+        kapat.rejected.connect(d.reject)
+        l.addWidget(kapat)
+        d.exec()
 
     def kot_yapistir(self):
         d = MetinDialog(self, "KOT yapıştır",
