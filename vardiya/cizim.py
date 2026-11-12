@@ -199,7 +199,7 @@ def tablo_yukseklik_orani(satir_sayisi: int) -> float:
     return (satir_sayisi + 4) / 4.4
 
 
-def tablo_ciz(p: QPainter, rect: QRectF, sonuc: DonemSonuc, makineler: List[str], secim: int = 0):
+def tablo_ciz(p: QPainter, rect: QRectF, sonuc: DonemSonuc, makineler: List[str], secim: int = 0, yazi_carpani: float = 1.0):
     """Excel'deki U2:Y35 tablosunun aynısı (çalışma günü, makine sayıları, ortalamalar, makine satırları)."""
     tum = list(makineler) + sorted(m for m in sonuc.hucreler if m not in makineler)
     satir_n = len(tum) + 4
@@ -219,7 +219,7 @@ def tablo_ciz(p: QPainter, rect: QRectF, sonuc: DonemSonuc, makineler: List[str]
         p.setBrush(QColor(dolgu))
         p.drawRect(r)
         if metin:
-            _yaz(p, r.adjusted(5 * s, 0, -5 * s, 0), metin, px * s, kalin, hiza, yazi)
+            _yaz_sigdir(p, r.adjusted(4 * s, 0, -4 * s, 0), metin, px * s * yazi_carpani, kalin, hiza, yazi, min_px=6)
 
     gun = sonuc.hesap_gunu()
     hucre(0, 2, 0, 2, tema.XL_SEFTALI, f"Çalışma Gün    {gun}", 14, True, "#FFFFFF")
@@ -252,14 +252,14 @@ def tablo_ciz(p: QPainter, rect: QRectF, sonuc: DonemSonuc, makineler: List[str]
     p.restore()
 
 
-def tablo_resmi(sonuc, makineler, secim=0, genislik=660) -> QImage:
+def tablo_resmi(sonuc, makineler, secim=0, genislik=660, satir=30, yazi_carpani=1.0) -> QImage:
     n = len(makineler) + 4
     yuk = int(genislik * tablo_yukseklik_orani(len(makineler)) / 1.45)
-    yuk = int(n * 30)
+    yuk = int(n * satir)
     img = QImage(genislik, yuk, QImage.Format_ARGB32)
     img.fill(QColor("white"))
     p = QPainter(img)
-    tablo_ciz(p, QRectF(0, 0, genislik, yuk), sonuc, makineler, secim)
+    tablo_ciz(p, QRectF(0, 0, genislik, yuk), sonuc, makineler, secim, yazi_carpani)
     p.end()
     return img
 

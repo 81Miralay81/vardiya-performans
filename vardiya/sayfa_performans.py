@@ -8,11 +8,12 @@ from __future__ import annotations
 import json
 from typing import Optional
 
-from PySide6.QtCore import QUrl, Qt
+from PySide6.QtCore import QBuffer, QByteArray, QIODevice, QUrl, Qt
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import QApplication, QLabel, QMenu, QVBoxLayout, QWidget
 
 from . import tema
+from .cizim import tablo_resmi
 from .hesap import durus_dokumu
 
 try:                                    # web bileşeni yoksa program yine açılsın
@@ -28,7 +29,7 @@ def performans_verisi(ana) -> dict:
     sonuc, ayar = ana.sonuc, ana.hesap_ayar()
     mola_pay = 100.0 * ayar.mola_saat / ayar.net_saat
     veri = {"genel": None, "aciklama": "", "donem": "", "vardiyalar": [], "makineler": [],
-            "molaDk": round(ayar.mola_saat * 60), "molaPay": mola_pay}
+            "molaDk": round(ayar.mola_saat * 60), "molaPay": mola_pay, "tablo": "", "tabloMakineler": []}
     for v in (1, 2, 3):
         veri["vardiyalar"].append({"v": v, "calisma": None, "makine": None, "gun": 0, "sef": (ana.seflar or {}).get(v, "")})
     if not sonuc:
@@ -43,6 +44,14 @@ def performans_verisi(ana) -> dict:
         o = sonuc.vardiyalar.get(v)
         if o:
             veri["vardiyalar"][i].update(calisma=o.calisma, makine=o.makine_sayisi, gun=o.gun_sayisi)
+    # tablo: Çalışma sayfasındaki sabit tablonun aynısı (aynı çizim kodu), resim olarak
+    tum = list(ana.ayar.get("makineler", [])) + sorted(m for m in sonuc.hucreler if m not in ana.ayar.get("makineler", []))
+    ba = QByteArray()
+    tampon = QBuffer(ba)
+    tampon.open(QIODevice.WriteOnly)
+    tablo_resmi(sonuc, tum, 0, 660, satir=40, yazi_carpani=1.22).save(tampon, "PNG")
+    veri["tablo"] = "data:image/png;base64," + bytes(ba.toBase64()).decode("ascii")
+    veri["tabloMakineler"] = tum
     dokum = durus_dokumu(getattr(ana, "kayit", []) or [], gunler)
     sirali = [m for m in ana.ayar.get("makineler", []) if m in sonuc.makine_ort]
     sirali += sorted(m for m in sonuc.makine_ort if m not in sirali)

@@ -16,7 +16,7 @@ body{background:var(--zemin);color:var(--yazi);font-family:"Segoe UI",system-ui,
 .kutu .deger{font-size:27px;font-weight:700;color:var(--lacivert);margin-top:2px}
 .kutu .alt{color:var(--soluk);font-size:12px;margin-top:2px}
 .kutu .sef{color:var(--yesil);font-weight:700;font-size:12.5px;margin-top:3px}
-.orta{display:grid;grid-template-columns:264px 1fr;gap:12px;margin-bottom:12px;align-items:stretch}
+.orta{display:grid;grid-template-columns:330px 1fr;gap:12px;margin-bottom:12px;align-items:stretch}
 .kart{padding:12px 14px}
 .kb{display:flex;align-items:baseline;gap:10px;margin-bottom:2px}
 .kb b{font-size:15px;color:var(--lacivert)}
@@ -32,7 +32,7 @@ tr.sat:hover td{background:#eef1fa}
 tr.secili td{background:#e3e8fb}
 .cubuk{display:inline-block;width:26px;height:6px;border-radius:3px;background:#e6e9f2;vertical-align:middle;margin-right:5px;overflow:hidden}
 .cubuk i{display:block;height:100%;border-radius:3px}
-.tablokap{max-height:600px;overflow-y:auto;overflow-x:hidden}
+.tablokap{overflow:hidden;border-radius:8px}
 #gv{height:185px}#gm{height:400px}#gd{height:380px}
 .sag{display:grid;grid-template-rows:auto 1fr;gap:12px;min-width:0}
 .gosterge{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;color:var(--soluk);font-size:12px;margin-top:2px}
@@ -42,7 +42,7 @@ tr.secili td{background:#e3e8fb}
 <div class="sayfa" id="sayfa">
  <div class="kutular" id="kutular"></div>
  <div class="orta">
-  <div class="kart"><div class="kb"><b>Makineler</b><span id="tabloalt"></span></div><div class="tablokap"><table id="tablo"></table></div></div>
+  <div class="kart" style="padding:8px"><div class="tablokap"><img id="tablo" alt="" style="width:100%;display:block;cursor:pointer" draggable="false"></div></div>
   <div class="sag">
    <div class="kart"><div class="kb"><b>Vardiya bazlı çalışma oranı</b><span id="donem"></span></div><div id="gv"></div></div>
    <div class="kart"><div class="kb"><b>Makine bazlı performans</b><span>sütunun çalışma ya da duruş kısmına tıklayın: duruşlar · mola kısmına tıklayın: vardiya bazlı mola</span></div>
@@ -101,13 +101,10 @@ function kutuCiz(){
  document.getElementById("kutular").innerHTML=k.join(""); document.getElementById("donem").textContent=V.donem; }
 
 function tabloCiz(){
- const renk=x=>x==null?"#ccc":(x>=V.genel?YESIL:(x>=V.genel-0.1?TURUNCU:KIRMIZI));
- let s="<tr><th>Makine</th><th>Ort.</th><th>1.V</th><th>2.V</th><th>3.V</th></tr>";
- s+=`<tr class="genel"><td>Genel</td><td>${yz(V.genel,0)}</td>${V.vardiyalar.map(v=>`<td>${yz(v.calisma,0)}</td>`).join("")}</tr>`;
- V.makineler.forEach(m=>{ s+=`<tr class="sat${m.ad===secili?" secili":""}" data-m="${kacis(m.ad)}"><td class="m">${kacis(m.ad)}</td><td><span class="cubuk"><i style="width:${Math.min(100,m.calisma*100)}%;background:${renk(m.calisma)}"></i></span>${yz(m.calisma,0)}</td>${m.v.map(x=>`<td>${x==null?"":yz(x,0)}</td>`).join("")}</tr>`; });
- const t=document.getElementById("tablo"); t.innerHTML=s;
- t.querySelectorAll("tr.sat").forEach(tr=>tr.onclick=()=>sec(tr.dataset.m,"durus",true));
- document.getElementById("tabloalt").textContent=V.makineler.length+" makine"; }
+ const t=document.getElementById("tablo"); if(t.dataset.kaynak!==V.tablo){ t.src=V.tablo||""; t.dataset.kaynak=V.tablo; }
+ t.style.visibility=V.tablo?"visible":"hidden";
+ t.onclick=e=>{ const n=V.tabloMakineler.length+4, r=t.getBoundingClientRect(), i=Math.floor((e.clientY-r.top)/r.height*n)-4;
+   const ad=V.tabloMakineler[i]; if(ad&&V.makineler.some(m=>m.ad===ad)) sec(ad,"durus",true); }; }
 
 function vardiyaCiz(){
  const vs=V.vardiyalar, enUst=110;
