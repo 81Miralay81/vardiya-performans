@@ -49,30 +49,26 @@ jobs:
             ]
           )
           "@ | Set-Content surum_bilgisi.txt -Encoding utf8
-          # Klasör olarak derlenir (tek dosya değil): tek dosyalı exe her açılışta ~500 MB'ı geçici klasöre açtığı için
-          # ağ klasöründen açılış dakikalar sürüyordu.
-          pyinstaller --noconfirm --onedir --windowed --name VardiyaPerformans `
+          # Tek dosya olarak derlenir. Tarayıcı motoru (web grafikleri) çıkarıldığı için dosya yine küçük ve açılış hızlı.
+          pyinstaller --noconfirm --onefile --windowed --name VardiyaPerformans `
             --icon assets/uygulama.ico --version-file surum_bilgisi.txt --add-data "assets;assets" `
             --hidden-import win32timezone --hidden-import win32com.client main.py
       - name: Exe kendini sınasın
         shell: pwsh
         run: |
           $env:QT_QPA_PLATFORM = "offscreen"
-          $p = Start-Process -FilePath dist\VardiyaPerformans\VardiyaPerformans.exe -ArgumentList "--kendini-sina" -Wait -PassThru -RedirectStandardOutput out.txt -RedirectStandardError err.txt
+          $p = Start-Process -FilePath dist\VardiyaPerformans.exe -ArgumentList "--kendini-sina" -Wait -PassThru -RedirectStandardOutput out.txt -RedirectStandardError err.txt
           Get-Content out.txt, err.txt
           if ($p.ExitCode -ne 0) { throw "Exe kendini sınama başarısız: $($p.ExitCode)" }
-      - name: Sıkıştır (şirket ağları .exe indirmeyi engelleyebildiği için güncelleme bu dosyadan yapılır)
-        shell: pwsh
-        run: Compress-Archive -Path dist\VardiyaPerformans -DestinationPath dist\VardiyaPerformans.zip -Force
       - uses: actions/upload-artifact@v4
         with:
           name: VardiyaPerformans
-          path: dist/VardiyaPerformans
+          path: dist/VardiyaPerformans.exe
       - name: Son sürümü yayınla
         uses: softprops/action-gh-release@v2
         with:
           tag_name: guncel
           name: Son sürüm 1.0.${{ github.run_number }}
           body: "SURUM=1.0.${{ github.run_number }}"
-          files: dist/VardiyaPerformans.zip
+          files: dist/VardiyaPerformans.exe
           prerelease: false

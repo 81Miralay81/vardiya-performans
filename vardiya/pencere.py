@@ -171,7 +171,7 @@ class AnaPencere(QMainWindow):
         kutu.setWindowTitle("Yeni sürüm")
         kutu.setText(f"Programın yeni sürümü var: {surum}\nŞu anki sürüm: {SURUM}")
         kutu.setInformativeText("İndirme sayfasında en üstteki derlemeye girip alttaki 'VardiyaPerformans' dosyasını indirin. "
-                                "İndirdiğiniz klasörün içindekileri programın klasörüne kopyalayın; VardiyaPerformans.db dosyasına dokunmayın.")
+                                "İçinden çıkan VardiyaPerformans.exe dosyasını eskisinin üstüne yazın; VardiyaPerformans.db dosyasına dokunmayın.")
         ac = kutu.addButton("İndirme sayfasını aç", QMessageBox.AcceptRole)
         kutu.addButton("Sonra", QMessageBox.RejectRole)
         kutu.exec()

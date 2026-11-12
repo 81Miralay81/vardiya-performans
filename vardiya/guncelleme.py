@@ -148,7 +148,7 @@ class GuncellemeKontrol(QThread):
             if not daha_yeni(bilgi[0], SURUM):
                 self.durum.emit(f"Güncel ({SURUM})")
                 return
-            # Program klasör olarak dağıtılıyor ve şirket ağı program indirmeyi engelliyor: indirme yapılmaz,
+            # Şirket ağı program indirmeyi engelliyor: indirme yapılmaz,
             # yalnızca yeni sürüm olduğu bildirilir; kullanıcı indirme sayfasından kendisi alır.
             self.durum.emit(f"Yeni sürüm var: {bilgi[0]}")
             self.hazir.emit(bilgi[0], "")

@@ -527,7 +527,9 @@ def cormind_oee_grafigi(p: QPainter, rect: QRectF, cm: Dict[str, dict], baslik: 
 
 
 def genel_performans_grafigi(p: QPainter, rect: QRectF, sonuc: DonemSonuc, makineler: List[str], mola_pay: float,
-                             baslik: Optional[str] = "Genel Performans: Çalışma, Duruş ve Mola"):
+                             baslik: Optional[str] = "Genel Performans: Çalışma, Duruş ve Mola",
+                             bolgeler: Optional[list] = None, secili: Optional[str] = None):
+    # bolgeler verilirse her sütunun tıklanabilir alanları eklenir: (QRectF, makine, "durus" | "mola")
     """Bizim hesabımız: her sütun %100 (yeşil çalışma + kırmızı duruş); sıfırın altında mola hakkı
     (turuncu: mola yapılan, mor: molada çalışılan). Eşik altı makineler soluk çizilir ve hesaba girmez."""
     s = olcek(rect)
@@ -588,6 +590,11 @@ def genel_performans_grafigi(p: QPainter, rect: QRectF, sonuc: DonemSonuc, makin
 
     for i, (m, c, mo, alti) in enumerate(veri):
         cx = alan.left() + slot * (i + 0.5)
+        if m == secili:
+            p.fillRect(QRectF(cx - slot / 2, alan.top(), slot, alan.height()), QColor(36, 26, 140, 22))
+        if bolgeler is not None:
+            bolgeler.append((QRectF(cx - slot / 2, alan.top(), slot, yy(0) - alan.top()), m, "durus"))
+            bolgeler.append((QRectF(cx - slot / 2, yy(0), slot, alan.bottom() - yy(0) + 24 * s), m, "mola"))
         parca(cx, 0, c * 100, YESIL_, alti, f"{c * 100:.0f}%")
         parca(cx, c * 100, 100, KIRMIZI_, alti, f"{(1 - c) * 100:.0f}%")
         parca(cx, -mo * mola_pay, 0, TURUNCU_, alti, "")
@@ -613,6 +620,118 @@ def genel_performans_grafigi(p: QPainter, rect: QRectF, sonuc: DonemSonuc, makin
         p.fillRect(QRectF(gx, gy + 4 * s, 12 * s, 10 * s), QColor(renk_))
         _yaz(p, QRectF(gx + 17 * s, gy, w, 18 * s), ad, 11 * s, False, AL, tema.YAZI)
         gx += w
+    p.restore()
+
+
+def _iki_satir(ad: str, sinir: int = 13) -> str:
+    if len(ad) <= sinir or not any(c in ad for c in " -"):
+        return ad
+    orta, en = len(ad) / 2, -1
+    for i, c in enumerate(ad):
+        if c in " -" and (en < 0 or abs(i - orta) < abs(en - orta)):
+            en = i
+    return ad[:en + (1 if ad[en] == "-" else 0)] + "\n" + ad[en + 1:]
+
+
+def _saat_dk(saat: float) -> str:
+    dk = int(round(saat * 60))
+    return f"{dk // 60}:{dk % 60:02d}"
+
+
+def durus_dokum_grafigi(p: QPainter, rect: QRectF, liste: List[tuple], baslik: Optional[str] = None):
+    """liste: [(duruş türü, saat)] büyükten küçüğe. Her tür kendi renginde; üstünde süre ve duruş içindeki payı."""
+    s = olcek(rect)
+    p.save()
+    p.setRenderHint(QPainter.Antialiasing, True)
+    p.setRenderHint(QPainter.TextAntialiasing, True)
+    if baslik:
+        _yaz(p, QRectF(rect.left(), rect.top() + 4 * s, rect.width(), 26 * s), baslik, 16 * s, True, ORTA, tema.LACIVERT)
+    if not liste:
+        _yaz(p, rect, "Bu dönemde duruş kaydı yok", 15 * s, False, ORTA, tema.YAZI_SOLUK)
+        p.restore()
+        return
+    toplam = sum(x[1] for x in liste) or 1.0
+    cok = len(liste) > 12
+    sol, sag, ust, alt = 60 * s, 20 * s, (62 if baslik else 40) * s, (74 if cok else 46) * s
+    alan = QRectF(rect.left() + sol, rect.top() + ust, rect.width() - sol - sag, rect.height() - ust - alt)
+    import math
+    ymax = max(0.5, math.ceil(liste[0][1] * 1.05 * 2) / 2)
+    adim = ymax / 4
+    for i in range(5):
+        k = adim * i
+        y = alan.bottom() - alan.height() * k / ymax
+        p.setPen(QPen(QColor("#E3E7EF"), max(1, s)))
+        p.drawLine(QPointF(alan.left(), y), QPointF(alan.right(), y))
+        _yaz(p, QRectF(rect.left(), y - 10 * s, sol - 8 * s, 20 * s), (f"{k:.1f}".replace(".", ",") if ymax < 8 else f"{k:.0f}") + " sa", 11 * s, False, SAG, tema.YAZI_SOLUK)
+    slot = alan.width() / len(liste)
+    genislik = min(slot * 0.56, 64 * s)
+    for i, (tip, saat) in enumerate(liste):
+        cx = alan.left() + slot * (i + 0.5)
+        h = max(2.0, alan.height() * saat / ymax)
+        br = QRectF(cx - genislik / 2, alan.bottom() - h, genislik, h)
+        ana = QColor(tema.durus_rengi(tip))
+        g = QLinearGradient(br.topLeft(), br.bottomLeft())
+        g.setColorAt(0, ana.lighter(125))
+        g.setColorAt(1, ana)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QBrush(g))
+        p.drawRoundedRect(br, 3 * s, 3 * s) if h > 6 * s else p.drawRect(br)
+        _yaz(p, QRectF(cx - slot / 2, br.top() - 34 * s, slot, 32 * s), f"{_saat_dk(saat)}\n{yuzde(saat / toplam, 0)}", 11 * s, True, ORTA, tema.YAZI)
+        if cok:
+            p.save()
+            p.translate(cx - 4 * s, alan.bottom() + 8 * s)
+            p.rotate(32)
+            _yaz(p, QRectF(0, -8 * s, 200 * s, 16 * s), tip, 10.5 * s, False, AL, tema.YAZI)
+            p.restore()
+        else:
+            _yaz(p, QRectF(cx - slot / 2, alan.bottom() + 4 * s, slot, 36 * s), _iki_satir(tip), 11 * s, True, ORTA, tema.YAZI)
+    p.setPen(QPen(QColor("#9AA3B8"), max(1, s)))
+    p.drawLine(alan.bottomLeft(), alan.bottomRight())
+    p.restore()
+
+
+def mola_pasta_grafigi(p: QPainter, rect: QRectF, vardiyalar: List[tuple], mola_dk: float):
+    """vardiyalar: [(başlık, grup lideri, mola oranı 0-1)]. Pastanın tamamı mola hakkıdır:
+    turuncu mola yapılan, mor molada çalışılan süre."""
+    s = olcek(rect)
+    p.save()
+    p.setRenderHint(QPainter.Antialiasing, True)
+    p.setRenderHint(QPainter.TextAntialiasing, True)
+    if not vardiyalar:
+        _yaz(p, rect, "Bu makine için vardiya bazlı mola verisi yok", 15 * s, False, ORTA, tema.YAZI_SOLUK)
+        p.restore()
+        return
+    TURUNCU_, MOR_ = "#F28C28", tema.MOLA_RENK
+    n = len(vardiyalar)
+    hucre = rect.width() / n
+    for i, (ad, sef, oran) in enumerate(vardiyalar):
+        oran = max(0.0, min(1.0, oran))
+        kutu = QRectF(rect.left() + i * hucre, rect.top(), hucre, rect.height())
+        _yaz(p, QRectF(kutu.left(), kutu.top() + 2 * s, hucre, 22 * s), ad, 14 * s, True, ORTA, tema.LACIVERT)
+        if sef:
+            _yaz(p, QRectF(kutu.left(), kutu.top() + 24 * s, hucre, 18 * s), sef, 11.5 * s, True, ORTA, tema.YESIL)
+        cap = min(hucre * 0.50, kutu.height() - 124 * s)
+        daire = QRectF(kutu.center().x() - cap / 2, kutu.top() + 52 * s, cap, cap)
+        p.setPen(QPen(QColor("white"), 2 * s))
+        yapilan = int(round(360 * 16 * oran))
+        p.setBrush(QColor(TURUNCU_))
+        p.drawPie(daire, 90 * 16, -yapilan)
+        p.setBrush(QColor(MOR_))
+        p.drawPie(daire, 90 * 16 - yapilan, -(360 * 16 - yapilan))
+        p.setBrush(QColor("white"))
+        p.setPen(Qt.NoPen)
+        ic = daire.adjusted(cap * 0.27, cap * 0.27, -cap * 0.27, -cap * 0.27)
+        p.drawEllipse(ic)
+        _yaz(p, ic, f"{oran * 100:.0f}%", 15 * s, True, ORTA, TURUNCU_)
+        y = daire.bottom() + 12 * s
+        for metin, renk_ in ((f"Mola yapılan: {oran * 100:.0f}% · günde ort. {oran * mola_dk:.0f} dk", TURUNCU_),
+                             (f"Molada çalışılan: {(1 - oran) * 100:.0f}% · günde ort. {(1 - oran) * mola_dk:.0f} dk", MOR_)):
+            p.setFont(font(11.5 * s))
+            w = p.fontMetrics().horizontalAdvance(metin) + 20 * s
+            x = kutu.center().x() - w / 2
+            p.fillRect(QRectF(x, y + 5 * s, 12 * s, 10 * s), QColor(renk_))
+            _yaz(p, QRectF(x + 18 * s, y, w, 20 * s), metin, 11.5 * s, False, AL, tema.YAZI)
+            y += 22 * s
     p.restore()
 
 
