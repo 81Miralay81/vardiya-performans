@@ -32,7 +32,7 @@ jobs:
         shell: pwsh
         run: |
           pyinstaller --noconfirm --onefile --windowed --name VardiyaPerformans `
-            --icon assets/uygulama.ico --add-data "assets;assets" main.py
+            --icon assets/uygulama.ico --add-data "assets;assets" --hidden-import win32timezone --hidden-import win32com.client main.py
       - name: Exe kendini sınasın
         shell: pwsh
         run: |

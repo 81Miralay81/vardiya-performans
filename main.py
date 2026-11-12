@@ -92,6 +92,14 @@ def kendini_sina() -> int:
         print("HATA: idari rapor üretilemedi")
         return 6
     print("IDARI TAMAM", len(ipdf), "bayt")
+    if sys.platform == "win32":                       # Outlook bağlantı kütüphanesi exe'ye girmiş mi (Outlook'un kendisi açılmaz)
+        try:
+            import win32com.client  # noqa: F401
+            import win32timezone  # noqa: F401
+            print("OUTLOOK KUTUPHANESI TAMAM")
+        except Exception as ex:  # noqa: BLE001
+            print("HATA: Outlook bağlantı kütüphanesi yok:", ex)
+            return 7
     print("TAMAM", tema.yuzde(w.sonuc.genel[0]), len(pdf), "bayt PDF")
     return 0
 

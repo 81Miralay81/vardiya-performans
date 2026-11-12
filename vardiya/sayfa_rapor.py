@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (QApplication, QButtonGroup, QComboBox, QDateEdit,
 from . import cizim, tema, veritabani as vt
 from .donem import ay_sonu, hafta_basi, pd, qd
 from .hesap import VARDIYALAR, cormind_hesabi, hesapla
-from .kot import KOMUT_FORM, KOMUT_SAYIM, idari_icerik, kot_coz, metne_cevir
+from .kot import KOMUT_FORM, KOMUT_SAYIM, KOT_KURALLARI, idari_icerik, kot_coz, maili_coz, metne_cevir
 from .sayfa_ortak import SefCombo, etiket, kart, resim_menusu
 
 TURLER = ("Günlük", "Haftalık", "Aylık", "Özel aralık")
@@ -233,16 +233,23 @@ class RaporSayfasi(QWidget):
         il.addWidget(etiket("GRUP LİDERİ BİLDİRİMLERİ (KOT)", "KartBaslik"))
         self.kot_durum = etiket("", "AltBaslik")
         il.addWidget(self.kot_durum)
-        self.b_kot = QPushButton("KOT Yapıştır…")
+        self.b_kot = QPushButton("KOT Yapıştır")
         self.b_metin = QPushButton("Metni Düzenle")
         self.b_kot_sil = QPushButton("KOT'ları Sil")
         self.b_kot_sil.setToolTip("Seçili dönemin KOT kayıtlarını siler")
         self.b_kot_sil.setObjectName("Tehlike")
-        self.b_komut = QPushButton("Copilot Komutları…")
+        self.b_komut = QPushButton("Copilot Komutları")
         self.b_komut.setToolTip("Outlook'taki Copilot'a verilecek iki komut (seçili dönemin tarihleriyle); kopyalayıp yapıştırırsınız")
         self.b_komut.clicked.connect(self.komutlari_goster)
-        il.addWidget(self.b_komut)
-        il.addWidget(self.b_kot)
+        self.b_outlook = QPushButton("Outlook'tan Al")
+        self.b_outlook.setObjectName("Lacivert")
+        self.b_outlook.setToolTip("Seçili dönemin OEE maillerini Outlook'tan okur ve KOT kaydına çevirir (Ayarlar'da anahtar varsa yapay zekâ ile)")
+        self.b_outlook.clicked.connect(self.outlooktan_al)
+        il.addWidget(self.b_outlook)
+        ik = QHBoxLayout()
+        ik.addWidget(self.b_kot)
+        ik.addWidget(self.b_komut)
+        il.addLayout(ik)
         i1 = QHBoxLayout()
         i1.addWidget(self.b_metin)
         i1.addWidget(self.b_kot_sil)
@@ -460,6 +467,62 @@ class RaporSayfasi(QWidget):
         kapat.rejected.connect(d.reject)
         l.addWidget(kapat)
         d.exec()
+
+    def outlooktan_al(self):
+        """Seçili dönemin maillerini Outlook'tan okur; yapay zekâ (anahtar varsa) ya da program algoritmasıyla KOT'a çevirir."""
+        from . import outlook, yapay
+        ilk, son = self._donem()
+        ya = yapay.ayar_oku()
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            mailler = outlook.mailleri_getir(ilk, son, ya["gonderen"], ya["konu"])
+        except RuntimeError as ex:
+            QApplication.restoreOverrideCursor()
+            QMessageBox.warning(self, "Outlook'tan al", str(ex))
+            return
+        except Exception as ex:  # noqa: BLE001
+            QApplication.restoreOverrideCursor()
+            QMessageBox.warning(self, "Outlook'tan al", f"Outlook okunurken beklenmeyen bir hata oluştu.\n({ex})")
+            return
+        if not mailler:
+            QApplication.restoreOverrideCursor()
+            QMessageBox.information(self, "Outlook'tan al",
+                                    f"{ilk:%d.%m.%Y} – {son:%d.%m.%Y} arasında, göndereni '{ya['gonderen']}' ve konusunda '{ya['konu']}' geçen mail bulunamadı.\n"
+                                    "Süzgeci Ayarlar sayfasından değiştirebilirsiniz.")
+            return
+        kotlar, uyari = {}, ""
+        try:
+            if ya["anahtar"]:
+                try:
+                    yanit = yapay.sor(ya["anahtar"], yapay.kot_istemi(mailler, KOT_KURALLARI), ya["model"])
+                    for k in kot_coz(yanit):
+                        es = [m for m in mailler if m.zaman.date() == k.tarih and f"{m.zaman:%H:%M}" == k.saat]
+                        if es and k.tezgahlar:           # yalnızca gerçek bir maille eşleşen kayıt alınır
+                            k.no, k.lider, k.konu = f"{es[0].zaman:%Y-%m%d-%H%M}", es[0].imza_adi, es[0].konu.strip()
+                            kotlar[k.no] = k
+                except RuntimeError as ex:
+                    uyari = f"\n\nYapay zekâ kullanılamadı, program kendi algoritmasıyla ayırdı:\n{ex}"
+            yz = len(kotlar)
+            bos = 0
+            for m in mailler:                          # yapay zekânın vermediği mailler: program algoritması
+                no = f"{m.zaman:%Y-%m%d-%H%M}"
+                if no not in kotlar:
+                    k = maili_coz(m.zaman, m.konu, m.metin, m.imza_adi)
+                    if k:
+                        kotlar[no] = k
+                    else:
+                        bos += 1
+            yeni, guncel = vt.kot_yaz(self.ana.con, kotlar.values())
+        finally:
+            QApplication.restoreOverrideCursor()
+        ozet = (f"{len(mailler)} mail okundu. {yz} tanesi yapay zekâ ile, {len(kotlar) - yz} tanesi program algoritmasıyla KOT'a çevrildi "
+                f"({yeni} yeni, {guncel} güncellendi).")
+        if bos:
+            ozet += f" {bos} mailde makine kodu bulunamadığı için kayıt oluşmadı."
+        if uyari:
+            QMessageBox.warning(self, "Outlook'tan al", ozet + uyari)
+        self.ana.mesaj(ozet)
+        self._yenile_simdi()
 
     def kot_yapistir(self):
         d = MetinDialog(self, "KOT yapıştır",

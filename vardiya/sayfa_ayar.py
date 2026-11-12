@@ -5,7 +5,7 @@ import os
 
 from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QDesktopServices
-from PySide6.QtWidgets import (QAbstractSpinBox, QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout, QHBoxLayout, QInputDialog, QLabel,
+from PySide6.QtWidgets import (QAbstractSpinBox, QApplication, QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout, QHBoxLayout, QInputDialog, QLabel,
                                QLineEdit, QListWidget, QListWidgetItem, QPushButton, QScrollArea, QSpinBox, QVBoxLayout,
                                QWidget)
 
@@ -154,6 +154,53 @@ class AyarSayfasi(QWidget):
         b.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(self.ana.db_yolu))))
         kd.layout().addWidget(b, 0, Qt.AlignLeft)
         ic.addWidget(kd)
+
+        # ------------------------------------------------ Outlook ve yapay zekâ (idari rapor)
+        from PySide6.QtWidgets import QFormLayout as _QF, QLineEdit as _QL
+        from . import yapay
+        ky = kart()
+        ky.layout().addWidget(etiket("OUTLOOK VE YAPAY ZEKÂ (İDARİ RAPOR)", "KartBaslik"))
+        ky.layout().addWidget(etiket(
+            "İdari raporda 'Outlook'tan Al' düğmesi, aşağıdaki gönderen ve konuya uyan mailleri Outlook'tan okur. Anahtar girilmişse mail "
+            "metinleri (imza ve kişi adları çıkarılarak) Google Gemini'ye gönderilip KOT formuna döktürülür; anahtar yoksa ya da servise "
+            "ulaşılamazsa program kendi algoritmasıyla ayırır. Bu ayarlar yalnızca bu bilgisayarda saklanır.", "AltBaslik"))
+        fy = _QF()
+        self.y_gonderen, self.y_konu, self.y_anahtar, self.y_model = _QL(), _QL(), _QL(), _QL()
+        self.y_anahtar.setEchoMode(_QL.Password)
+        self.y_anahtar.setPlaceholderText("Gemini API anahtarı (boş bırakılırsa yapay zekâ kullanılmaz)")
+        fy.addRow("Mail göndereni", self.y_gonderen)
+        fy.addRow("Mail konusunda geçen", self.y_konu)
+        fy.addRow("Gemini anahtarı", self.y_anahtar)
+        fy.addRow("Model adı", self.y_model)
+        ky.layout().addLayout(fy)
+        ys = QHBoxLayout()
+        by, bd = QPushButton("Bu Ayarları Kaydet"), QPushButton("Bağlantıyı Dene")
+        self.y_durum = etiket("", "AltBaslik")
+        ys.addWidget(by)
+        ys.addWidget(bd)
+        ys.addWidget(self.y_durum, 1)
+        ky.layout().addLayout(ys)
+        ya = yapay.ayar_oku()
+        self.y_gonderen.setText(ya["gonderen"]); self.y_konu.setText(ya["konu"]); self.y_anahtar.setText(ya["anahtar"]); self.y_model.setText(ya["model"])
+
+        def _y_kaydet():
+            yapay.ayar_yaz(self.y_anahtar.text(), self.y_model.text(), self.y_gonderen.text(), self.y_konu.text())
+            self.y_durum.setText("Kaydedildi.")
+
+        def _y_dene():
+            _y_kaydet()
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            try:
+                yanit = yapay.sor(self.y_anahtar.text().strip(), "Yalnızca TAMAM yaz.", self.y_model.text().strip(), 30)
+                self.y_durum.setText("Bağlantı çalışıyor. Yanıt: " + yanit.strip()[:40])
+            except RuntimeError as ex:
+                self.y_durum.setText(str(ex))
+            finally:
+                QApplication.restoreOverrideCursor()
+
+        by.clicked.connect(_y_kaydet)
+        bd.clicked.connect(_y_dene)
+        ic.addWidget(ky)
         ic.addStretch(1)
         self.yenile()
 

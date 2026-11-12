@@ -243,16 +243,7 @@ bütün e-postaları bul. Hiçbirini atlama. Yalnızca şu listeyi ver, başka b
 sıra no | tarih | saat | konu
 En sona toplam e-posta sayısını yaz."""
 
-KOMUT_FORM = """Az önce listelediğin e-postaların HEPSİNİ, listedeki sıra numarasına göre (eskiden yeniye)
-aşağıdaki forma dönüştür. Hiçbirini atlama, birleştirme.
-
-Her e-posta için AYRI bir blok yaz. Blok "=== KOT ===" satırıyla başlar, "=== SON ===" satırıyla biter.
-Blokların dışında hiçbir açıklama, giriş cümlesi ya da yorum yazma.
-En sona tek satır ekle: TOPLAM KOT: (blok sayısı)
-Yanıt uzunluk sınırına takılırsa bloğu yarıda kesme. Son tamamladığın bloktan sonra
-"DEVAMI VAR: kalan e-posta sayısı" yaz. "devam" dediğimde kaldığın yerden sürdür.
-
-KURALLAR
+KOT_KURALLARI = """KURALLAR
 1. Kaynak işareti, köşeli parantezli referans, dipnot ya da bağlantı EKLEME.
 2. Kalın, italik, madde imi, tablo ya da başka biçimlendirme KULLANMA. Düz metin yaz.
 3. Her tezgâh için AYRI bir TEZGAH satırı yaz. E-postada iki tezgâh birlikte anlatılsa bile ayır.
@@ -296,3 +287,71 @@ TEZGAH: IMxx | KOD: CNCxx | OLAY SAATI: SS:DD | KATEGORI: ... | NEDEN: ... | ACI
 (tek cümle)
 DURUM: 
 === SON ==="""
+
+KOMUT_FORM = """Az önce listelediğin e-postaların HEPSİNİ, listedeki sıra numarasına göre (eskiden yeniye)
+aşağıdaki forma dönüştür. Hiçbirini atlama, birleştirme.
+
+Her e-posta için AYRI bir blok yaz. Blok "=== KOT ===" satırıyla başlar, "=== SON ===" satırıyla biter.
+Blokların dışında hiçbir açıklama, giriş cümlesi ya da yorum yazma.
+En sona tek satır ekle: TOPLAM KOT: (blok sayısı)
+Yanıt uzunluk sınırına takılırsa bloğu yarıda kesme. Son tamamladığın bloktan sonra
+"DEVAMI VAR: kalan e-posta sayısı" yaz. "devam" dediğimde kaldığın yerden sürdür.
+
+""" + KOT_KURALLARI
+
+
+
+# --------------------------------------------------------------------------- yapay zekâsız yedek: maili kural tabanlı ayır
+_ANAHTAR = (
+    ("PLANLAMA", ("IS EMRI", "PLAN YOK", "PLANI YOK", "IS BIT", "ISLER BIT", "PROGRAM BIT", "KAPATILDI", "PLANLI DURUS")),
+    ("ARIZA", ("ARIZA", "SPINDLE", "PENS", "BAKIM")),
+    ("KALIP KONTROL", ("KALIP KONTROL", "YAZI ICIN", "OLCUM", "ONAY BEK")),
+    ("REVIZYON", ("REVIZYON", "TAMIR", "FARKLILIK", "UYUMSUZ")),
+    ("MALZEME-TAKIM", ("MALZEME", "KESICI", "TAKIM BEK", "UC BEK")),
+    ("ELEMAN", ("OPERATOR YOK", "ELEMAN", "IZIN")),
+    ("KALITE", ("KALITE", "UYGUNSUZ")),
+    ("SETUP", ("SETUP", "BAGLA", "APARAT", "MENGENE", "SIFIRLA", "AYAR", "DELIK")),
+)
+_MAKINE = re.compile(r"^\s*[\-•*]?\s*(I[Mm]|İ[Mm]|[iı][mM])\s?(\d{2,3})\b\s*(?:\(\s*([A-Za-z]{2,4}\s?\d{1,3})\s*\))?[\s:;\-–]*(.*)$")
+
+
+def kategori_tahmin(metin: str) -> str:
+    d = _duz(metin)
+    for kat, kelimeler in _ANAHTAR:
+        if any(k in d for k in kelimeler):
+            return kat
+    return "DIGER"
+
+
+def maili_coz(zaman: datetime, konu: str, metin: str, lider: str = "") -> Optional[Kot]:
+    """Bir maili yapay zekâ kullanmadan KOT kaydına çevirir: makine kodlu satır yeni tezgâhı başlatır,
+    altındaki satırlar açıklamasıdır; kategori anahtar kelimelerle seçilir. Makine bulunamazsa None."""
+    saat = f"{zaman:%H:%M}"
+    k = Kot(no=f"{zaman:%Y-%m%d-%H%M}", tarih=zaman.date(), saat=saat, vardiya=vardiya_bul(saat), konu=konu.strip(), lider=lider.strip())
+    simdiki: Optional[KotTezgah] = None
+    genel: List[str] = []
+    for satir in (metin or "").replace("\r", "").split("\n"):
+        t = satir.strip()
+        if not t:
+            continue
+        m = _MAKINE.match(t)
+        if m:
+            simdiki = KotTezgah(tezgah="IM" + m.group(2), kod=_duz(m.group(3) or "").replace(" ", ""), aciklama=m.group(4).strip())
+            k.tezgahlar.append(simdiki)
+        elif simdiki is not None:
+            if re.match(r"(?i)^(buna istinaden|bu nedenle|yukarıdaki|belirtilen)", t):
+                genel.append(t)
+                simdiki = None
+            else:
+                simdiki.aciklama = (simdiki.aciklama + " " + t).strip()
+        elif not re.match(r"(?i)^[\wçğıöşüÇĞİÖŞÜ ]{2,30}\s+bey\s*[;,:]?$", t):
+            genel.append(t)
+    if not k.tezgahlar:
+        return None
+    for tz in k.tezgahlar:
+        tz.kategori = kategori_tahmin(tz.aciklama)
+        ms = re.search(r"\b(\d{1,2})[:.](\d{2})\b", tz.aciklama)
+        tz.olay_saati = f"{int(ms.group(1)):02d}:{ms.group(2)}" if ms else ""
+        tz.neden = KATEGORI_AD[tz.kategori]
+    k.sonuc = " ".join(genel[-1:])
+    return k

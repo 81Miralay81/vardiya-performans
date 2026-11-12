@@ -42,3 +42,28 @@ def test_idari_icerik():
     assert "ÖNE ÇIKAN KÖK NEDENLER" in metne_cevir(ic)
     bos = idari_icerik([], cm, {})
     assert "KOT kaydı yok" in bos["ozet"] and bos["kok"] == []
+
+
+def test_maili_coz_yapay_zekasiz():
+    from datetime import datetime
+    from vardiya.kot import KOMUT_FORM, KOT_KURALLARI, maili_coz
+    from vardiya.outlook import metni_ayir
+    govde = ("Ahmet bey;\r\nIm54(cnc18)\r\n05:15!te mevcut iş bitmiş olup tezgah durdurulmuştur iş emri planı yok olarak girilmiştir.\r\n"
+             "Im84(cnc13)\r\n06:10!da tezgah kalıp kontrolü olarak durdurulmuştur.\r\n\r\nBuna istinaden duruşlardan OEE düşmektedir.\r\n\r\n"
+             "Bilgilerinize arz/rica ederim.\r\nSaygılarımla,\r\n\r\nBest Regards,\r\n\r\nAli VELİ\r\nKalıphane Grup Lideri\r\nMerkez: bir adres No: 1")
+    metin, ad = metni_ayir(govde)
+    assert ad == "Ali VELİ" and "Merkez" not in metin and "Bilgilerinize" not in metin
+    k = maili_coz(datetime(2026, 11, 9, 7, 27), "OEE HAK;", metin, ad)
+    assert k.no == "2026-1109-0727" and k.vardiya == 1 and k.lider == "Ali VELİ"
+    assert [(t.tezgah, t.kod, t.kategori, t.olay_saati) for t in k.tezgahlar] == [("IM54", "CNC18", "PLANLAMA", "05:15"), ("IM84", "CNC13", "KALIP KONTROL", "06:10")]
+    assert k.sonuc.startswith("Buna istinaden")
+    assert maili_coz(datetime(2026, 11, 9, 7, 27), "OEE", "Makine adı geçmeyen bir metin.") is None
+    assert KOT_KURALLARI.startswith("KURALLAR") and KOMUT_FORM.endswith("=== SON ===") and "Az önce listelediğin" in KOMUT_FORM
+
+
+def test_yapay_istem():
+    from datetime import datetime
+    from vardiya.outlook import Mail
+    from vardiya.yapay import kot_istemi
+    i = kot_istemi([Mail(datetime(2026, 11, 9, 7, 27), "OEE HAK;", "Kalip Uretim", "Im54 iş bitti.", "Ali VELİ")], "KURALLAR ...")
+    assert "E-POSTA 1 | TARIH: 09.11.2026 | SAAT: 07:27" in i and "Ali VELİ" not in i and "Im54 iş bitti." in i
