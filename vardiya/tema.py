@@ -139,15 +139,15 @@ KURAL_ACIKLAMA = {
 }
 
 
-YONTEMLER = (("vardiya", "Vardiya sırasıyla"), ("gun", "Gün sırasıyla"), ("hucre", "Ayrımsız (süre toplamı)"))
+YONTEMLER = (("vardiya", "Günlük, vardiya sırasıyla"), ("gun", "Günlük, gün sırasıyla"), ("hucre", "Günlük, ayrımsız (süre toplamı)"))
 YONTEM_ORNEK = "Örnek: 1. gün üç vardiya 80 / 80 / 80, 2. gün 75 / 90 / 40 (40 eşik altı, atılır)"
 YONTEM_ACIKLAMA = {
-    "vardiya": ("VARDİYA SIRASIYLA: Önce her vardiyanın, eşiği geçen günlerinin ortalaması alınır; sonra üç vardiyanın ortalaması "
+    "vardiya": ("GÜNLÜK, VARDİYA SIRASIYLA: Eşik her günün her vardiyasına ayrı uygulanır, eşik altı kalan atılır. Önce her vardiyanın, eşiği geçen günlerinin ortalaması alınır; sonra üç vardiyanın ortalaması "
                 "alınır. Tablodaki ORTALAMA sütunu, yanındaki üç vardiya sütununun ortalamasıdır. "
                 "Örnekte: (77,5 + 85 + 80) / 3 = %80,83"),
-    "gun": ("GÜN SIRASIYLA: Önce her günün, eşiği geçen vardiyalarının ortalaması alınır; sonra günlerin ortalaması alınır. "
+    "gun": ("GÜNLÜK, GÜN SIRASIYLA: Eşik her günün her vardiyasına ayrı uygulanır, eşik altı kalan atılır. Önce her günün, eşiği geçen vardiyalarının ortalaması alınır; sonra günlerin ortalaması alınır. "
             "Bütün vardiyaları eşik altında kalan gün bölene girmez. Örnekte: (80 + 82,5) / 2 = %81,25"),
-    "hucre": ("AYRIMSIZ (SÜRE TOPLAMI): Eşiği geçen bütün vardiyalar, gün ve vardiya ayrımı yapılmadan toplanır ve sayısına "
+    "hucre": ("GÜNLÜK, AYRIMSIZ (SÜRE TOPLAMI): Eşik her günün her vardiyasına ayrı uygulanır, eşik altı kalan atılır. Eşiği geçen bütün vardiyalar, gün ve vardiya ayrımı yapılmadan toplanır ve sayısına "
               "bölünür; her vardiya eşit ağırlık taşır. Örnekte: (80 + 80 + 80 + 75 + 90) / 5 = %81,00"),
 }
 YONTEM_DONEMDE = ("Dönem kuralında ortalama yöntemi uygulanmaz: her vardiyanın dönem toplamı kayıtlı gün sayısına bölünür, "

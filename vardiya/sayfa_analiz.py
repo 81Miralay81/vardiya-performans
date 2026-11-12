@@ -128,8 +128,7 @@ class AnalizSayfasi(QWidget):
         s = self.ana.sonuc
         olcu = OLCU[self.secim]
         if self.secim == 0:
-            self.alt_etiket.setText(ALT[0] if self.ana.ayar.get("hesap_kurali") != "donem" else
-                                    "Makine ve vardiya bazında çalışma oranı: bir makine, dönem ortalaması eşiği geçtiyse sayılır (Excel gibi).")
+            self.alt_etiket.setText(ALT[0])
         if not s:
             self.k_genel.d.setText("-")
             self.k_genel.a.setText("Önce Veri Aktar sayfasından dosya yükleyin" if not self.ana.kapsam() else "Gün seçilmedi")
@@ -143,8 +142,7 @@ class AnalizSayfasi(QWidget):
         g = s.genel[self.secim]
         gun = s.hesap_gunu()
         self.k_genel.d.setText(tema.yuzde(g) if g is not None else "-")
-        kural = ("dönem kuralı (Excel gibi)" if self.ana.ayar.get("hesap_kurali") == "donem" else
-                 "günlük kural · " + dict(tema.YONTEMLER).get(self.ana.ayar.get("hesap_yontemi", "vardiya"), "").lower())
+        kural = dict(tema.YONTEMLER).get(self.ana.ayar.get("hesap_yontemi", "vardiya"), "").lower()
         self.k_genel.a.setText(f"{gun} gün · eşik %{self.ana.ayar['esik'] * 100:.0f} · {kural}")
         for v in VARDIYALAR:
             oz = s.vardiyalar[v]

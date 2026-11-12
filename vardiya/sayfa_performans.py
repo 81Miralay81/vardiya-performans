@@ -37,7 +37,7 @@ def performans_verisi(ana) -> dict:
         return veri
     gunler = ana.donem_gunleri()
     veri["genel"] = sonuc.genel[0]
-    kural = "dönem kuralı" if ayar.kural == "donem" else "günlük kural · " + dict(tema.YONTEMLER).get(ayar.yontem, "").lower()
+    kural = dict(tema.YONTEMLER).get(ayar.yontem, "").lower()
     veri["aciklama"] = f"{sonuc.hesap_gunu()} gün · eşik %{round(ayar.esik * 100)} · {kural}"
     if gunler:
         veri["donem"] = f"{min(gunler):%d.%m.%Y} – {max(gunler):%d.%m.%Y}"

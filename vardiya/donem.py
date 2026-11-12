@@ -129,14 +129,13 @@ class DonemCubugu(QFrame):
         self.esik.setToolTip("Bir makinenin o gün o vardiyada sayılması için gereken en düşük çalışma oranı")
         self.esik.editingFinished.connect(lambda: self.esik_degisti.emit(self.esik.value() / 100.0))
         lay.addWidget(self.esik)
-        lay.addWidget(self._etiket("Kural"))
-        self.kural = QComboBox()
+        self.kural = QComboBox(self)          # dönem kuralı kaldırıldı; yalnızca günlük kural kullanılır
+        self.kural.hide()
         for anahtar, ad in tema.KURALLAR:
             self.kural.addItem(ad, anahtar)
         self.kural.setToolTip("\n\n".join(tema.KURAL_ACIKLAMA.values()))
-        self.kural.setCurrentIndex(max(0, self.kural.findData(kural)))
+        self.kural.setCurrentIndex(max(0, self.kural.findData("gunluk")))
         self.kural.activated.connect(lambda _=0: (self.yontem_yaz(), self.kural_degisti.emit(self.kural.currentData())))
-        lay.addWidget(self.kural)
         lay2.addWidget(self._etiket("Tarih aralığı"))
         self.bas = QDateEdit()
         self.bit = QDateEdit()
@@ -155,7 +154,7 @@ class DonemCubugu(QFrame):
         self.bilgi = QLabel("")
         self.bilgi.setObjectName("AltBaslik")
         lay2.addWidget(self.bilgi, 1)
-        lay2.addWidget(self._etiket("Ortalama yöntemi"))
+        lay2.addWidget(self._etiket("Hesap yöntemi"))
         self.yontem = QComboBox()
         for anahtar, ad in tema.YONTEMLER:
             self.yontem.addItem(ad, anahtar)
@@ -171,12 +170,7 @@ class DonemCubugu(QFrame):
 
     def yontem_yaz(self):
         """Seçili ortalama yönteminin açıklamasını çubuğun altına yazar."""
-        donem = self.kural.currentData() == "donem"
-        self.yontem.setEnabled(not donem)
-        if donem:
-            self.yontem_aciklama.setText(tema.YONTEM_DONEMDE)
-        else:
-            self.yontem_aciklama.setText(tema.YONTEM_ACIKLAMA[self.yontem.currentData()] + "   ·   " + tema.YONTEM_ORNEK)
+        self.yontem_aciklama.setText(tema.YONTEM_ACIKLAMA[self.yontem.currentData()] + "   ·   " + tema.YONTEM_ORNEK)
 
     @staticmethod
     def _etiket(t):

@@ -79,16 +79,15 @@ class AyarSayfasi(QWidget):
             self.kural.addItem(ad, anahtar)
         self.kural_aciklama = etiket("", "AltBaslik")
         self.kural.currentIndexChanged.connect(lambda _=0: self.kural_aciklama.setText(tema.KURAL_ACIKLAMA[self.kural.currentData()]))
-        f.addRow("Hesap kuralı", self.kural)
-        f.addRow("", self.kural_aciklama)
+        self.kural.setParent(self); self.kural.hide()
+        self.kural_aciklama.setParent(self); self.kural_aciklama.hide()
         self.yontem = QComboBox()
         for anahtar, ad in tema.YONTEMLER:
             self.yontem.addItem(ad, anahtar)
         self.yontem_aciklama = etiket("", "AltBaslik")
-        self.yontem.currentIndexChanged.connect(lambda _=0: self.yontem_aciklama.setText(
-            tema.YONTEM_ACIKLAMA[self.yontem.currentData()] + "\n" + tema.YONTEM_ORNEK + "\n(Yalnızca günlük kuralda uygulanır.)"))
-        f.addRow("Ortalama yöntemi", self.yontem)
-        f.addRow("", self.yontem_aciklama)
+        self.yontem.setParent(self); self.yontem.hide()
+        self.yontem_aciklama.setText("Hesap yöntemi, üstteki dönem çubuğundan seçilir (Performans, Çalışma, Genel Duruş ve Mola sayfalarında görünür).")
+        f.addRow("Hesap yöntemi", self.yontem_aciklama)
         f.addRow("Eşik (makine sayılması için en az)", self.esik)
         f.addRow("Vardiya uzunluğu", self.vardiya_dk)
         f.addRow("Yemek molası (her vardiyada 1 kez)", self.yemek_dk)
@@ -240,8 +239,6 @@ class AyarSayfasi(QWidget):
     def kaydet(self):
         con = self.ana.con
         vt.ayar_yaz(con, "esik", self.esik.value() / 100.0)
-        vt.ayar_yaz(con, "hesap_kurali", self.kural.currentData())
-        vt.ayar_yaz(con, "hesap_yontemi", self.yontem.currentData())
         vt.ayar_yaz(con, "vardiya_dk", self.vardiya_dk.value())
         vt.ayar_yaz(con, "yemek_dk", self.yemek_dk.value())
         vt.ayar_yaz(con, "cay_dk", self.cay_dk.value())
