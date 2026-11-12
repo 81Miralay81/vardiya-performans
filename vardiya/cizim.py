@@ -641,7 +641,7 @@ def _html_ciz(p: QPainter, rect: QRectF, html: str, k: float, taban_px: float = 
     p.restore()
 
 
-IDARI_SAYFA = 3
+IDARI_SAYFA = 4
 _DURUM_RENK = {"Kritik düşük": "#D64541", "Düşük": "#F28C28", "Orta": "#E0B400", "Hedefte": "#5E9B2A"}
 
 
@@ -670,7 +670,7 @@ def _idari_basligi(p: QPainter, rect: QRectF, r: dict, sayfa: int):
 
 
 def idari_ciz(p: QPainter, rect: QRectF, r: dict, sayfa: int = 0):
-    """İdari rapor: 1. sayfa değerlendirme metni ve tablolar, 2-3. sayfalar grafikler."""
+    """İdari rapor: 1. sayfa değerlendirme metni ve tablolar, 2-4. sayfalar grafikler."""
     p.save()
     p.fillRect(rect, QColor("white"))
     govde, k = _idari_basligi(p, rect, r, sayfa)
@@ -726,15 +726,14 @@ def idari_ciz(p: QPainter, rect: QRectF, r: dict, sayfa: int = 0):
         yari = (govde.height() - bosluk) / 2
         cormind_oee_grafigi(p, QRectF(govde.left(), govde.top(), govde.width(), yari), cm)
         genel_performans_grafigi(p, QRectF(govde.left(), govde.top() + yari + bosluk, govde.width(), yari), sonuc, makineler, r.get("mola_pay", 9.09))
+    elif sayfa == 2:
+        cormind_durus_grafigi(p, govde, cm)
     else:
-        ust_h = govde.height() * 0.62
-        cormind_durus_grafigi(p, QRectF(govde.left(), govde.top(), govde.width(), ust_h), cm)
-        alt = QRectF(govde.left(), govde.top() + ust_h + bosluk, govde.width(), govde.height() - ust_h - bosluk)
-        sol = QRectF(alt.left(), alt.top(), alt.width() * 0.56, alt.height())
+        sol = QRectF(govde.left(), govde.top(), govde.width() * 0.56, govde.height() * 0.78)
         vardiya_grafigi(p, sol, sonuc, r["seflar"], 0, "Vardiya Bazlı Performans (Çalışma) Oranı", arka=False)
         tum = list(makineler) + sorted(m for m in sonuc.hucreler if m not in makineler)
-        tw = min(alt.width() - sol.width() - 40 * k, alt.height() * 1.05)
-        tablo_ciz(p, QRectF(alt.right() - tw, alt.top(), tw, alt.height()), sonuc, tum, 0, 1.4)
+        tw = min(govde.width() - sol.width() - 50 * k, govde.height() * 0.70)
+        tablo_ciz(p, QRectF(govde.right() - tw, govde.top(), tw, govde.height()), sonuc, tum, 0)
     p.restore()
 
 

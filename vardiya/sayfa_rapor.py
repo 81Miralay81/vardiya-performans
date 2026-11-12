@@ -122,7 +122,7 @@ class RaporSayfasi(QWidget):
         self.b_makine, self.b_vardiya, self.b_idari = QPushButton("Makine"), QPushButton("Vardiya"), QPushButton("İdari")
         self.b_makine.setToolTip("Makine bazlı rapor")
         self.b_vardiya.setToolTip("Vardiya bazlı rapor")
-        self.b_idari.setToolTip("İdari rapor: grup lideri bildirimlerinden (KOT) değerlendirme metni, tablolar ve beş grafik (3 sayfa)")
+        self.b_idari.setToolTip("İdari rapor: grup lideri bildirimlerinden (KOT) değerlendirme metni, tablolar ve beş grafik (4 sayfa)")
         for b, anahtar in ((self.b_makine, "makine"), (self.b_vardiya, "vardiya"), (self.b_idari, "idari")):
             b.setObjectName("Hizli")
             b.setCheckable(True)
