@@ -264,6 +264,120 @@ def tablo_resmi(sonuc, makineler, secim=0, genislik=660, satir=30, yazi_carpani=
     return img
 
 
+# ============================================================ Cormind zaman dağılım grafiği (rapor için)
+def cormind_durus_grafigi(p: QPainter, rect: QRectF, cm: Dict[str, dict], baslik: Optional[str] = "Zaman Dağılım Grafiği (Cormind hesabı)",
+                          limit: float = 15.0):
+    """cm: hesap.cormind_hesabi çıktısı. Her makinede duruş türleri üst üste, mola süresi (eksi ise) sıfırın altında."""
+    s = olcek(rect)
+    p.save()
+    p.setRenderHint(QPainter.Antialiasing, True)
+    p.setRenderHint(QPainter.TextAntialiasing, True)
+    if baslik:
+        _yaz(p, QRectF(rect.left(), rect.top() + 4 * s, rect.width(), 28 * s), baslik, 19 * s, True, ORTA, tema.LACIVERT)
+    makineler = list(cm)
+    if not makineler:
+        _yaz(p, rect, "Seçilen dönemde gösterilecek veri yok", 16 * s, False, ORTA, tema.YAZI_SOLUK)
+        p.restore()
+        return
+    toplam: Dict[str, float] = {}
+    for v in cm.values():
+        for t, x in v["durus"].items():
+            toplam[t] = toplam.get(t, 0.0) + x
+    turler = sorted(toplam, key=lambda t: -toplam[t])
+    # gösterge (altta, satır satır)
+    gosterge = [(t, tema.durus_rengi(t)) for t in turler] + [("Mola Süresi", tema.MOLA_RENK)]
+    p.setFont(font(11 * s))
+    fm = p.fontMetrics()
+    satirlar, satir, gen = [], [], 0.0
+    azami = rect.width() - 40 * s
+    for ad, renk_ in gosterge:
+        w = fm.horizontalAdvance(ad) + 34 * s
+        if satir and gen + w > azami:
+            satirlar.append((satir, gen))
+            satir, gen = [], 0.0
+        satir.append((ad, renk_, w))
+        gen += w
+    if satir:
+        satirlar.append((satir, gen))
+    gos_h = len(satirlar) * 20 * s + 6 * s
+    sol, sag, ust, alt = 56 * s, 78 * s, (40 if baslik else 16) * s, 52 * s + gos_h
+    alan = QRectF(rect.left() + sol, rect.top() + ust, rect.width() - sol - sag, rect.height() - ust - alt)
+    ust_yigin = max([sum(max(0.0, x) for x in v["durus"].values()) + max(0.0, v["mola"]) for v in cm.values()] + [limit + 5])
+    en_alt = min([v["mola"] for v in cm.values()] + [0.0])
+    import math
+    ymin = math.floor(en_alt / 10.0) * 10.0
+    ymax = math.ceil((ust_yigin + 6) / 10.0) * 10.0
+    adim = 10.0 if (ymax - ymin) <= 80 else 20.0
+
+    def yy(v: float) -> float:
+        return alan.bottom() - alan.height() * (v - ymin) / (ymax - ymin)
+
+    k = ymin
+    while k <= ymax + 1e-9:
+        p.setPen(QPen(QColor("#E3E7EF"), max(1, s)))
+        p.drawLine(QPointF(alan.left(), yy(k)), QPointF(alan.right(), yy(k)))
+        _yaz(p, QRectF(rect.left(), yy(k) - 10 * s, sol - 8 * s, 20 * s), f"{k:.0f}%", 11 * s, False, SAG, tema.YAZI_SOLUK)
+        k += adim
+    n = len(makineler)
+    slot = alan.width() / n
+    genislik = min(slot * 0.64, 46 * s)
+    dondur = slot < 40 * s
+
+    def parca(cx, a, u, renk_, eksi=False):
+        r_ = QRectF(cx - genislik / 2, yy(u), genislik, yy(a) - yy(u))
+        if r_.height() < 0.4:
+            return
+        g = QLinearGradient(r_.topLeft(), r_.topRight())
+        ana = QColor(renk_)
+        g.setColorAt(0, ana.lighter(118))
+        g.setColorAt(1, ana.darker(108))
+        p.setPen(QPen(QColor("white"), max(0.6, 0.8 * s)))
+        p.setBrush(QBrush(g))
+        p.drawRect(r_)
+        if r_.height() >= 15 * s and genislik >= 20 * s:
+            acik = ana.lightness() > 150
+            _yaz(p, r_, ("-" if eksi else "") + f"{u - a:.0f}%", 9.5 * s, True, ORTA, "#101320" if acik else "#FFFFFF")
+
+    for i, m in enumerate(makineler):
+        v = cm[m]
+        cx = alan.left() + slot * (i + 0.5)
+        yigin = 0.0
+        for t in turler:
+            x = v["durus"].get(t, 0.0)
+            if x > 0:
+                parca(cx, yigin, yigin + x, tema.durus_rengi(t))
+                yigin += x
+        if v["mola"] >= 0:
+            parca(cx, yigin, yigin + v["mola"], tema.MOLA_RENK)
+            yigin += v["mola"]
+        else:
+            parca(cx, v["mola"], 0.0, tema.MOLA_RENK, eksi=True)
+        _yaz(p, QRectF(cx - slot / 2, yy(yigin) - 18 * s, slot, 16 * s), f"{v['toplam']:.0f}%", (10.5 if not dondur else 9.5) * s, True, ORTA, tema.YAZI)
+        if dondur:
+            p.save()
+            p.translate(cx + 4 * s, alan.bottom() + 8 * s)
+            p.rotate(60)
+            _yaz(p, QRectF(0, -8 * s, 60 * s, 16 * s), m, 11 * s, False, AL, tema.YAZI)
+            p.restore()
+        else:
+            _yaz(p, QRectF(cx - slot / 2, alan.bottom() + 6 * s, slot, 20 * s), m, 12 * s, True, ORTA, tema.YAZI)
+    p.setPen(QPen(QColor("#9AA3B8"), max(1, 1.4 * s)))
+    p.drawLine(QPointF(alan.left(), yy(0)), QPointF(alan.right(), yy(0)))
+    p.setPen(QPen(QColor(tema.YESIL), 2.4 * s))
+    p.drawLine(QPointF(alan.left(), yy(limit)), QPointF(alan.right(), yy(limit)))
+    _yaz(p, QRectF(alan.right() + 4 * s, yy(limit) - 20 * s, sag - 4 * s, 40 * s), f"Limit\n%{limit:.0f}", 11 * s, True, AL, tema.YESIL)
+    # gösterge
+    gy = rect.bottom() - gos_h + 2 * s
+    for satir, gen in satirlar:
+        gx = rect.center().x() - gen / 2
+        for ad, renk_, w in satir:
+            p.fillRect(QRectF(gx, gy + 4 * s, 12 * s, 10 * s), QColor(renk_))
+            _yaz(p, QRectF(gx + 17 * s, gy, w, 18 * s), ad, 11 * s, False, AL, tema.YAZI)
+            gx += w
+        gy += 20 * s
+    p.restore()
+
+
 # ============================================================ özet tablosu (vardiya raporunda)
 def ozet_tablo(p: QPainter, rect: QRectF, sonuc: DonemSonuc, seflar: Dict[int, str]):
     s = olcek(rect, 600, 150)
@@ -329,6 +443,8 @@ def rapor_ciz(p: QPainter, rect: QRectF, r: dict):
             oran = min(alt.width() / gorsel.width(), alt.height() / gorsel.height())
             w, h = gorsel.width() * oran, gorsel.height() * oran
             p.drawImage(QRectF(alt.center().x() - w / 2, alt.top(), w, h), gorsel)
+        elif r.get("cormind"):
+            cormind_durus_grafigi(p, alt, r["cormind"])
         elif r.get("yer_tutucu"):
             p.setPen(QPen(QColor("#B8BFD0"), 2 * k, Qt.DashLine))
             p.setBrush(Qt.NoBrush)

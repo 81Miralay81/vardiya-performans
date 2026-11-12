@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (QApplication, QButtonGroup, QComboBox, QDateEdit,
 
 from . import cizim, tema, veritabani as vt
 from .donem import ay_sonu, hafta_basi, pd, qd
-from .hesap import VARDIYALAR, hesapla
+from .hesap import VARDIYALAR, cormind_hesabi, hesapla
 from .sayfa_ortak import SefCombo, etiket, kart, resim_menusu
 
 TURLER = ("Günlük", "Haftalık", "Aylık", "Özel aralık")
@@ -169,7 +169,7 @@ class RaporSayfasi(QWidget):
         gl = QVBoxLayout(self.gorsel_kutu)
         gl.setContentsMargins(0, 0, 0, 0)
         gl.setSpacing(6)
-        gl.addWidget(etiket("CORMIND GÖRÜNTÜSÜ", "KartBaslik"))
+        gl.addWidget(etiket("CORMIND DURUŞ GRAFİĞİ", "KartBaslik"))
         self.gorsel_durum = etiket("Henüz eklenmedi", "AltBaslik")
         gl.addWidget(self.gorsel_durum)
         self.b_yapistir = QPushButton("Panodan Yapıştır (Ctrl+V)")
@@ -287,7 +287,8 @@ class RaporSayfasi(QWidget):
             seflar=seflar, gorsel=self._gorsel if self.b_makine.isChecked() else None,
             bos_goster=self.ana.ayar.get("idle_makineleri_goster", False), esik=self.ana.ayar["esik"],
             net_saat=self.ana.hesap_ayar().net_saat, yer_tutucu=True,
-            alt_sag=f"Oluşturma: {datetime.now():%d.%m.%Y %H:%M}", ilk=ilk, son=son)
+            alt_sag=f"Oluşturma: {datetime.now():%d.%m.%Y %H:%M}", ilk=ilk, son=son,
+            cormind=cormind_hesabi(kayit, self._gunler, self.ana.ayar["makineler"], self.ana.hesap_ayar()))
 
     def yenile(self):
         self._varsayilan_tarihler()
@@ -350,9 +351,9 @@ class RaporSayfasi(QWidget):
 
     def _gorsel_durum_yaz(self):
         if self._gorsel is not None and not self._gorsel.isNull():
-            self.gorsel_durum.setText(f"Ekli ({self._gorsel.width()}×{self._gorsel.height()} piksel)")
+            self.gorsel_durum.setText(f"Yapıştırdığınız görüntü kullanılıyor ({self._gorsel.width()}×{self._gorsel.height()} piksel). Programın çizdiğine dönmek için Kaldır'a basın.")
         else:
-            self.gorsel_durum.setText("Henüz eklenmedi. Cormind grafiğini kopyalayıp Ctrl+V yapın.")
+            self.gorsel_durum.setText("Program kendi çiziyor (Cormind hesabıyla). İsterseniz kendi görüntünüzü yapıştırabilirsiniz; o zaman o kullanılır.")
         self.b_kaldir.setEnabled(self._gorsel is not None)
 
     def _gorsel_ayarla(self, img: QImage):
