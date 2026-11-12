@@ -1,3 +1,5 @@
 PySide6-Essentials>=6.6
+PySide6-Addons>=6.6
+PySide6-WebEngine; python_version >= '3.9'
 openpyxl>=3.1
 xlrd>=2.0.1

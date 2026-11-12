@@ -18,14 +18,15 @@ from .sayfa_ayar import AyarSayfasi
 from .sayfa_gecmis import GecmisSayfasi
 from .sayfa_kayitlar import KayitlarSayfasi
 from .sayfa_operator import OperatorSayfasi
+from .sayfa_performans import PerformansSayfasi
 from .sayfa_rapor import RaporSayfasi
 from .sayfa_veri import VeriSayfasi
 from .surum import SURUM
 from . import guncelleme
 
-MENU = (("veri", "Veri Aktar"), ("kayitlar", "Kayıtlar"), ("performans", "Performans"), ("durus", "Genel Duruş"), ("mola", "Mola"),
+MENU = (("veri", "Veri Aktar"), ("kayitlar", "Kayıtlar"), ("performans", "Performans"), ("calisma", "Çalışma"), ("durus", "Genel Duruş"), ("mola", "Mola"),
         ("operator", "Operatör"), ("rapor", "Raporlar"), ("gecmis", "Geçmiş"), ("ayar", "Ayarlar"))
-DONEMLI = {"performans", "durus", "mola", "operator"}
+DONEMLI = {"performans", "calisma", "durus", "mola", "operator"}
 
 
 class AnaPencere(QMainWindow):
@@ -35,6 +36,7 @@ class AnaPencere(QMainWindow):
         self.con = vt.ac(db_yolu)
         self.ayar = vt.ayar_oku(self.con)
         self.sonuc = None
+        self.kayit = []
         self.seflar = {}
         self.setWindowTitle("Vardiya Performans")
         self.setWindowIcon(QIcon(tema.kaynak_yolu("assets", "uygulama.ico")))
@@ -107,7 +109,8 @@ class AnaPencere(QMainWindow):
         self.sayfalar = {
             "veri": VeriSayfasi(self),
             "kayitlar": KayitlarSayfasi(self),
-            "performans": AnalizSayfasi(self, 0),
+            "performans": PerformansSayfasi(self),
+            "calisma": AnalizSayfasi(self, 0),
             "durus": AnalizSayfasi(self, 1),
             "mola": AnalizSayfasi(self, 2),
             "operator": OperatorSayfasi(self),
@@ -199,7 +202,7 @@ class AnaPencere(QMainWindow):
             return
         vt.sef_ata(self.con, gunler, vardiya, ad)
         self.seflar = vt.sef_getir(self.con, self.donem.gunler(), self.ayar)
-        for a in ("performans", "durus", "mola"):
+        for a in ("performans", "calisma", "durus", "mola"):
             self.sayfalar[a].yenile()
         self.sayfalar["rapor"]._zamanla()
 
@@ -239,12 +242,13 @@ class AnaPencere(QMainWindow):
             secili = self.donem.gunler()
             ilk, son = self.donem.aralik()
             if not secili:
-                self.sonuc, self.seflar = None, {}
+                self.sonuc, self.seflar, self.kayit = None, {}, []
             else:
                 tum = [ilk + timedelta(days=i) for i in range((son - ilk).days + 1)]
                 kapsam = self.kapsam()
                 gunler = sorted(set(secili) | {g for g in tum if not kapsam.get(g)})
                 kayit = vt.kayitlari_getir(self.con, min(gunler), max(gunler))
+                self.kayit = kayit
                 self.sonuc = hesapla(kayit, gunler, self.hesap_ayar(), set(kapsam))
                 self.seflar = vt.sef_getir(self.con, secili, self.ayar)
             k = self.kapsam()
@@ -255,7 +259,7 @@ class AnaPencere(QMainWindow):
                 self.alt_bilgi.setText("Henüz veri yok")
         finally:
             QApplication.restoreOverrideCursor()
-        for a in ("performans", "durus", "mola", "operator"):
+        for a in ("performans", "calisma", "durus", "mola", "operator"):
             self.sayfalar[a].yenile()
         self.sayfalar["veri"].yenile()
         if hasattr(self, "sayfalar") and self.yigin.currentWidget() is self.sayfalar["rapor"]:

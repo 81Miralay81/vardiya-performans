@@ -19,7 +19,10 @@ def kendini_sina() -> int:
     """Derlenen exe'nin sağlam olup olmadığını denetler (ekran açmadan): tüm sayfalar, içe aktarma, PDF."""
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     os.environ["VARDIYA_GUNCELLEME_YOK"] = "1"
+    bayrak = "--disable-gpu" + (" --no-sandbox" if hasattr(os, "geteuid") and os.geteuid() == 0 else "")
+    os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS", bayrak)
     import tempfile
+    import time
     from datetime import datetime, timedelta
     from openpyxl import Workbook
     app = QApplication(sys.argv)
@@ -48,6 +51,27 @@ def kendini_sina() -> int:
     if not w.sonuc or w.sonuc.genel[0] is None:
         print("HATA: hesap sonucu boş")
         return 2
+    # web tabanlı Performans sayfası gerçekten çizdi mi
+    perf = w.sayfalar["performans"]
+    if perf.web is None:
+        from vardiya.sayfa_performans import WEB_HATA
+        print("HATA: web grafik bileşeni yüklenemedi:", WEB_HATA)
+        return 4
+    w.sayfa_ac("performans")
+    durum = {}
+    bitis = time.time() + 60
+    while time.time() < bitis and not durum.get("tamam"):
+        perf.web.page().runJavaScript(
+            "JSON.stringify([window.__cizildi||0, document.querySelectorAll('canvas').length, (typeof V!=='undefined'&&V)?V.makineler.length:0])",
+            lambda r: durum.update(son=r, tamam=bool(r) and __import__("json").loads(r)[0] >= 1 and __import__("json").loads(r)[1] >= 2 and __import__("json").loads(r)[2] >= 2))
+        t = time.time() + 0.5
+        while time.time() < t:
+            app.processEvents()
+            time.sleep(0.02)
+    if not durum.get("tamam"):
+        print("HATA: web grafik sayfası çizilmedi:", durum.get("son"))
+        return 5
+    print("WEB TAMAM", durum.get("son"))
     from vardiya.sayfa_rapor import pdf_bayt
     w.sayfa_ac("rapor")
     w.sayfalar["rapor"]._yenile_simdi()

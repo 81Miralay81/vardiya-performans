@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="tr"><head><meta charset="utf-8">
+<title>Performans</title>
+<script src="echarts.min.js"></script>
+<style>
+:root{--zemin:#f2f4f9;--kart:#ffffff;--kart2:#f7f9fd;--yazi:#1b1e2b;--soluk:#6b7285;--cizgi:#e3e7ef;--lacivert:#150958;--yesil:#5e9b2a}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--zemin);color:var(--yazi);font-family:"Segoe UI",system-ui,sans-serif;font-size:13px;overflow-y:auto;user-select:none}
+.sayfa{padding:2px 6px 14px 0}
+.kutular{display:grid;grid-template-columns:1.25fr 1fr 1fr 1fr;gap:12px;margin-bottom:12px}
+.kutu,.kart{background:linear-gradient(160deg,var(--kart),var(--kart2));border:1px solid var(--cizgi);border-radius:14px;
+  box-shadow:0 10px 26px rgba(21,9,88,.08),inset 0 1px 0 #fff}
+.kutu{padding:9px 16px}
+.kutu .ad{color:var(--soluk);font-size:11.5px;font-weight:600;letter-spacing:.04em}
+.kutu .deger{font-size:27px;font-weight:700;color:var(--lacivert);margin-top:2px}
+.kutu .alt{color:var(--soluk);font-size:12px;margin-top:2px}
+.kutu .sef{color:var(--yesil);font-weight:700;font-size:12.5px;margin-top:3px}
+.orta{display:grid;grid-template-columns:264px 1fr;gap:12px;margin-bottom:12px;align-items:stretch}
+.kart{padding:12px 14px}
+.kb{display:flex;align-items:baseline;gap:10px;margin-bottom:2px}
+.kb b{font-size:15px;color:var(--lacivert)}
+.kb span{color:var(--soluk);font-size:12px}
+table{border-collapse:collapse;width:100%;font-size:11.5px}
+th{color:var(--soluk);font-weight:600;text-align:right;padding:3px 4px;border-bottom:2px solid var(--cizgi);position:sticky;top:0;background:var(--kart)}
+th:first-child,td:first-child{text-align:left}
+td{padding:2.5px 3px;text-align:right;border-bottom:1px solid var(--cizgi);white-space:nowrap}
+td.m{font-weight:700;color:var(--lacivert)}
+tr.genel td{font-weight:700;background:#eef3e6}
+tr.sat{cursor:pointer}
+tr.sat:hover td{background:#eef1fa}
+tr.secili td{background:#e3e8fb}
+.cubuk{display:inline-block;width:26px;height:6px;border-radius:3px;background:#e6e9f2;vertical-align:middle;margin-right:5px;overflow:hidden}
+.cubuk i{display:block;height:100%;border-radius:3px}
+.tablokap{max-height:600px;overflow-y:auto;overflow-x:hidden}
+#gv{height:185px}#gm{height:400px}#gd{height:380px}
+.sag{display:grid;grid-template-rows:auto 1fr;gap:12px;min-width:0}
+.gosterge{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;color:var(--soluk);font-size:12px;margin-top:2px}
+.gosterge i{display:inline-block;width:13px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.bos{color:var(--soluk);text-align:center;padding:60px 0;font-size:14px}
+</style></head><body>
+<div class="sayfa" id="sayfa">
+ <div class="kutular" id="kutular"></div>
+ <div class="orta">
+  <div class="kart"><div class="kb"><b>Makineler</b><span id="tabloalt"></span></div><div class="tablokap"><table id="tablo"></table></div></div>
+  <div class="sag">
+   <div class="kart"><div class="kb"><b>Vardiya bazlı çalışma oranı</b><span id="donem"></span></div><div id="gv"></div></div>
+   <div class="kart"><div class="kb"><b>Makine bazlı performans</b><span>sütunun çalışma ya da duruş kısmına tıklayın: duruşlar · mola kısmına tıklayın: vardiya bazlı mola</span></div>
+    <div id="gm"></div>
+    <div class="gosterge"><span><i style="background:#5e9b2a"></i>Çalışma</span><span><i style="background:#d64541"></i>Duruş</span>
+     <span><i style="background:#f28c28"></i>Mola yapılan</span><span><i style="background:#7b4fa8"></i>Molada çalışılan</span></div>
+   </div>
+  </div>
+ </div>
+ <div class="kart" id="detaykart"><div class="kb"><b id="db">Ayrıntı</b><span id="da">yukarıdaki grafikte bir makineye tıklayın</span></div><div id="gd"></div></div>
+</div>
+<script>
+"use strict";
+const YESIL="#5e9b2a", KIRMIZI="#d64541", TURUNCU="#f28c28", MOR="#7b4fa8", LACIVERT="#241a8c";
+const PALET=["#f5c400","#ff8a1f","#4aa3ee","#e0245e","#c9b27c","#8b96a3","#12a37a","#f29bc0","#1c7ed6","#ff9f80","#7a5fd0","#ffb020","#d9d400","#a14a2b","#7b5a36","#4dd0c0","#5b8c2a","#b0478f"];
+const SABIT={"İŞ EMRİ PLAN YOK":"#f5c400","Çalışmıyor":"#ff8a1f","Kısa Duruş":"#4aa3ee","TEMİZLİK":"#e0245e","KESİCİ TAKIM-UC KONTROL":"#c9b27c","MEKANİK ARIZA":"#8b96a3","SETUP BEKLEME":"#12a37a","Belgelenmemiş Duruş":"#f29bc0","Kurulum":"#1c7ed6","SETUP":"#1c7ed6","Kalite Kontrol":"#ff9f80","ÇAPAK ALMA":"#7a5fd0","KALIP KONTROLÜ":"#ffb020","ELEKTRİK ARIZA":"#d9d400","ELEMAN YETERSİZLİĞİ":"#a14a2b","GRUP LİDERİ BEKLEME":"#7b5a36","CAM BEKLEME":"#4dd0c0"};
+function tipRenk(t){ if(SABIT[t]) return SABIT[t]; let h=0; for(const c of t) h=(h*31+c.charCodeAt(0))>>>0; return PALET[h%PALET.length]; }
+const D=13;
+const yz=(x,b)=>x==null?"":(x*100).toFixed(b==null?1:b).replace(".",",")+"%";
+const sa=h=>{const d=Math.round(h*60);return Math.floor(d/60)+":"+String(d%60).padStart(2,"0")};
+const ton=(r,f)=>{const n=parseInt(r.slice(1),16),k=[n>>16,(n>>8)&255,n&255].map(v=>Math.round(f<0?v*(1+f):v+(255-v)*f));return "rgb("+k.join(",")+")"};
+const kacis=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+// üç boyutlu blok: yUst < yAlt (piksel). ustYuz: üst yüzü çiz.
+function kup(x,yAlt,yUst,gen,renk,yazi,zemin,gecikme,ustYuz,yaziRenk){
+ const h=yAlt-yUst, x0=x-gen/2, dx=D, dy=-D*0.55, cocuk=[
+  {type:"polygon",shape:{points:[[x0+gen,yUst],[x0+gen+dx,yUst+dy],[x0+gen+dx,yAlt+dy],[x0+gen,yAlt]]},
+   style:{fill:new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:ton(renk,-0.25)},{offset:1,color:ton(renk,-0.45)}])}}];
+ if(ustYuz!==false) cocuk.push({type:"polygon",shape:{points:[[x0,yUst],[x0+dx,yUst+dy],[x0+gen+dx,yUst+dy],[x0+gen,yUst]]},style:{fill:ton(renk,0.35)}});
+ cocuk.push({type:"rect",shape:{x:x0,y:yUst,width:gen,height:h},
+   style:{fill:new echarts.graphic.LinearGradient(0,0,1,0,[{offset:0,color:ton(renk,0.22)},{offset:0.35,color:renk},{offset:1,color:ton(renk,-0.18)}]),
+          shadowBlur:12,shadowColor:"rgba(21,9,88,.22)",shadowOffsetX:4,shadowOffsetY:4}},
+  {type:"rect",shape:{x:x0+gen*0.08,y:yUst,width:gen*0.16,height:h},style:{fill:"rgba(255,255,255,.18)"}});
+ if(yazi) cocuk.push({type:"text",style:{text:yazi,x:x,y:yUst+h/2,textAlign:"center",textVerticalAlign:"middle",fill:yaziRenk||"#fff",font:"700 11px Segoe UI"}});
+ return {type:"group",originY:zemin,scaleY:1,enterFrom:{scaleY:0},enterAnimation:{duration:750,delay:gecikme||0,easing:"cubicOut"},children:cocuk};
+}
+const ipucu={backgroundColor:"#fff",borderColor:"#d5dbea",textStyle:{color:"#1b1e2b",fontSize:12.5},extraCssText:"box-shadow:0 8px 24px rgba(21,9,88,.16);border-radius:10px"};
+const eksenY=(o)=>Object.assign({type:"value",axisLabel:{color:"#6b7285",formatter:"{value}%"},splitLine:{lineStyle:{color:"#e3e7ef",type:"dashed"}}},o||{});
+const eksenX=(veri,o)=>Object.assign({type:"category",data:veri,axisLabel:{color:"#1b1e2b",fontWeight:700,fontSize:12,interval:0},axisLine:{lineStyle:{color:"#9aa3b8",width:2}},axisTick:{show:false}},o||{});
+
+let V=null, gv=null, gm=null, gd=null, secili=null, mod="durus";
+function baslat(){ gv=echarts.init(document.getElementById("gv")); gm=echarts.init(document.getElementById("gm")); gd=echarts.init(document.getElementById("gd"));
+ gm.getZr().on("click",e=>{ if(!V||!V.makineler.length) return; const p=gm.convertFromPixel({gridIndex:0},[e.offsetX,e.offsetY]); if(!p) return;
+   const i=Math.round(p[0]); if(i<0||i>=V.makineler.length) return; sec(V.makineler[i].ad, p[1]<0?"mola":"durus", true); });
+ addEventListener("resize",()=>{gv.resize();gm.resize();gd.resize()});
+ window.__hazir=true; }
+function sec(ad,yeniMod,kaydir){ secili=ad; mod=yeniMod; tabloCiz(); detayCiz(); if(kaydir) document.getElementById("detaykart").scrollIntoView({behavior:"smooth",block:"nearest"}); }
+
+window.guncelle=function(veri){ V=veri; if(!gv) baslat();
+ if(!V.makineler.some(m=>m.ad===secili)) secili=null;
+ kutuCiz(); tabloCiz(); vardiyaCiz(); makineCiz(); detayCiz(); window.__cizildi=(window.__cizildi||0)+1; };
+
+function kutuCiz(){
+ const k=[`<div class="kutu"><div class="ad">GENEL ORTALAMA (ÇALIŞMA)</div><div class="deger">${V.genel==null?"–":yz(V.genel,2)}</div><div class="alt">${kacis(V.aciklama)}</div></div>`];
+ V.vardiyalar.forEach(v=>k.push(`<div class="kutu"><div class="ad">${v.v}. VARDİYA</div><div class="deger">${v.calisma==null?"–":yz(v.calisma,2)}</div><div class="alt">${v.makine==null?"":String(v.makine.toFixed(1)).replace(".",",")+" makine · "}${v.gun} gün</div><div class="sef">${kacis(v.sef||"")}</div></div>`));
+ document.getElementById("kutular").innerHTML=k.join(""); document.getElementById("donem").textContent=V.donem; }
+
+function tabloCiz(){
+ const renk=x=>x==null?"#ccc":(x>=V.genel?YESIL:(x>=V.genel-0.1?TURUNCU:KIRMIZI));
+ let s="<tr><th>Makine</th><th>Ort.</th><th>1.V</th><th>2.V</th><th>3.V</th></tr>";
+ s+=`<tr class="genel"><td>Genel</td><td>${yz(V.genel,0)}</td>${V.vardiyalar.map(v=>`<td>${yz(v.calisma,0)}</td>`).join("")}</tr>`;
+ V.makineler.forEach(m=>{ s+=`<tr class="sat${m.ad===secili?" secili":""}" data-m="${kacis(m.ad)}"><td class="m">${kacis(m.ad)}</td><td><span class="cubuk"><i style="width:${Math.min(100,m.calisma*100)}%;background:${renk(m.calisma)}"></i></span>${yz(m.calisma,0)}</td>${m.v.map(x=>`<td>${x==null?"":yz(x,0)}</td>`).join("")}</tr>`; });
+ const t=document.getElementById("tablo"); t.innerHTML=s;
+ t.querySelectorAll("tr.sat").forEach(tr=>tr.onclick=()=>sec(tr.dataset.m,"durus",true));
+ document.getElementById("tabloalt").textContent=V.makineler.length+" makine"; }
+
+function vardiyaCiz(){
+ const vs=V.vardiyalar, enUst=110;
+ gv.setOption({animationDuration:700,tooltip:Object.assign({trigger:"item",formatter:p=>{const v=vs[p.dataIndex];return `<b>${v.v}. vardiya</b>${v.sef?" · "+kacis(v.sef):""}<br>Çalışma: <b>${yz(v.calisma,2)}</b><br>${v.gun} gün`}},ipucu),
+  grid:{left:46,right:86,top:24,bottom:40},
+  xAxis:eksenX(vs.map(v=>v.v+". VARDİYA"+(v.sef?"\n{s|"+v.sef+"}":"")),{axisLabel:{color:"#1b1e2b",fontWeight:700,fontSize:12,interval:0,lineHeight:16,rich:{s:{color:YESIL,fontWeight:700,fontSize:11.5}}}}),
+  yAxis:eksenY({min:0,max:enUst,interval:20}),
+  series:[{type:"custom",encode:{x:0,y:1},data:vs.map((v,i)=>[i,(v.calisma||0)*100]),
+    renderItem:(prm,api)=>{const v=api.value(1); if(!(v>0)) return null; const a=api.coord([api.value(0),0]),u=api.coord([api.value(0),v]);
+      const gen=Math.min(api.size([1,0])[0]*0.42,150);
+      return {type:"group",children:[kup(a[0],a[1],u[1],gen,LACIVERT,"",a[1],prm.dataIndex*120),
+        {type:"text",style:{text:yz(v/100,2),x:a[0]+D/2,y:u[1]-D*0.55-11,textAlign:"center",textVerticalAlign:"middle",fill:"#1b1e2b",font:"700 14px Segoe UI"}}]}},
+    markLine:V.genel==null?undefined:{symbol:"none",silent:true,lineStyle:{color:TURUNCU,width:2.5,type:"solid"},label:{formatter:"Genel\n"+yz(V.genel,2),color:TURUNCU,fontWeight:700,lineHeight:15},data:[{yAxis:V.genel*100}]}}]
+ },true); }
+
+function makineCiz(){
+ const ms=V.makineler, P=V.molaPay;
+ if(!ms.length){ gm.clear(); gm.setOption({title:{text:"Seçilen dönemde gösterilecek veri yok",left:"center",top:"middle",textStyle:{color:"#6b7285",fontSize:14,fontWeight:400}}}); return; }
+ const kat=[["Çalışma",YESIL,m=>[0,m.calisma*100]],["Duruş",KIRMIZI,m=>[m.calisma*100,100]],
+            ["Mola yapılan",TURUNCU,m=>[-m.mola*P,0]],["Molada çalışılan",MOR,m=>[-P,-m.mola*P]]];
+ const seriler=kat.map(([ad,renk,fn],si)=>({name:ad,type:"custom",itemStyle:{color:renk},encode:{x:0,y:2},
+   data:ms.map((m,i)=>{const [a,u]=fn(m);return [i,a,u]}),
+   renderItem:(prm,api)=>{const a=api.value(1),u=api.value(2); if(!(u-a>0.05)) return null;
+     const pa=api.coord([api.value(0),a]),pu=api.coord([api.value(0),u]),sifir=api.coord([0,0])[1];
+     const gen=Math.min(api.size([1,0])[0]*0.52,46), buyuk=u-a;
+     let yazi=""; if(si<2&&buyuk>=7) yazi=buyuk.toFixed(0)+"%"; else if(si>=2&&buyuk>=3.2&&gen>=24) yazi=buyuk.toFixed(0);
+     return kup(pa[0],pa[1],pu[1],gen,renk,yazi,sifir,prm.dataIndex*35,si===1||(si===0&&ms[prm.dataIndex].calisma>=0.9995))}}));
+ gm.setOption({animationDuration:700,
+  tooltip:Object.assign({trigger:"axis",axisPointer:{type:"shadow",shadowStyle:{color:"rgba(36,26,140,.06)"}},
+   formatter:p=>{const m=ms[p[0].dataIndex];const dk=V.molaDk;return `<b>${kacis(m.ad)}</b><br><span style="color:${YESIL}">●</span> Çalışma: <b>${yz(m.calisma)}</b><br><span style="color:${KIRMIZI}">●</span> Duruş: <b>${yz(1-m.calisma)}</b><br>`+
+     `<span style="color:${TURUNCU}">●</span> Mola yapılan: <b>${yz(m.mola)}</b> · günde ort. ${(m.mola*dk).toFixed(0)} dk<br><span style="color:${MOR}">●</span> Molada çalışılan: <b>${yz(1-m.mola)}</b> · günde ort. ${((1-m.mola)*dk).toFixed(0)} dk`}},ipucu),
+  grid:{left:46,right:86,top:22,bottom:ms.length>18?46:30},
+  xAxis:eksenX(ms.map(m=>m.ad),{axisLabel:{color:"#1b1e2b",fontWeight:700,fontSize:ms.length>18?10.5:12,interval:0,rotate:ms.length>18?50:0},axisLine:{show:false}}),
+  yAxis:eksenY({min:-10,max:110,interval:10,axisLabel:{color:"#6b7285",formatter:v=>v<0||v>100?(v===-10?"-"+P.toFixed(0)+"%":""):v+"%"}}),
+  series:seriler.concat([{type:"line",data:[],silent:true,markLine:{symbol:"none",silent:true,data:[
+     {yAxis:0,lineStyle:{color:"#9aa3b8",width:2,type:"solid"},label:{show:false}},
+     ...(V.genel==null?[]:[{yAxis:V.genel*100,lineStyle:{color:TURUNCU,width:2.5,type:"solid"},label:{formatter:"Genel\n"+yz(V.genel,2),color:TURUNCU,fontWeight:700,lineHeight:15}}])]}}])
+ },true); }
+
+function detayCiz(){
+ const db=document.getElementById("db"), da=document.getElementById("da");
+ const m=V&&V.makineler.find(x=>x.ad===secili);
+ if(!m){ db.textContent="Ayrıntı"; da.textContent="yukarıdaki grafikte bir makineye tıklayın"; gd.clear(); return; }
+ if(mod==="mola") return molaCiz(m,db,da);
+ const liste=Object.entries(m.durus).filter(x=>x[1]>0.004).sort((a,b)=>b[1]-a[1]);
+ const top=liste.reduce((a,x)=>a+x[1],0);
+ db.textContent=m.ad+" – duruşlar (büyükten küçüğe)";
+ da.textContent=liste.length?("toplam duruş "+sa(top)+" saat · çalışma "+yz(m.calisma)+" · mola kısmına tıklarsanız vardiya bazlı mola açılır"):"bu dönemde duruş kaydı yok";
+ if(!liste.length){ gd.clear(); return; }
+ const iki=ad=>{if(ad.length<=13||!/[ -]/.test(ad))return ad;const o=ad.length/2;let en=-1;[...ad].forEach((c,i)=>{if((c===" "||c==="-")&&(en<0||Math.abs(i-o)<Math.abs(en-o)))en=i});return ad.slice(0,en+(ad[en]==="-"?1:0))+"\n"+ad.slice(en+1)};
+ const cok=liste.length>12;
+ gd.setOption({animationDuration:700,
+  tooltip:Object.assign({trigger:"item",formatter:p=>{const [t,h]=liste[p.dataIndex];return `<span style="color:${tipRenk(t)}">●</span> <b>${kacis(t)}</b><br>${sa(h)} saat · duruşun ${yz(h/top)}'i`}},ipucu),
+  grid:{left:52,right:30,top:46,bottom:cok?86:52},
+  xAxis:eksenX(liste.map(x=>cok?x[0]:iki(x[0])),{axisLabel:{color:"#1b1e2b",fontWeight:600,fontSize:11,interval:0,lineHeight:14,rotate:cok?32:0}}),
+  yAxis:eksenY({max:Math.max(0.5,Math.ceil(liste[0][1]*1.2*2)/2),axisLabel:{color:"#6b7285",formatter:v=>String(v).replace(".",",")+" sa"}}),
+  series:[{type:"custom",encode:{x:0,y:1},data:liste.map(([t,h],i)=>[i,h]),
+   renderItem:(prm,api)=>{const [t,h]=liste[prm.dataIndex];const a=api.coord([api.value(0),0]),u=api.coord([api.value(0),h]);
+     const gen=Math.min(api.size([1,0])[0]*0.5,62), ust=Math.min(u[1],a[1]-2);
+     return {type:"group",children:[kup(a[0],a[1],ust,gen,tipRenk(t),"",a[1],prm.dataIndex*55),
+       {type:"text",style:{text:sa(h)+"\n"+yz(h/top,0),x:a[0]+D/2,y:ust-D*0.55-18,textAlign:"center",textVerticalAlign:"middle",fill:"#1b1e2b",font:"700 11.5px Segoe UI",lineHeight:14}}]}}}]
+ },true); }
+
+function molaCiz(m,db,da){
+ const dk=V.molaDk;
+ db.textContent=m.ad+" – vardiya bazlı mola dağılımı";
+ da.textContent="pastanın tamamı mola hakkı (günde "+dk+" dk) · turuncu: mola yapılan · mor: molada çalışılan";
+ const var_=[0,1,2].filter(i=>m.molaV[i]!=null);
+ if(!var_.length){ gd.clear(); gd.setOption({title:{text:"Bu makine için vardiya bazlı mola verisi yok",left:"center",top:"middle",textStyle:{color:"#6b7285",fontSize:14,fontWeight:400}}}); return; }
+ const n=var_.length;
+ gd.setOption({animationDuration:800,
+  tooltip:Object.assign({trigger:"item",formatter:p=>`<b>${p.seriesName}</b><br>${p.marker} ${p.name}: <b>${p.percent.toFixed(1).replace(".",",")}%</b> · günde ort. ${(p.value*dk).toFixed(0)} dk`},ipucu),
+  title:var_.map((vi,k)=>({text:(vi+1)+". VARDİYA"+(V.vardiyalar[vi].sef?"\n{s|"+V.vardiyalar[vi].sef+"}":""),left:((k+0.5)/n*100)+"%",top:4,textAlign:"center",
+     textStyle:{color:"#150958",fontSize:14,fontWeight:700,lineHeight:18,rich:{s:{color:YESIL,fontSize:12,fontWeight:700}}}})),
+  series:var_.map((vi,k)=>{const mo=Math.max(0,Math.min(1,m.molaV[vi]));return {name:(vi+1)+". vardiya",type:"pie",radius:["26%","50%"],center:[((k+0.5)/n*100)+"%","58%"],avoidLabelOverlap:true,labelLine:{length:10,length2:10},
+     startAngle:90,padAngle:2,itemStyle:{borderRadius:7,borderColor:"#fff",borderWidth:2,shadowBlur:16,shadowColor:"rgba(21,9,88,.22)",shadowOffsetY:6},
+     label:{formatter:p=>p.name+"\n{b|"+p.percent.toFixed(0)+"%} · "+(p.value*dk).toFixed(0)+" dk",color:"#1b1e2b",fontSize:12,lineHeight:17,rich:{b:{fontWeight:700,fontSize:14}}},
+     emphasis:{scale:true,scaleSize:8},
+     data:[{name:"Mola yapılan",value:mo,itemStyle:{color:new echarts.graphic.LinearGradient(0,0,1,1,[{offset:0,color:ton(TURUNCU,0.25)},{offset:1,color:ton(TURUNCU,-0.12)}])}},
+           {name:"Molada çalışılan",value:1-mo,itemStyle:{color:new echarts.graphic.LinearGradient(0,0,1,1,[{offset:0,color:ton(MOR,0.25)},{offset:1,color:ton(MOR,-0.15)}])}}]}})
+ },true); }
+baslat();
+</script></body></html>

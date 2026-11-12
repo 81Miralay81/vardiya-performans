@@ -336,3 +336,18 @@ def hesapla(kayitlar, gunler: List[date], ayar: Optional[HesapAyar] = None, veri
     ayar = ayar or HesapAyar()
     gunluk = gunluk_hesapla(topla(kayitlar, ayar), ayar)
     return donem_hesapla(gunluk, gunler, veri_gunleri, ayar.kural, ayar.esik)
+
+
+def durus_dokumu(kayitlar: Iterable[Tuple[str, str, datetime, datetime]], gunler: Iterable[date]) -> Dict[str, Dict[str, float]]:
+    """makine -> duruş türü -> saat. Yalnızca seçili günlere düşen kısım sayılır; mola ve çalışma girmez."""
+    gset = set(gunler)
+    sonuc: Dict[str, Dict[str, float]] = {}
+    for makine, tip, bas, bit in kayitlar:
+        if statu_bul(tip) != DURUS:
+            continue
+        for gun, _v, sn in bol(bas, bit, True):
+            if gun in gset and sn > 0:
+                m = sonuc.setdefault(makine, {})
+                ad = tip or "Belirtilmemiş"
+                m[ad] = m.get(ad, 0.0) + sn / 3600.0
+    return sonuc
