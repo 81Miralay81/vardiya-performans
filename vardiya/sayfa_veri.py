@@ -159,7 +159,8 @@ class CormindKarti(QFrame):
                  + (f" (seçilen günlerde daha önce kayıtlı olan {r['silinen']} kayıt Cormind'dekiyle değiştirildi)" if r.get("silinen") else "")
                  + (f"; {r['atlanan']} kayıt atlandı" if r["atlanan"] else "") + f".\nTip dağılımı: {tip}"
                  + ("\nUYARI: Cormind geniş sorguyu kabul etmedi; yalnızca seçilen günlerde BAŞLAYAN kayıtlar alındı. "
-                    "Daha önce başlayıp bu günlere uzanan uzun duruşlar eksik olabilir." if r.get("dar_sorgu") else ""))
+                    "Daha önce başlayıp bu günlere uzanan uzun duruşlar eksik olabilir." if r.get("dar_sorgu") else "")
+                 + ("\nUYARI: Beklenenden çok kayıt geldiği için çekim sınırda durduruldu; daha kısa bir tarih aralığı seçin." if r.get("kesildi") else ""))
         if r["yeni_makineler"]:
             metin += "\nMakine listesine eklendi: " + ", ".join(r["yeni_makineler"])
         self._son(metin)

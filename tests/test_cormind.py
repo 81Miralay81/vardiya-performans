@@ -52,6 +52,9 @@ class Sahte(BaseHTTPRequestHandler):
                 return self._yaz({"data": {"entities": [{"id": 7, "name": "ÇAY MOLASI"}], "count": 1}})
             c = q["condition"]
             assert "2026-11-09T00:00:00+03:00" in c["where"] and "IN (5,6)" in c["where"]
+            if "ended_at" in c["where"]:                # döneme uzanan eski kayıt sorgusu: bu örnekte yok
+                assert "2026-11-09T00:00:00+03:00" in c["where"]
+                return self._yaz({"data": {"entities": [], "count": 0}})
             parca = VERI[c["offset"]:c["offset"] + c["limit"]]
             return self._yaz({"data": {"entities": parca, "count": len(VERI)}})
         self.send_response(404)
@@ -118,8 +121,8 @@ def test_calismiyor_nedenli_ve_suren_kayit():
     assert s[0] == "IM24" and s[1] == datetime(2026, 10, 20, 8, 0) and s[2] == datetime(2026, 11, 12, 10, 0) and s[4] == "İŞ EMRİ PLAN YOK"
 
 
-def test_genis_sorgu_doneme_degen_kayitlari_ister():
-    """Sorgu, dönemden önce başlayıp içine uzanan ve hâlâ süren kayıtları da kapsar."""
+def test_iki_sinirli_sorgu():
+    """Önce dönemde başlayanlar; sonra ayrı ve geriye doğru sınırlı sorguyla döneme uzananlar. Sonsuza kadar sayfalanmaz."""
     from datetime import date
     gorulen = []
 
@@ -128,17 +131,39 @@ def test_genis_sorgu_doneme_degen_kayitlari_ister():
             gorulen.append(kosul["where"])
             return {"entities": [], "count": 0}
 
-    I("http://x").hareketler(date(2026, 11, 2), date(2026, 11, 7), [5])
-    w = gorulen[0]
-    assert '"started_at" < \'2026-11-08T00:00:00+03:00\'' in w and '"ended_at" >= \'2026-11-02T00:00:00+03:00\'' in w and "IS NULL" in w
+    i = I("http://x")
+    i.hareketler(date(2026, 11, 2), date(2026, 11, 7), [5])
+    assert len(gorulen) == 2 and "ended_at" not in gorulen[0] and '"started_at" >= \'2026-11-02T00:00:00+03:00\'' in gorulen[0]
+    w = gorulen[1]
+    assert '"started_at" >= \'2026-08-04T00:00:00+03:00\'' in w and '"started_at" < \'2026-11-02T00:00:00+03:00\'' in w and "IS NULL" in w
+    assert not i.dar_sorgu and not i.kesildi
 
-    class D(cormind.Istemci):                      # sunucu geniş sorguyu reddederse eski sorguya dönülür
+    class D(cormind.Istemci):                      # ikinci sorgu reddedilirse birincinin sonucu kalır
         def _graphql(self, model, kosul):
             if "ended_at" in kosul["where"]:
                 raise cormind.CormindHata("kabul edilmedi")
-            gorulen.append(kosul["where"])
-            return {"entities": [], "count": 0}
+            return {"entities": [{"id": 1}], "count": 1}
 
     d = D("http://x")
-    d.hareketler(date(2026, 11, 2), date(2026, 11, 7), [5])
-    assert d.dar_sorgu and '"started_at" >= ' in gorulen[-1]
+    assert d.hareketler(date(2026, 11, 2), date(2026, 11, 7), [5]) == [{"id": 1}] and d.dar_sorgu
+
+    class Cok(cormind.Istemci):                    # hep dolu sayfa dönen sunucu: sınırda durulur
+        AZAMI_SAYFA = 3
+        n = 0
+        def _graphql(self, model, kosul):
+            Cok.n += 1
+            return {"entities": [{"id": k} for k in range(kosul["limit"])], "count": 10 ** 9}
+
+    c = Cok("http://x")
+    c.hareketler(date(2026, 11, 2), date(2026, 11, 7), [5])
+    assert c.kesildi and Cok.n == 6
+
+
+def test_kapatilmamis_eski_kayit_sonraki_kayitla_biter():
+    ham = [{"machine_id": 1, "started_at": "2026-10-20T05:00:00.000Z", "ended_at": None},
+           {"machine_id": 1, "started_at": "2026-10-21T05:00:00.000Z", "ended_at": "2026-10-21T06:00:00.000Z"},
+           {"machine_id": 1, "started_at": "2026-11-01T05:00:00.000Z", "ended_at": None},
+           {"machine_id": 2, "started_at": "2026-10-01T05:00:00.000Z", "ended_at": None}]
+    r = cormind.suren_kayitlari_kapat(ham)
+    assert r[0]["ended_at"] == "2026-10-21T05:00:00.000Z"       # eski, kapatılmamış: sonraki kayıtla biter
+    assert r[2]["ended_at"] is None and r[3]["ended_at"] is None   # makinenin son kaydı: hâlâ sürüyor

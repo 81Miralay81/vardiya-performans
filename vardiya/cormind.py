@@ -173,39 +173,61 @@ class Istemci:
             sonuc[int(x["id"])] = ad
         return sonuc
 
-    def hareketler(self, ilk: date, son: date, makine_idleri: List[int],
-                   ilerleme: Optional[Callable[[int, int], None]] = None) -> List[dict]:
-        bas = datetime(ilk.year, ilk.month, ilk.day, tzinfo=TR)
-        bit = datetime(son.year, son.month, son.day, tzinfo=TR) + timedelta(days=1)
-        mk = (f" AND \"MachineAction\".\"machine_id\" IN ({','.join(str(int(i)) for i in makine_idleri)})" if makine_idleri else "")
-        # Döneme DEĞEN bütün kayıtlar: dönemden önce başlayıp içine uzananlar (ör. günlerce süren İŞ EMRİ PLAN YOK)
-        # ve hâlâ sürenler de gelir. Sunucu bu sorguyu kabul etmezse eski sorguya (yalnızca dönemde başlayanlar) dönülür.
-        where_genis = (f"\"MachineAction\".\"started_at\" < '{bit.isoformat()}' AND (\"MachineAction\".\"ended_at\" >= '{bas.isoformat()}'"
-                       f" OR \"MachineAction\".\"ended_at\" IS NULL)" + mk)
-        where_dar = (f"\"MachineAction\".\"started_at\" >= '{bas.isoformat()}' AND \"MachineAction\".\"started_at\" < '{bit.isoformat()}'" + mk)
-        self.dar_sorgu = False
-        where = where_genis
+    GERIYE_GUN = 90        # dönemden önce başlayan kayıtlar için en fazla ne kadar geriye bakılır
+    AZAMI_SAYFA = 40       # tek sorguda en fazla sayfa (40 x 2000 kayıt); aşılırsa durulur
+
+    def _sayfala(self, where: str, ilerleme, onceki: int = 0) -> List[dict]:
         sonuc: List[dict] = []
         offset, toplam = 0, 0
-        while True:
-            kosul = {"where": where, "relations": ["goods", "operator", "operator.user", "machine"],
-                     "order": {"start": "ASC"}, "limit": SAYFA, "offset": offset}
-            try:
-                d = self._graphql("MachineAction", kosul)
-            except CormindHata:
-                if where is where_genis and offset == 0:
-                    where, self.dar_sorgu = where_dar, True
-                    continue
-                raise
+        for _ in range(self.AZAMI_SAYFA):
+            d = self._graphql("MachineAction", {"where": where, "relations": ["goods", "operator", "operator.user", "machine"],
+                                                "order": {"start": "ASC"}, "limit": SAYFA, "offset": offset})
             parca = d.get("entities") or []
             toplam = int(d.get("count") or toplam or 0)
             sonuc += parca
             offset += SAYFA
             if ilerleme:
-                ilerleme(len(sonuc), toplam)
+                ilerleme(onceki + len(sonuc), onceki + toplam)
             if len(parca) < SAYFA or (toplam and len(sonuc) >= toplam):
-                break
+                return sonuc
+        self.kesildi = True                      # beklenenden çok kayıt: sunucuyu yormamak için duruldu
         return sonuc
+
+    def hareketler(self, ilk: date, son: date, makine_idleri: List[int],
+                   ilerleme: Optional[Callable[[int, int], None]] = None) -> List[dict]:
+        """Önce seçilen günlerde BAŞLAYAN kayıtlar (hızlı sorgu). Sonra, ayrı ve sınırlı bir sorguyla, en çok
+        GERIYE_GUN gün önce başlayıp döneme uzanan ya da hâlâ süren kayıtlar. İkinci sorgu başarısız olursa
+        birincinin sonucu yine kullanılır (dar_sorgu = True)."""
+        bas = datetime(ilk.year, ilk.month, ilk.day, tzinfo=TR)
+        bit = datetime(son.year, son.month, son.day, tzinfo=TR) + timedelta(days=1)
+        geri = bas - timedelta(days=self.GERIYE_GUN)
+        mk = (f" AND \"MachineAction\".\"machine_id\" IN ({','.join(str(int(i)) for i in makine_idleri)})" if makine_idleri else "")
+        where_dar = (f"\"MachineAction\".\"started_at\" >= '{bas.isoformat()}' AND \"MachineAction\".\"started_at\" < '{bit.isoformat()}'" + mk)
+        where_uzanan = (f"\"MachineAction\".\"started_at\" >= '{geri.isoformat()}' AND \"MachineAction\".\"started_at\" < '{bas.isoformat()}'"
+                        f" AND (\"MachineAction\".\"ended_at\" >= '{bas.isoformat()}' OR \"MachineAction\".\"ended_at\" IS NULL)" + mk)
+        self.dar_sorgu, self.kesildi = False, False
+        sonuc = self._sayfala(where_dar, ilerleme)
+        try:
+            sonuc = self._sayfala(where_uzanan, ilerleme, len(sonuc)) + sonuc
+        except CormindHata:
+            self.dar_sorgu = True
+        return sonuc
+
+
+def suren_kayitlari_kapat(ham: List[dict]) -> List[dict]:
+    """Bitişi olmayan kayıt, aynı makinenin sonraki kaydı başladığında bitmiş sayılır (kapatılmamış eski kayıtlar
+    günlerce sürmüş gibi görünmesin). Makinenin en son kaydıysa bitişsiz kalır (çekim anına kadar sürüyor)."""
+    makineye: Dict[object, List[dict]] = {}
+    for k in ham:
+        makineye.setdefault(k.get("machine_id") or (k.get("machine") or {}).get("id"), []).append(k)
+    for liste in makineye.values():
+        liste.sort(key=lambda k: k.get("started_at") or "")
+        for i, k in enumerate(liste[:-1]):
+            if not k.get("ended_at"):
+                sonraki = next((x.get("started_at") for x in liste[i + 1:] if (x.get("started_at") or "") > (k.get("started_at") or "")), None)
+                if sonraki:
+                    k["ended_at"] = sonraki
+    return ham
 
 
 def cek(con, adres: str, kullanici: str, sifre: str, ilk: date, son: date, makine_idleri: List[int],
@@ -215,7 +237,7 @@ def cek(con, adres: str, kullanici: str, sifre: str, ilk: date, son: date, makin
     ist = Istemci(adres)
     ist.giris(kullanici, sifre)
     ariza = ist.ariza_adlari()
-    ham = ist.hareketler(ilk, son, makine_idleri, ilerleme)
+    ham = suren_kayitlari_kapat(ist.hareketler(ilk, son, makine_idleri, ilerleme))
     makine_adlari: Dict[int, str] = {}
     satirlar, atlanan = [], 0
     tipler: Dict[str, int] = {}
@@ -252,4 +274,4 @@ def cek(con, adres: str, kullanici: str, sifre: str, ilk: date, son: date, makin
                       ilk_g.strftime("%Y-%m-%d") if ilk_g else None, son_g.strftime("%Y-%m-%d") if son_g else None)
     return {"toplam": len(ham), "yeni": yeni, "guncel": guncel, "ayni": ayni, "atlanan": atlanan, "silinen": silinen,
             "tipler": dict(sorted(tipler.items(), key=lambda x: -x[1])), "yeni_makineler": eklenen,
-            "dar_sorgu": bool(getattr(ist, "dar_sorgu", False))}
+            "dar_sorgu": bool(getattr(ist, "dar_sorgu", False)), "kesildi": bool(getattr(ist, "kesildi", False))}
