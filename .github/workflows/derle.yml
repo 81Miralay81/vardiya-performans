@@ -40,6 +40,9 @@ jobs:
           $p = Start-Process -FilePath dist\VardiyaPerformans.exe -ArgumentList "--kendini-sina" -Wait -PassThru -RedirectStandardOutput out.txt -RedirectStandardError err.txt
           Get-Content out.txt, err.txt
           if ($p.ExitCode -ne 0) { throw "Exe kendini sınama başarısız: $($p.ExitCode)" }
+      - name: Sıkıştır (şirket ağları .exe indirmeyi engelleyebildiği için güncelleme bu dosyadan yapılır)
+        shell: pwsh
+        run: Compress-Archive -Path dist\VardiyaPerformans.exe -DestinationPath dist\VardiyaPerformans.zip -Force
       - uses: actions/upload-artifact@v4
         with:
           name: VardiyaPerformans
@@ -50,5 +53,7 @@ jobs:
           tag_name: guncel
           name: Son sürüm 1.0.${{ github.run_number }}
           body: "SURUM=1.0.${{ github.run_number }}"
-          files: dist/VardiyaPerformans.exe
+          files: |
+            dist/VardiyaPerformans.exe
+            dist/VardiyaPerformans.zip
           prerelease: false

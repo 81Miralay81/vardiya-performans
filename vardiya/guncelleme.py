@@ -21,6 +21,7 @@ DEPO = "81Miralay81/vardiya-performans"
 ETIKET = "guncel"
 API = f"https://api.github.com/repos/{DEPO}/releases/tags/{ETIKET}"
 EXE_ADI = "VardiyaPerformans.exe"
+ZIP_ADI = "VardiyaPerformans.zip"     # şirket ağları .exe indirmeyi engelleyebildiği için önce sıkıştırılmış dosya denenir
 YENI_UZANTI = ".yeni"
 
 
@@ -39,9 +40,10 @@ def release_coz(veri: dict) -> Optional[Tuple[str, str]]:
     m = re.search(r"SURUM=([0-9][0-9.]*)", govde)
     if not m:
         return None
-    for varlik in veri.get("assets", []):
-        if varlik.get("name") == EXE_ADI and varlik.get("browser_download_url"):
-            return m.group(1), varlik["browser_download_url"]
+    adresler = {v.get("name"): v.get("browser_download_url") for v in veri.get("assets", []) if v.get("browser_download_url")}
+    for ad in (ZIP_ADI, EXE_ADI):
+        if ad in adresler:
+            return m.group(1), adresler[ad]
     return None
 
 
@@ -67,6 +69,26 @@ def indir(url: str, hedef: str, ilerleme: Optional[Callable[[int, int], None]] =
                 ilerleme(okunan, toplam)
     with open(gecici, "rb") as f:
         bas = f.read(2)
+    if bas == b"PK":                                   # sıkıştırılmış dosya: içindeki programı çıkar
+        import zipfile
+        acik = gecici + ".exe_part"
+        try:
+            with zipfile.ZipFile(gecici) as z:
+                uye = next((n for n in z.namelist() if n.replace("\\", "/").split("/")[-1].lower() == EXE_ADI.lower()), None)
+                if uye is None:
+                    raise ValueError("İndirilen dosyada program bulunamadı")
+                with z.open(uye) as kaynak, open(acik, "wb") as hedef_f:
+                    while True:
+                        parca = kaynak.read(1 << 20)
+                        if not parca:
+                            break
+                        hedef_f.write(parca)
+        except zipfile.BadZipFile as ex:
+            os.remove(gecici)
+            raise ValueError("İndirilen dosya bozuk") from ex
+        os.replace(acik, gecici)
+        with open(gecici, "rb") as f:
+            bas = f.read(2)
     if bas != b"MZ" or os.path.getsize(gecici) < 5_000_000:
         os.remove(gecici)
         raise ValueError("İndirilen dosya geçerli bir program değil")
@@ -133,7 +155,15 @@ class GuncellemeKontrol(QThread):
                 self.durum.emit(f"Güncel ({SURUM})")
                 return
             self.durum.emit(f"{bilgi[0]} indiriliyor…")
-            indir(bilgi[1], yeni)
+            son_yuzde = [-1]
+
+            def ilerleme(okunan, toplam):
+                y = int(100 * okunan / toplam) if toplam else -1
+                if y >= son_yuzde[0] + 5:
+                    son_yuzde[0] = y
+                    self.durum.emit(f"{bilgi[0]} indiriliyor… %{y}")
+
+            indir(bilgi[1], yeni, ilerleme)
             with open(iz, "w", encoding="utf8") as f:
                 f.write(bilgi[0])
             self.hazir.emit(bilgi[0], yeni)
