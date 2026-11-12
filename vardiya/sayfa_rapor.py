@@ -12,7 +12,7 @@ from PySide6.QtGui import (QGuiApplication, QImage, QKeySequence, QPageLayout, Q
                            QShortcut)
 from PySide6.QtWidgets import (QApplication, QButtonGroup, QComboBox, QDateEdit, QFileDialog, QFrame, QHBoxLayout, QLabel,
                                QLineEdit, QMessageBox, QPushButton, QScrollArea, QSpinBox, QStackedWidget, QVBoxLayout,
-                               QWidget, QSizePolicy)
+                               QWidget)
 
 from . import cizim, tema, veritabani as vt
 from .donem import ay_sonu, hafta_basi, pd, qd
@@ -210,10 +210,6 @@ class RaporSayfasi(QWidget):
         self.onizleme = QLabel()
         self.onizleme.setAlignment(Qt.AlignCenter)
         self.onizleme.setStyleSheet("background: transparent;")
-        # --- BURAYI EKLEYİN: Resmin etiket alanına tam yayılmasını sağlar ---
-        self.onizleme.setScaledContents(True)
-        self.onizleme.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        # ------------------------------------------------------------------
         resim_menusu(self.onizleme, self._rapor_resmi)
         sc = QScrollArea()
         sc.setWidgetResizable(True)
@@ -324,14 +320,12 @@ class RaporSayfasi(QWidget):
     def _boya(self):
         if not self._r:
             self.onizleme.setPixmap(QPixmap())
-            self.onizleme.setText("Seçilen dönemde kayıt yok.\nBaşka bir gün ya da hafta seçin.")
+            self.onizleme.setText("Seçilen dönemde kayıt yok.\nBaşka bir gün ya da hafta seçin; veri yoksa önce Veri Aktar sayfasından yükleyin.")
             self.onizleme.setStyleSheet("background: transparent; color: #6B7285; font-size: 15px;")
             return
         self.onizleme.setStyleSheet("background: transparent;")
-        
-        genislik = max(1400, self.sc.viewport().width() * 2) # Çözünürlüğü yüksek tutuyoruz
+        genislik = max(600, self.sc.viewport().width() - 24)
         dpr = self.devicePixelRatioF()
-        
         img = cizim.rapor_resmi(self._r, int(genislik * dpr))
         pm = QPixmap.fromImage(img)
         pm.setDevicePixelRatio(dpr)
@@ -437,25 +431,15 @@ class RaporSayfasi(QWidget):
         if not r:
             return
         from PySide6.QtPrintSupport import QPrintDialog, QPrinter
-        from PySide6.QtGui import QPageLayout, QPageSize, QPainter
-        from PySide6.QtCore import QRectF, QMarginsF
-        
-        # Yazıcı nesnesi ve varsayılan A3 Yatay ayarı
         yz = QPrinter(QPrinter.HighResolution)
         yz.setPageLayout(QPageLayout(QPageSize(QPageSize.A3), QPageLayout.Landscape, QMarginsF(0, 0, 0, 0)))
         yz.setDocName(r["baslik"])
-
-        # Doğrudan ilk ekranda yazıcı, kağıt ve yön seçim penceresini açar
-        dialog = QPrintDialog(yz, self)
-        dialog.setWindowTitle("Yazdır")
-        
-        if dialog.exec() == QPrintDialog.Accepted:
+        if QPrintDialog(yz, self).exec():
             p = QPainter(yz)
             p.setRenderHint(QPainter.Antialiasing, True)
             p.setRenderHint(QPainter.SmoothPixmapTransform, True)
             cizim.rapor_ciz(p, QRectF(0, 0, yz.width(), yz.height()), dict(r, yer_tutucu=False))
             p.end()
-            self.ana.mesaj("Rapor yazdırıldı.")
 
     def _rapor_resmi(self):
         r = self._hazir()

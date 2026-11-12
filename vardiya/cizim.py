@@ -62,7 +62,7 @@ def _deger_listesi(sonuc: DonemSonuc, secim: int, makineler: List[str], bos_gost
 
 # ============================================================ makine bazlı grafik
 def makine_grafigi(p: QPainter, rect: QRectF, sonuc: DonemSonuc, makineler: List[str], secim: int = 0,
-                    baslik: Optional[str] = None, bos_goster: bool = False, arka: bool = True):
+                   baslik: Optional[str] = None, bos_goster: bool = False, arka: bool = True):
     s = olcek(rect)
     p.save()
     p.setRenderHint(QPainter.Antialiasing, True)
@@ -176,7 +176,7 @@ def vardiya_grafigi(p: QPainter, rect: QRectF, sonuc: DonemSonuc, seflar: Dict[i
             p.drawRoundedRect(br, 3 * s, 3 * s)
             _yaz(p, QRectF(cx - slot / 2, br.top() - 26 * s, slot, 24 * s), yuzde(deger), 16 * s, True, ORTA, tema.YAZI)
             _yaz(p, br.adjusted(0, 0, 0, 0), f"{sonuc.vardiyalar[v].gun_sayisi} gün", 11 * s, False, Qt.AlignHCenter | Qt.AlignBottom,
-                   "#FFFFFF")
+                 "#FFFFFF")
         else:
             _yaz(p, QRectF(cx - slot / 2, alan.bottom() - 40 * s, slot, 24 * s), "veri yok", 13 * s, False, ORTA, tema.YAZI_SOLUK)
         etiket = f"{v}.VARDİYA"
@@ -326,15 +326,9 @@ def rapor_ciz(p: QPainter, rect: QRectF, r: dict):
         alt = QRectF(govde.left(), govde.top() + ust_yuk + 14 * k, govde.width(), govde.height() - ust_yuk - 14 * k)
         gorsel = r.get("gorsel")
         if gorsel is not None and not gorsel.isNull():
-            # DEĞİŞİKLİK BURADA: Görseli dikey oranla sınırlamak yerine tam yatay genişliğe (alt.width()) 
-            # ve orantılı yüksekliğe göre genişleterek yanlardaki boşlukları tamamen kapatıyoruz.
-            w = alt.width()
-            h = w * gorsel.height() / gorsel.width()
-            # Eğer hesaplanan yükseklik alandan büyükse, dikey ortalayarak sığdır
-            if h > alt.height():
-                h = alt.height()
-                w = h * gorsel.width() / gorsel.height()
-            p.drawImage(QRectF(alt.center().x() - w / 2, alt.top() + (alt.height() - h) / 2, w, h), gorsel)
+            oran = min(alt.width() / gorsel.width(), alt.height() / gorsel.height())
+            w, h = gorsel.width() * oran, gorsel.height() * oran
+            p.drawImage(QRectF(alt.center().x() - w / 2, alt.top(), w, h), gorsel)
         elif r.get("yer_tutucu"):
             p.setPen(QPen(QColor("#B8BFD0"), 2 * k, Qt.DashLine))
             p.setBrush(Qt.NoBrush)

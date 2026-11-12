@@ -31,33 +31,15 @@ jobs:
       - name: Exe derle
         shell: pwsh
         run: |
-            pyinstaller --noconfirm --onefile --windowed --name VardiyaPerformans `
-            --icon assets/uygulama.ico --add-data "assets;assets" --add-data "vardiya;vardiya" main.py  
+          pyinstaller --noconfirm --onefile --windowed --name VardiyaPerformans `
+            --icon assets/uygulama.ico --add-data "assets;assets" main.py
       - name: Exe kendini sınasın
         shell: pwsh
         run: |
           $env:QT_QPA_PLATFORM = "offscreen"
-          $process = Start-Process -FilePath "dist\VardiyaPerformans.exe" -ArgumentList "--kendini-sina" -PassThru
-          
-          # 30 saniye boyunca işlemin bitmesini bekle, bitmezse zorla kapat
-          $timeout = 30
-          $elapsed = 0
-          while (-not $process.HasExited -and $elapsed -lt $timeout) {
-              Start-Sleep -Seconds 1
-              $elapsed++
-          }
-
-          if (-not $process.HasExited) {
-              Write-Output "Uyarı: Kendini sınama süresi aşıldı, işlem sonlandırılıyor."
-              Stop-Process -Id $process.Id -Force
-              exit 0
-          }
-
-          if ($process.ExitCode -ne 0) {
-              Write-Output "Kendini sınama sıfırdan farklı bir kodla çıktı: $($process.ExitCode)"
-          } else {
-              Write-Output "Exe kendini sınama başarıyla tamamlandı."
-          }
+          $p = Start-Process -FilePath dist\VardiyaPerformans.exe -ArgumentList "--kendini-sina" -Wait -PassThru -RedirectStandardOutput out.txt -RedirectStandardError err.txt
+          Get-Content out.txt, err.txt
+          if ($p.ExitCode -ne 0) { throw "Exe kendini sınama başarısız: $($p.ExitCode)" }
       - uses: actions/upload-artifact@v4
         with:
           name: VardiyaPerformans
