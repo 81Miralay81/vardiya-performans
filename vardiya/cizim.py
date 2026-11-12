@@ -556,8 +556,14 @@ def genel_performans_grafigi(p: QPainter, rect: QRectF, sonuc: DonemSonuc, makin
         return
     ymin, ymax = -(mola_pay + 2.0), 108.0
 
+    # Mola bölümü okunabilsin diye sıfırın altına grafiğin beşte biri ayrılır (yüzdeleri içine yazılır).
+    alt_h = alan.height() * 0.20
+    sifir_y = alan.bottom() - alt_h
+
     def yy(v: float) -> float:
-        return alan.bottom() - alan.height() * (v - ymin) / (ymax - ymin)
+        if v >= 0:
+            return sifir_y - (sifir_y - alan.top()) * v / ymax
+        return sifir_y + alt_h * v / ymin
 
     for k in range(0, 101, 10):
         p.setPen(QPen(QColor("#E3E7EF"), max(1, s)))
@@ -585,8 +591,8 @@ def genel_performans_grafigi(p: QPainter, rect: QRectF, sonuc: DonemSonuc, makin
             p.setBrush(QBrush(QColor(90, 98, 120, 110), Qt.BDiagPattern))
             p.setPen(Qt.NoPen)
             p.drawRect(r_)
-        if yazi and r_.height() >= 14 * s and genislik >= 20 * s:
-            _yaz(p, r_, yazi, 10 * s, True, ORTA, "#2B3040" if soluk else "#FFFFFF")
+        if yazi and r_.height() >= 11 * s and genislik >= 20 * s:
+            _yaz(p, r_, yazi, (10 if r_.height() >= 14 * s else 8.5) * s, True, ORTA, "#2B3040" if soluk else "#FFFFFF")
 
     for i, (m, c, mo, alti) in enumerate(veri):
         cx = alan.left() + slot * (i + 0.5)
@@ -597,8 +603,8 @@ def genel_performans_grafigi(p: QPainter, rect: QRectF, sonuc: DonemSonuc, makin
             bolgeler.append((QRectF(cx - slot / 2, yy(0), slot, alan.bottom() - yy(0) + 24 * s), m, "mola"))
         parca(cx, 0, c * 100, YESIL_, alti, f"{c * 100:.0f}%")
         parca(cx, c * 100, 100, KIRMIZI_, alti, f"{(1 - c) * 100:.0f}%")
-        parca(cx, -mo * mola_pay, 0, TURUNCU_, alti, "")
-        parca(cx, -mola_pay, -mo * mola_pay, MOR_, alti, "")
+        parca(cx, -mo * mola_pay, 0, TURUNCU_, alti, f"{mo * 100:.0f}%")
+        parca(cx, -mola_pay, -mo * mola_pay, MOR_, alti, f"{(1 - mo) * 100:.0f}%")
         if alti:
             _yaz(p, QRectF(cx - slot / 2, yy(100) - 18 * s, slot, 16 * s), "eşik altı", 9 * s, False, ORTA, tema.YAZI_SOLUK)
         _yaz(p, QRectF(cx - slot / 2, alan.bottom() + 4 * s, slot, 20 * s), m, (12 if slot > 44 * s else 10) * s, True, ORTA, tema.YAZI)
