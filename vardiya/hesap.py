@@ -387,3 +387,44 @@ def durus_dokumu(kayitlar: Iterable[Tuple[str, str, datetime, datetime]], gunler
                 ad = tip or "Belirtilmemiş"
                 m[ad] = m.get(ad, 0.0) + sn / 3600.0
     return sonuc
+
+
+def cormind_hesabi(kayitlar: Iterable[Tuple[str, str, datetime, datetime]], gunler: Iterable[date], makineler: Iterable[str],
+                   ayar: Optional[HesapAyar] = None) -> Dict[str, dict]:
+    """Cormind'in kendi rapor mantığı (bizim hesaptan bağımsız; eşik ve hesap yöntemi uygulanmaz).
+
+    Temel süre = seçili sürenin net kısmı (her 480 dakikanın 440'ı). Her duruş = dakikası / temel süre.
+    'Mola Süresi' = (kaydedilen mola - mola hakkı) / temel süre (mola girilmediyse eksi çıkar).
+    Toplam = duruşlar + mola süresi;  OEE = 100 - toplam (0 ile 100 arasında).
+    Çalışma kayıtları hiç toplanmaz: kaydı olmayan süre çalışılmış sayılır, hiç kaydı olmayan makine %100 çıkar.
+    Dönen değerler yüzde (0-100 ölçeğinde)."""
+    ayar = ayar or HesapAyar()
+    gset = set(gunler)
+    sure_dk = len(gset) * 1440.0
+    net_dk = sure_dk * (ayar.net_saat * 60.0) / ayar.vardiya_dk
+    hak_dk = sure_dk * (ayar.mola_saat * 60.0) / ayar.vardiya_dk
+    durus: Dict[str, Dict[str, float]] = {}
+    mola: Dict[str, float] = {}
+    for makine, tip, bas, bit in kayitlar:
+        st = statu_bul(tip)
+        if st == CALISIYOR:
+            continue
+        dk = sum(sn for gun, _v, sn in bol(bas, bit, True) if gun in gset) / 60.0
+        if dk <= 0:
+            continue
+        if st == MOLA:
+            mola[makine] = mola.get(makine, 0.0) + dk
+        else:
+            d = durus.setdefault(makine, {})
+            ad = tip or "Belirtilmemiş"
+            d[ad] = d.get(ad, 0.0) + dk
+    sirali = list(makineler) + sorted(m for m in set(durus) | set(mola) if m not in set(makineler))
+    sonuc: Dict[str, dict] = {}
+    if net_dk <= 0:
+        return sonuc
+    for m in sirali:
+        d = {t: 100.0 * dk / net_dk for t, dk in durus.get(m, {}).items()}
+        mo = 100.0 * (mola.get(m, 0.0) - hak_dk) / net_dk
+        toplam = sum(d.values()) + mo
+        sonuc[m] = {"durus": d, "mola": mo, "toplam": toplam, "oee": max(0.0, min(100.0, 100.0 - toplam))}
+    return sonuc

@@ -206,3 +206,20 @@ def test_esik_alti_makine_gorunur_ama_sayilmaz():
     r = hesapla(kayit, [date(2026, 11, 3)], HesapAyar())
     assert "IM22" not in r.makine_ort and abs(r.esik_alti["IM22"][0] - 0.4) < 1e-6
     assert "IM21" not in r.esik_alti and abs(r.genel[0] - 0.9) < 1e-6
+
+
+def test_cormind_hesabi():
+    """Cormind mantığı: duruşlar 440'a bölünür, mola hakkı düşülür, OEE = 100 - toplam."""
+    from datetime import date, datetime, timedelta
+    from vardiya.hesap import cormind_hesabi
+    g = date(2026, 11, 11)
+    b = datetime(2026, 11, 11, 16, 0)
+    kayit = [("IM60", "SETUP", b, b + timedelta(minutes=171)), ("IM60", "YEMEK MOLASI", b + timedelta(hours=4), b + timedelta(hours=4, minutes=30.4)),
+             ("IM60", "Çalışma", b + timedelta(hours=5), b + timedelta(hours=7)),
+             ("IM23", "İŞ EMRİ PLAN YOK", datetime(2026, 11, 11, 0, 0), datetime(2026, 11, 12, 0, 0))]
+    r = cormind_hesabi(kayit, [g], ["IM23", "IM27", "IM60"])
+    # bir gün = 3 vardiya: net 1320 dk, mola hakkı 120 dk
+    assert abs(r["IM60"]["durus"]["SETUP"] - 100 * 171 / 1320) < 1e-6
+    assert abs(r["IM60"]["mola"] - 100 * (30.4 - 120) / 1320) < 1e-6
+    assert abs(r["IM23"]["toplam"] - 100.0) < 1e-6 and r["IM23"]["oee"] == 0.0     # 1440/1320 = %109, eksi %9 mola
+    assert abs(r["IM27"]["mola"] + 100 * 120 / 1320) < 1e-6 and r["IM27"]["oee"] == 100.0   # hiç kaydı yok

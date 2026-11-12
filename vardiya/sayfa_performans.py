@@ -14,7 +14,7 @@ from PySide6.QtWidgets import QApplication, QLabel, QMenu, QVBoxLayout, QWidget
 
 from . import tema
 from .cizim import tablo_resmi
-from .hesap import durus_dokumu
+from .hesap import cormind_hesabi, durus_dokumu
 
 try:                                    # web bileşeni yoksa program yine açılsın
     from PySide6.QtWebEngineWidgets import QWebEngineView
@@ -30,7 +30,7 @@ def performans_verisi(ana) -> dict:
     mola_pay = 100.0 * ayar.mola_saat / ayar.net_saat
     veri = {"genel": None, "aciklama": "", "donem": "", "vardiyalar": [], "makineler": [],
             "molaDk": round(ayar.mola_saat * 60), "molaPay": mola_pay, "tablo": "", "tabloMakineler": [],
-            "esik": round(ayar.esik * 100)}
+            "esik": round(ayar.esik * 100), "cormind": []}
     for v in (1, 2, 3):
         veri["vardiyalar"].append({"v": v, "calisma": None, "makine": None, "gun": 0, "sef": (ana.seflar or {}).get(v, "")})
     if not sonuc:
@@ -53,6 +53,10 @@ def performans_verisi(ana) -> dict:
     tablo_resmi(sonuc, tum, 0, 660, satir=40, yazi_carpani=1.22).save(tampon, "PNG")
     veri["tablo"] = "data:image/png;base64," + bytes(ba.toBase64()).decode("ascii")
     veri["tabloMakineler"] = tum
+    # Cormind'in kendi rapor mantığı: bizim hesaptan bağımsız, ayrı gösterilir
+    cm = cormind_hesabi(getattr(ana, "kayit", []) or [], gunler, ana.ayar.get("makineler", []), ayar)
+    veri["cormind"] = [{"ad": m, "oee": round(v["oee"], 2), "toplam": round(v["toplam"], 2), "mola": round(v["mola"], 2),
+                        "durus": {t: round(x, 3) for t, x in v["durus"].items()}} for m, v in cm.items()]
     dokum = durus_dokumu(getattr(ana, "kayit", []) or [], gunler)
     for m in tum:
         hucre = sonuc.hucreler.get(m, {})

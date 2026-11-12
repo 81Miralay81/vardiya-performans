@@ -33,7 +33,12 @@ tr.secili td{background:#e3e8fb}
 .cubuk{display:inline-block;width:26px;height:6px;border-radius:3px;background:#e6e9f2;vertical-align:middle;margin-right:5px;overflow:hidden}
 .cubuk i{display:block;height:100%;border-radius:3px}
 .tablokap{overflow:hidden;border-radius:8px}
-#gv{height:185px}#gm{height:400px}#gd{height:380px}
+#gv{height:185px}#gm{height:400px}#gd{height:380px}#gc1{height:300px}#gc2{height:460px}
+.dugme{margin-left:auto;background:#150958;color:#fff;border:0;border-radius:8px;padding:7px 14px;font:600 12.5px 'Segoe UI';cursor:pointer;white-space:nowrap}
+.dugme:hover{background:#241a8c}
+.dugme.acik{background:#5e9b2a}
+.not{color:var(--soluk);font-size:12px;margin:2px 0 8px}
+.altb{font-size:14px;font-weight:700;color:var(--lacivert);text-align:center;margin-top:6px}
 .sag{display:grid;grid-template-rows:auto 1fr;gap:12px;min-width:0}
 .gosterge{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;color:var(--soluk);font-size:12px;margin-top:2px}
 .gosterge i{display:inline-block;width:13px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
@@ -45,7 +50,7 @@ tr.secili td{background:#e3e8fb}
   <div class="kart" style="padding:8px"><div class="tablokap"><img id="tablo" alt="" style="width:100%;display:block;cursor:pointer" draggable="false"></div></div>
   <div class="sag">
    <div class="kart"><div class="kb"><b>Vardiya bazlı çalışma oranı</b><span id="donem"></span></div><div id="gv"></div></div>
-   <div class="kart"><div class="kb"><b>Makine bazlı performans</b><span>sütunun çalışma ya da duruş kısmına tıklayın: duruşlar · mola kısmına tıklayın: vardiya bazlı mola</span></div>
+   <div class="kart"><div class="kb"><b>Makine bazlı performans</b><span>sütunun çalışma ya da duruş kısmına tıklayın: duruşlar · mola kısmına tıklayın: vardiya bazlı mola</span><button class="dugme" id="cbtn">Cormind rapor sistemi</button></div>
     <div id="gm"></div>
     <div class="gosterge"><span><i style="background:#5e9b2a"></i>Çalışma</span><span><i style="background:#d64541"></i>Duruş</span>
      <span><i style="background:#f28c28"></i>Mola yapılan</span><span><i style="background:#7b4fa8"></i>Molada çalışılan</span><span><i style="background:repeating-linear-gradient(135deg,#c9cedb 0 2px,#fff 2px 5px);border:1px solid #c9cedb"></i>Taralı: eşik altı, hesaba girmez</span></div>
@@ -53,6 +58,12 @@ tr.secili td{background:#e3e8fb}
   </div>
  </div>
  <div class="kart" id="detaykart"><div class="kb"><b id="db">Ayrıntı</b><span id="da">yukarıdaki grafikte bir makineye tıklayın</span></div><div id="gd"></div></div>
+ <div class="kart" id="cormindkart" style="display:none;margin-top:12px"><div class="kb"><b>Cormind rapor sistemi</b><span id="ca"></span></div>
+  <div class="not">Bu bölüm Cormind'in kendi hesabıdır ve yukarıdaki hesaptan bağımsızdır: eşik ve hesap yöntemi uygulanmaz. Cormind çalışma süresini toplamaz; duruşları net süreye (her 480 dakikanın 440'ı) böler, mola hakkını düşer ve OEE = 100 − toplam der. Kaydı olmayan süre çalışılmış sayılır; hiç kaydı olmayan makine %100 görünür.</div>
+  <div class="altb">OEE Grafiği</div><div id="gc1"></div>
+  <div class="altb">Zaman Dağılım Grafiği</div><div id="gc2"></div>
+  <div class="gosterge" id="cgosterge"></div>
+ </div>
 </div>
 <script>
 "use strict";
@@ -88,17 +99,18 @@ const ipucu={backgroundColor:"#fff",borderColor:"#d5dbea",textStyle:{color:"#1b1
 const eksenY=(o)=>Object.assign({type:"value",axisLabel:{color:"#6b7285",formatter:"{value}%"},splitLine:{lineStyle:{color:"#e3e7ef",type:"dashed"}}},o||{});
 const eksenX=(veri,o)=>Object.assign({type:"category",data:veri,axisLabel:{color:"#1b1e2b",fontWeight:700,fontSize:12,interval:0},axisLine:{lineStyle:{color:"#9aa3b8",width:2}},axisTick:{show:false}},o||{});
 
-let V=null, gv=null, gm=null, gd=null, secili=null, mod="durus";
+let V=null, gv=null, gm=null, gd=null, gc1=null, gc2=null, cormindAcik=false, secili=null, mod="durus";
 function baslat(){ gv=echarts.init(document.getElementById("gv")); gm=echarts.init(document.getElementById("gm")); gd=echarts.init(document.getElementById("gd"));
  gm.getZr().on("click",e=>{ if(!V||!V.makineler.length) return; const p=gm.convertFromPixel({gridIndex:0},[e.offsetX,e.offsetY]); if(!p) return;
    const i=Math.round(p[0]); if(i<0||i>=V.makineler.length) return; sec(V.makineler[i].ad, p[1]<0?"mola":"durus", true); });
- addEventListener("resize",()=>{gv.resize();gm.resize();gd.resize()});
+ document.getElementById("cbtn").onclick=()=>{ cormindAcik=!cormindAcik; cormindCiz(true); };
+ addEventListener("resize",()=>{gv.resize();gm.resize();gd.resize();if(gc1){gc1.resize();gc2.resize()}});
  window.__hazir=true; }
 function sec(ad,yeniMod,kaydir){ secili=ad; mod=yeniMod; tabloCiz(); detayCiz(); if(kaydir) document.getElementById("detaykart").scrollIntoView({behavior:"smooth",block:"nearest"}); }
 
 window.guncelle=function(veri){ V=veri; if(!gv) baslat();
  if(!V.makineler.some(m=>m.ad===secili)) secili=null;
- kutuCiz(); tabloCiz(); vardiyaCiz(); makineCiz(); detayCiz(); window.__cizildi=(window.__cizildi||0)+1; };
+ kutuCiz(); tabloCiz(); vardiyaCiz(); makineCiz(); detayCiz(); cormindCiz(false); window.__cizildi=(window.__cizildi||0)+1; };
 
 function kutuCiz(){
  const k=[`<div class="kutu"><div class="ad">GENEL ORTALAMA (ÇALIŞMA)</div><div class="deger">${V.genel==null?"–":yz(V.genel,2)}</div><div class="alt">${kacis(V.aciklama)}</div></div>`];
@@ -199,5 +211,58 @@ function molaCiz(m,db,da){
      data:[{name:"Mola yapılan",value:mo,itemStyle:{color:new echarts.graphic.LinearGradient(0,0,1,1,[{offset:0,color:ton(TURUNCU,0.25)},{offset:1,color:ton(TURUNCU,-0.12)}])}},
            {name:"Molada çalışılan",value:1-mo,itemStyle:{color:new echarts.graphic.LinearGradient(0,0,1,1,[{offset:0,color:ton(MOR,0.25)},{offset:1,color:ton(MOR,-0.15)}])}}]}})
  },true); }
+function cormindCiz(kaydir){
+ const kart=document.getElementById("cormindkart"), btn=document.getElementById("cbtn");
+ kart.style.display=cormindAcik?"block":"none"; btn.classList.toggle("acik",cormindAcik);
+ btn.textContent=cormindAcik?"Cormind rapor sistemini gizle":"Cormind rapor sistemi";
+ if(!cormindAcik||!V) return;
+ if(!gc1){ gc1=echarts.init(document.getElementById("gc1")); gc2=echarts.init(document.getElementById("gc2")); } else { gc1.resize(); gc2.resize(); }
+ const C=V.cormind||[]; document.getElementById("ca").textContent=V.donem+" · "+C.length+" makine";
+ if(!C.length){ gc1.clear(); gc2.clear(); return; }
+ const MOLA_AD="Mola Süresi", sik=C.length>18;
+ const xo={axisLabel:{color:"#1b1e2b",fontWeight:700,fontSize:sik?10.5:12,interval:0,rotate:sik?50:0}};
+ const TEAL="#16695f";
+ gc1.setOption({animationDuration:700,
+  tooltip:Object.assign({trigger:"item",formatter:p=>{const m=C[p.dataIndex];return `<b>${kacis(m.ad)}</b><br>OEE (Cormind): <b>${m.oee.toFixed(1).replace(".",",")}%</b><br>Toplam duruş: ${m.toplam.toFixed(1).replace(".",",")}%`}},ipucu),
+  grid:{left:46,right:86,top:26,bottom:sik?46:30},
+  xAxis:eksenX(C.map(m=>m.ad),xo), yAxis:eksenY({min:0,max:120,interval:20}),
+  series:[{type:"custom",encode:{x:0,y:1},data:C.map((m,i)=>[i,m.oee]),
+    renderItem:(prm,api)=>{const v=api.value(1), a=api.coord([api.value(0),0]), u=api.coord([api.value(0),v]);
+      const gen=Math.min(api.size([1,0])[0]*0.52,46), cocuk=[];
+      if(v>0.3) cocuk.push(kup(a[0],a[1],u[1],gen,TEAL,"",a[1],prm.dataIndex*25));
+      cocuk.push({type:"text",style:{text:v.toFixed(0)+"%",x:a[0]+(v>0.3?D/2:0),y:u[1]-(v>0.3?D*0.55:0)-9,textAlign:"center",textVerticalAlign:"middle",fill:"#1b1e2b",font:"700 11px Segoe UI"}});
+      return {type:"group",children:cocuk}},
+    markLine:{symbol:"none",silent:true,lineStyle:{color:"#f5c400",width:2.5,type:"solid"},label:{formatter:"Limit\n%85",color:"#c79a00",fontWeight:700,lineHeight:15},data:[{yAxis:85}]}}]
+ },true);
+ // zaman dağılımı: duruş türleri üst üste, mola süresi (eksi ise) sıfırın altında
+ const top={}; C.forEach(m=>Object.entries(m.durus).forEach(([t,x])=>top[t]=(top[t]||0)+x));
+ const turler=Object.keys(top).sort((a,b)=>top[b]-top[a]);
+ const yigin=C.map(()=>0), seri=[];
+ const blok=(ad,renk,deger)=>({name:ad,type:"custom",itemStyle:{color:renk},encode:{x:0,y:2},data:deger,
+   renderItem:(prm,api)=>{const a=api.value(1),u=api.value(2); if(!(u-a>0.05)) return null;
+     const pa=api.coord([api.value(0),a]),pu=api.coord([api.value(0),u]),sifir=api.coord([0,0])[1];
+     const gen=Math.min(api.size([1,0])[0]*0.52,46), b=u-a;
+     return kup(pa[0],pa[1],pu[1],gen,renk,b>=4&&gen>=22?(a<0?"-":"")+b.toFixed(0)+"%":"",sifir,prm.dataIndex*25,a>=0,ad===MOLA_AD?"#fff":"#101320")}});
+ turler.forEach(t=>seri.push(blok(t,tipRenk(t),C.map((m,i)=>{const p=m.durus[t]||0,a=yigin[i];yigin[i]+=p;return [i,a,a+p,p]}))));
+ seri.push(blok(MOLA_AD,MOR,C.map((m,i)=>{ if(m.mola>=0){const a=yigin[i];yigin[i]+=m.mola;return [i,a,a+m.mola,m.mola]} return [i,m.mola,0,m.mola] })));
+ const enUst=Math.max(20,...yigin), enAlt=Math.min(0,...C.map(m=>m.mola));
+ seri.push({type:"custom",silent:true,tooltip:{show:false},encode:{x:0,y:1},data:C.map((m,i)=>[i,yigin[i],m.toplam]),
+   renderItem:(prm,api)=>{const u=api.coord([api.value(0),api.value(1)]);
+     return {type:"text",style:{text:api.value(2).toFixed(0)+"%",x:u[0]+D/2,y:u[1]-D*0.55-10,textAlign:"center",textVerticalAlign:"middle",fill:"#1b1e2b",font:"700 11px Segoe UI"}}}});
+ seri.push({type:"line",data:[],silent:true,markLine:{symbol:"none",silent:true,data:[
+   {yAxis:0,lineStyle:{color:"#9aa3b8",width:2,type:"solid"},label:{show:false}},
+   {yAxis:15,lineStyle:{color:"#8ed13a",width:2.5,type:"solid"},label:{formatter:"Limit\n%15",color:"#5e9b2a",fontWeight:700,lineHeight:15}}]}});
+ gc2.setOption({animationDuration:700,
+  tooltip:Object.assign({trigger:"axis",axisPointer:{type:"shadow",shadowStyle:{color:"rgba(36,26,140,.06)"}},
+   formatter:p=>{const m=C[p[0].dataIndex];let s2=`<b>${kacis(m.ad)}</b> · toplam <b>${m.toplam.toFixed(1).replace(".",",")}%</b> · OEE ${m.oee.toFixed(1).replace(".",",")}%<br>`;
+     Object.entries(m.durus).sort((a,b)=>b[1]-a[1]).forEach(([t,x])=>{ if(x>=0.05) s2+=`<span style="color:${tipRenk(t)}">●</span> ${kacis(t)}: <b>${x.toFixed(1).replace(".",",")}%</b><br>`});
+     return s2+`<span style="color:${MOR}">●</span> Mola Süresi: <b>${m.mola.toFixed(1).replace(".",",")}%</b>`}},ipucu),
+  grid:{left:46,right:86,top:26,bottom:sik?46:30},
+  xAxis:eksenX(C.map(m=>m.ad),Object.assign({axisLine:{show:false}},xo)),
+  yAxis:eksenY({min:Math.floor(enAlt/10)*10,max:Math.ceil((enUst+8)/10)*10,interval:10}),
+  series:seri},true);
+ document.getElementById("cgosterge").innerHTML=turler.concat([MOLA_AD]).map(t=>`<span><i style="background:${t===MOLA_AD?MOR:tipRenk(t)}"></i>${kacis(t)}</span>`).join("");
+ if(kaydir) kart.scrollIntoView({behavior:"smooth",block:"start"});
+}
 baslat();
 </script></body></html>
