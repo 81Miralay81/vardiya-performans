@@ -152,23 +152,31 @@ class AnaPencere(QMainWindow):
         if self._guncelleme is not None and self._guncelleme.isRunning():
             return
         self.gunc_durum.setText("")
+        self._gunc_elle = elle
         self._guncelleme = guncelleme.GuncellemeKontrol(exe, self)
         self._guncelleme.durum.connect(self.gunc_durum.setText)
         self._guncelleme.hazir.connect(lambda surum, dosya: self._guncelleme_hazir(exe, surum, dosya))
         self._guncelleme.start()
 
     def _guncelleme_hazir(self, exe: str, surum: str, dosya: str):
+        """Yeni sürüm var: açılışta yalnızca sol altta yazar; düğmeye basılınca indirme sayfasını açmayı önerir."""
+        self.gunc_durum.setText(f"Yeni sürüm var: {surum}")
+        if not getattr(self, "_gunc_elle", False):
+            return
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
         from PySide6.QtWidgets import QMessageBox
         kutu = QMessageBox(self)
         kutu.setIcon(QMessageBox.Information)
         kutu.setWindowTitle("Yeni sürüm")
-        kutu.setText(f"Programın yeni sürümü ({surum}) indirildi.\nŞu anki sürüm: {SURUM}.\n\nGüncellenip yeniden açılacak.")
-        kutu.setInformativeText("Aynı klasörden başka biri programı açıksa güncelleme onlar kapanınca tamamlanır.")
-        kutu.setStandardButtons(QMessageBox.Ok)
-        kutu.button(QMessageBox.Ok).setText("Güncelle")
+        kutu.setText(f"Programın yeni sürümü var: {surum}\nŞu anki sürüm: {SURUM}")
+        kutu.setInformativeText("İndirme sayfasında en üstteki derlemeye girip alttaki 'VardiyaPerformans' dosyasını indirin. "
+                                "İndirdiğiniz klasörün içindekileri programın klasörüne kopyalayın; VardiyaPerformans.db dosyasına dokunmayın.")
+        ac = kutu.addButton("İndirme sayfasını aç", QMessageBox.AcceptRole)
+        kutu.addButton("Sonra", QMessageBox.RejectRole)
         kutu.exec()
-        guncelleme.uygula(dosya, exe)
-        QApplication.quit()
+        if kutu.clickedButton() is ac:
+            QDesktopServices.openUrl(QUrl(guncelleme.INDIRME_SAYFASI))
 
     # ------------------------------------------------ API (sayfalar kullanır)
     def kapsam(self):

@@ -19,6 +19,7 @@ from .surum import SURUM
 
 DEPO = "81Miralay81/vardiya-performans"
 ETIKET = "guncel"
+INDIRME_SAYFASI = f"https://github.com/{DEPO}/actions?query=is%3Asuccess+branch%3Amain"
 API = f"https://api.github.com/repos/{DEPO}/releases/tags/{ETIKET}"
 EXE_ADI = "VardiyaPerformans.exe"
 ZIP_ADI = "VardiyaPerformans.zip"     # şirket ağları .exe indirmeyi engelleyebildiği için önce sıkıştırılmış dosya denenir
@@ -140,13 +141,6 @@ class GuncellemeKontrol(QThread):
     def run(self):
         try:
             self.durum.emit("Denetleniyor…")
-            yeni = self.exe + YENI_UZANTI
-            iz = yeni + ".surum"
-            if os.path.exists(yeni) and os.path.exists(iz):      # daha önce indirilmiş, uygulanamamış
-                s = open(iz, encoding="utf8").read().strip()
-                if daha_yeni(s, SURUM):
-                    self.hazir.emit(s, yeni)
-                    return
             bilgi = son_surum()
             if not bilgi:
                 self.durum.emit("Sürüm bilgisi okunamadı")
@@ -154,18 +148,9 @@ class GuncellemeKontrol(QThread):
             if not daha_yeni(bilgi[0], SURUM):
                 self.durum.emit(f"Güncel ({SURUM})")
                 return
-            self.durum.emit(f"{bilgi[0]} indiriliyor…")
-            son_yuzde = [-1]
-
-            def ilerleme(okunan, toplam):
-                y = int(100 * okunan / toplam) if toplam else -1
-                if y >= son_yuzde[0] + 5:
-                    son_yuzde[0] = y
-                    self.durum.emit(f"{bilgi[0]} indiriliyor… %{y}")
-
-            indir(bilgi[1], yeni, ilerleme)
-            with open(iz, "w", encoding="utf8") as f:
-                f.write(bilgi[0])
-            self.hazir.emit(bilgi[0], yeni)
+            # Program klasör olarak dağıtılıyor ve şirket ağı program indirmeyi engelliyor: indirme yapılmaz,
+            # yalnızca yeni sürüm olduğu bildirilir; kullanıcı indirme sayfasından kendisi alır.
+            self.durum.emit(f"Yeni sürüm var: {bilgi[0]}")
+            self.hazir.emit(bilgi[0], "")
         except Exception as e:  # noqa: BLE001 - ağ yok / dosya kilitli / klasör yazılamaz
             self.durum.emit(f"Hata: {type(e).__name__}: {e}"[:160])

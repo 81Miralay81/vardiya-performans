@@ -31,29 +31,48 @@ jobs:
       - name: Exe derle
         shell: pwsh
         run: |
-          pyinstaller --noconfirm --onefile --windowed --name VardiyaPerformans `
-            --icon assets/uygulama.ico --add-data "assets;assets" --hidden-import win32timezone --hidden-import win32com.client main.py
+          $s = "1.0.${{ github.run_number }}"
+          $v = "1, 0, ${{ github.run_number }}, 0"
+          @"
+          VSVersionInfo(
+            ffi=FixedFileInfo(filevers=($v), prodvers=($v), mask=0x3f, flags=0x0, OS=0x40004, fileType=0x1, subtype=0x0, date=(0, 0)),
+            kids=[
+              StringFileInfo([StringTable('041F04B0', [
+                StringStruct('CompanyName', 'Teknorot'),
+                StringStruct('FileDescription', 'Vardiya Performans'),
+                StringStruct('FileVersion', '$s'),
+                StringStruct('InternalName', 'VardiyaPerformans'),
+                StringStruct('OriginalFilename', 'VardiyaPerformans.exe'),
+                StringStruct('ProductName', 'Vardiya Performans'),
+                StringStruct('ProductVersion', '$s')])]),
+              VarFileInfo([VarStruct('Translation', [1055, 1200])])
+            ]
+          )
+          "@ | Set-Content surum_bilgisi.txt -Encoding utf8
+          # Klasör olarak derlenir (tek dosya değil): tek dosyalı exe her açılışta ~500 MB'ı geçici klasöre açtığı için
+          # ağ klasöründen açılış dakikalar sürüyordu.
+          pyinstaller --noconfirm --onedir --windowed --name VardiyaPerformans `
+            --icon assets/uygulama.ico --version-file surum_bilgisi.txt --add-data "assets;assets" `
+            --hidden-import win32timezone --hidden-import win32com.client main.py
       - name: Exe kendini sınasın
         shell: pwsh
         run: |
           $env:QT_QPA_PLATFORM = "offscreen"
-          $p = Start-Process -FilePath dist\VardiyaPerformans.exe -ArgumentList "--kendini-sina" -Wait -PassThru -RedirectStandardOutput out.txt -RedirectStandardError err.txt
+          $p = Start-Process -FilePath dist\VardiyaPerformans\VardiyaPerformans.exe -ArgumentList "--kendini-sina" -Wait -PassThru -RedirectStandardOutput out.txt -RedirectStandardError err.txt
           Get-Content out.txt, err.txt
           if ($p.ExitCode -ne 0) { throw "Exe kendini sınama başarısız: $($p.ExitCode)" }
       - name: Sıkıştır (şirket ağları .exe indirmeyi engelleyebildiği için güncelleme bu dosyadan yapılır)
         shell: pwsh
-        run: Compress-Archive -Path dist\VardiyaPerformans.exe -DestinationPath dist\VardiyaPerformans.zip -Force
+        run: Compress-Archive -Path dist\VardiyaPerformans -DestinationPath dist\VardiyaPerformans.zip -Force
       - uses: actions/upload-artifact@v4
         with:
           name: VardiyaPerformans
-          path: dist/VardiyaPerformans.exe
+          path: dist/VardiyaPerformans
       - name: Son sürümü yayınla
         uses: softprops/action-gh-release@v2
         with:
           tag_name: guncel
           name: Son sürüm 1.0.${{ github.run_number }}
           body: "SURUM=1.0.${{ github.run_number }}"
-          files: |
-            dist/VardiyaPerformans.exe
-            dist/VardiyaPerformans.zip
+          files: dist/VardiyaPerformans.zip
           prerelease: false
