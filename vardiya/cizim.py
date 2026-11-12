@@ -603,8 +603,11 @@ def genel_performans_grafigi(p: QPainter, rect: QRectF, sonuc: DonemSonuc, makin
             bolgeler.append((QRectF(cx - slot / 2, yy(0), slot, alan.bottom() - yy(0) + 24 * s), m, "mola"))
         parca(cx, 0, c * 100, YESIL_, alti, f"{c * 100:.0f}%")
         parca(cx, c * 100, 100, KIRMIZI_, alti, f"{(1 - c) * 100:.0f}%")
-        parca(cx, -mo * mola_pay, 0, TURUNCU_, alti, f"{mo * 100:.0f}%")
-        parca(cx, -mola_pay, -mo * mola_pay, MOR_, alti, f"{(1 - mo) * 100:.0f}%")
+        # Yüzdeler mola hakkı (%9) üzerinden yazılır; ikisinin toplamı her zaman mola hakkını verir.
+        hak = int(round(mola_pay))
+        yapilan = min(hak, int(round(mo * mola_pay)))
+        parca(cx, -mo * mola_pay, 0, TURUNCU_, alti, f"{yapilan}%")
+        parca(cx, -mola_pay, -mo * mola_pay, MOR_, alti, f"{hak - yapilan}%")
         if alti:
             _yaz(p, QRectF(cx - slot / 2, yy(100) - 18 * s, slot, 16 * s), "eşik altı", 9 * s, False, ORTA, tema.YAZI_SOLUK)
         _yaz(p, QRectF(cx - slot / 2, alan.bottom() + 4 * s, slot, 20 * s), m, (12 if slot > 44 * s else 10) * s, True, ORTA, tema.YAZI)

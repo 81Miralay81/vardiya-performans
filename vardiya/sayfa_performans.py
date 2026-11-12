@@ -230,8 +230,8 @@ class PerformansSayfasi(QWidget):
         dk = self._mola_dk
         return (f"<b>{m}</b>" + (f" · <span style='color:#ffb3ad'>eşik altı: hesaba girmez</span>" if alti else "")
                 + f"<br>Çalışma: <b>{tema.yuzde(c, 1)}</b><br>Duruş: <b>{tema.yuzde(1 - c, 1)}</b>"
-                + f"<br>Mola yapılan: <b>{tema.yuzde(mo, 0)}</b> · günde ort. {mo * dk:.0f} dk"
-                + f"<br>Molada çalışılan: <b>{tema.yuzde(1 - mo, 0)}</b> · günde ort. {(1 - mo) * dk:.0f} dk")
+                + f"<br>Mola yapılan: günde ort. <b>{mo * dk:.0f} dk</b> ({dk:.0f} dk içinden)"
+                + f"<br>Molada çalışılan: günde ort. <b>{(1 - mo) * dk:.0f} dk</b>")
 
     def _detay_ciz(self, p, rect):
         m = self._secili
