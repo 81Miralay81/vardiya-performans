@@ -471,13 +471,294 @@ def rapor_ciz(p: QPainter, rect: QRectF, r: dict):
     p.restore()
 
 
+# ============================================================ idari rapor
+def cormind_oee_grafigi(p: QPainter, rect: QRectF, cm: Dict[str, dict], baslik: Optional[str] = "OEE Grafiği (Cormind hesabı)", limit: float = 85.0):
+    s = olcek(rect)
+    p.save()
+    p.setRenderHint(QPainter.Antialiasing, True)
+    p.setRenderHint(QPainter.TextAntialiasing, True)
+    if baslik:
+        _yaz(p, QRectF(rect.left(), rect.top() + 4 * s, rect.width(), 28 * s), baslik, 19 * s, True, ORTA, tema.LACIVERT)
+    makineler = list(cm)
+    if not makineler:
+        _yaz(p, rect, "Seçilen dönemde gösterilecek veri yok", 16 * s, False, ORTA, tema.YAZI_SOLUK)
+        p.restore()
+        return
+    sol, sag, ust, alt = 56 * s, 78 * s, (44 if baslik else 18) * s, 54 * s
+    alan = QRectF(rect.left() + sol, rect.top() + ust, rect.width() - sol - sag, rect.height() - ust - alt)
+    ymax = 110.0
+    for k in range(0, 111, 10):
+        y = alan.bottom() - alan.height() * k / ymax
+        p.setPen(QPen(QColor("#E3E7EF"), max(1, s)))
+        p.drawLine(QPointF(alan.left(), y), QPointF(alan.right(), y))
+        _yaz(p, QRectF(rect.left(), y - 10 * s, sol - 8 * s, 20 * s), f"{k}%", 11 * s, False, SAG, tema.YAZI_SOLUK)
+    slot = alan.width() / len(makineler)
+    genislik = min(slot * 0.62, 46 * s)
+    dondur = slot < 40 * s
+    for i, m in enumerate(makineler):
+        v = cm[m]["oee"]
+        cx = alan.left() + slot * (i + 0.5)
+        h = alan.height() * v / ymax
+        br = QRectF(cx - genislik / 2, alan.bottom() - h, genislik, h)
+        if h > 0.5:
+            g = QLinearGradient(br.topLeft(), br.bottomLeft())
+            ana = QColor("#16695F")
+            g.setColorAt(0, ana.lighter(140))
+            g.setColorAt(1, ana)
+            p.setPen(Qt.NoPen)
+            p.setBrush(QBrush(g))
+            p.drawRoundedRect(br, 2 * s, 2 * s) if h > 4 * s else p.drawRect(br)
+        _yaz(p, QRectF(cx - slot / 2, br.top() - 20 * s, slot, 18 * s), f"{v:.0f}%", (11 if not dondur else 9.5) * s, True, ORTA, tema.YAZI)
+        if dondur:
+            p.save()
+            p.translate(cx + 4 * s, alan.bottom() + 8 * s)
+            p.rotate(60)
+            _yaz(p, QRectF(0, -8 * s, 60 * s, 16 * s), m, 11 * s, False, AL, tema.YAZI)
+            p.restore()
+        else:
+            _yaz(p, QRectF(cx - slot / 2, alan.bottom() + 6 * s, slot, 20 * s), m, 12 * s, True, ORTA, tema.YAZI)
+    p.setPen(QPen(QColor("#9AA3B8"), max(1, s)))
+    p.drawLine(alan.bottomLeft(), alan.bottomRight())
+    y = alan.bottom() - alan.height() * limit / ymax
+    p.setPen(QPen(QColor("#E0B400"), 2.4 * s))
+    p.drawLine(QPointF(alan.left(), y), QPointF(alan.right(), y))
+    _yaz(p, QRectF(alan.right() + 4 * s, y - 20 * s, sag - 4 * s, 40 * s), f"Limit\n%{limit:.0f}", 11 * s, True, AL, "#B08D00")
+    p.restore()
+
+
+def genel_performans_grafigi(p: QPainter, rect: QRectF, sonuc: DonemSonuc, makineler: List[str], mola_pay: float,
+                             baslik: Optional[str] = "Genel Performans: Çalışma, Duruş ve Mola"):
+    """Bizim hesabımız: her sütun %100 (yeşil çalışma + kırmızı duruş); sıfırın altında mola hakkı
+    (turuncu: mola yapılan, mor: molada çalışılan). Eşik altı makineler soluk çizilir ve hesaba girmez."""
+    s = olcek(rect)
+    p.save()
+    p.setRenderHint(QPainter.Antialiasing, True)
+    p.setRenderHint(QPainter.TextAntialiasing, True)
+    if baslik:
+        _yaz(p, QRectF(rect.left(), rect.top() + 4 * s, rect.width(), 28 * s), baslik, 19 * s, True, ORTA, tema.LACIVERT)
+    sirali = list(makineler) + sorted(m for m in sonuc.hucreler if m not in makineler)
+    veri = []
+    for m in sirali:
+        ort = sonuc.makine_ort.get(m)
+        if ort and ort[0] is not None:
+            veri.append((m, max(0.0, min(1.0, ort[0])), max(0.0, min(1.0, ort[2] or 0.0)), False))
+        elif m in sonuc.esik_alti:
+            e = sonuc.esik_alti[m]
+            veri.append((m, max(0.0, min(1.0, e[0])), max(0.0, min(1.0, e[2])), True))
+    gos_h = 24 * s
+    sol, sag, ust, alt = 56 * s, 78 * s, (44 if baslik else 18) * s, 34 * s + gos_h
+    alan = QRectF(rect.left() + sol, rect.top() + ust, rect.width() - sol - sag, rect.height() - ust - alt)
+    if not veri:
+        _yaz(p, rect, "Seçilen dönemde gösterilecek veri yok", 16 * s, False, ORTA, tema.YAZI_SOLUK)
+        p.restore()
+        return
+    ymin, ymax = -(mola_pay + 2.0), 108.0
+
+    def yy(v: float) -> float:
+        return alan.bottom() - alan.height() * (v - ymin) / (ymax - ymin)
+
+    for k in range(0, 101, 10):
+        p.setPen(QPen(QColor("#E3E7EF"), max(1, s)))
+        p.drawLine(QPointF(alan.left(), yy(k)), QPointF(alan.right(), yy(k)))
+        _yaz(p, QRectF(rect.left(), yy(k) - 10 * s, sol - 8 * s, 20 * s), f"{k}%", 11 * s, False, SAG, tema.YAZI_SOLUK)
+    _yaz(p, QRectF(rect.left(), yy(-mola_pay) - 10 * s, sol - 8 * s, 20 * s), f"-{mola_pay:.0f}%", 11 * s, False, SAG, tema.YAZI_SOLUK)
+    slot = alan.width() / len(veri)
+    genislik = min(slot * 0.62, 46 * s)
+    YESIL_, KIRMIZI_, TURUNCU_, MOR_ = "#5E9B2A", "#D64541", "#F28C28", tema.MOLA_RENK
+
+    def parca(cx, a, u, renk_, soluk, yazi):
+        r_ = QRectF(cx - genislik / 2, yy(u), genislik, yy(a) - yy(u))
+        if r_.height() < 0.4:
+            return
+        ana = QColor(renk_)
+        if soluk:
+            ana = ana.lighter(165)
+        g = QLinearGradient(r_.topLeft(), r_.topRight())
+        g.setColorAt(0, ana.lighter(115))
+        g.setColorAt(1, ana.darker(106))
+        p.setPen(QPen(QColor("white"), max(0.6, 0.8 * s)))
+        p.setBrush(QBrush(g))
+        p.drawRect(r_)
+        if soluk:
+            p.setBrush(QBrush(QColor(90, 98, 120, 110), Qt.BDiagPattern))
+            p.setPen(Qt.NoPen)
+            p.drawRect(r_)
+        if yazi and r_.height() >= 14 * s and genislik >= 20 * s:
+            _yaz(p, r_, yazi, 10 * s, True, ORTA, "#2B3040" if soluk else "#FFFFFF")
+
+    for i, (m, c, mo, alti) in enumerate(veri):
+        cx = alan.left() + slot * (i + 0.5)
+        parca(cx, 0, c * 100, YESIL_, alti, f"{c * 100:.0f}%")
+        parca(cx, c * 100, 100, KIRMIZI_, alti, f"{(1 - c) * 100:.0f}%")
+        parca(cx, -mo * mola_pay, 0, TURUNCU_, alti, "")
+        parca(cx, -mola_pay, -mo * mola_pay, MOR_, alti, "")
+        if alti:
+            _yaz(p, QRectF(cx - slot / 2, yy(100) - 18 * s, slot, 16 * s), "eşik altı", 9 * s, False, ORTA, tema.YAZI_SOLUK)
+        _yaz(p, QRectF(cx - slot / 2, alan.bottom() + 4 * s, slot, 20 * s), m, (12 if slot > 44 * s else 10) * s, True, ORTA, tema.YAZI)
+    p.setPen(QPen(QColor("#9AA3B8"), max(1, 1.4 * s)))
+    p.drawLine(QPointF(alan.left(), yy(0)), QPointF(alan.right(), yy(0)))
+    genel = sonuc.genel[0]
+    if genel is not None:
+        y = yy(genel * 100)
+        p.setPen(QPen(QColor(tema.TURUNCU), 2.4 * s))
+        p.drawLine(QPointF(alan.left(), y), QPointF(alan.right(), y))
+        _yaz(p, QRectF(alan.right() + 4 * s, y - 20 * s, sag - 4 * s, 40 * s), f"Genel\n{yuzde(genel)}", 11 * s, True, AL, tema.TURUNCU)
+    gosterge = [("Çalışma", YESIL_), ("Duruş", KIRMIZI_), ("Mola yapılan", TURUNCU_), ("Molada çalışılan", MOR_)]
+    p.setFont(font(11 * s))
+    fm = p.fontMetrics()
+    genler = [fm.horizontalAdvance(a) + 36 * s for a, _ in gosterge]
+    gx = rect.center().x() - sum(genler) / 2
+    gy = rect.bottom() - gos_h + 2 * s
+    for (ad, renk_), w in zip(gosterge, genler):
+        p.fillRect(QRectF(gx, gy + 4 * s, 12 * s, 10 * s), QColor(renk_))
+        _yaz(p, QRectF(gx + 17 * s, gy, w, 18 * s), ad, 11 * s, False, AL, tema.YAZI)
+        gx += w
+    p.restore()
+
+
+def _html_kacis(s: str) -> str:
+    return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _html_ciz(p: QPainter, rect: QRectF, html: str, k: float, taban_px: float = 15.0):
+    """HTML'i kutuya sığdırarak çizer (sığmazsa küçültür)."""
+    from PySide6.QtGui import QTextDocument
+    doc = QTextDocument()
+    f = font(taban_px)
+    doc.setDefaultFont(f)
+    doc.setDocumentMargin(0)
+    olcek_ = k
+    for _ in range(12):
+        doc.setTextWidth(rect.width() / olcek_)
+        doc.setHtml(html)
+        if doc.size().height() * olcek_ <= rect.height() or olcek_ < 0.35 * k:
+            break
+        olcek_ *= 0.92
+    p.save()
+    p.translate(rect.left(), rect.top())
+    p.scale(olcek_, olcek_)
+    doc.drawContents(p, QRectF(0, 0, rect.width() / olcek_, rect.height() / olcek_))
+    p.restore()
+
+
+IDARI_SAYFA = 3
+_DURUM_RENK = {"Kritik düşük": "#D64541", "Düşük": "#F28C28", "Orta": "#E0B400", "Hedefte": "#5E9B2A"}
+
+
+def _idari_basligi(p: QPainter, rect: QRectF, r: dict, sayfa: int):
+    W = rect.width()
+    k = W / 1600.0
+    kenar = 36 * k
+    ic = rect.adjusted(kenar, kenar, -kenar, -kenar)
+    lg = tema.logo()
+    ust_h = 96 * k
+    if not lg.isNull():
+        lh = 70 * k
+        lw = lh * lg.width() / lg.height()
+        p.drawPixmap(QRectF(ic.left(), ic.top() + 6 * k, lw, lh), lg, QRectF(lg.rect()))
+    _yaz_sigdir(p, QRectF(ic.left() + 330 * k, ic.top(), ic.width() - 400 * k, 56 * k), r["baslik"], 30 * k, True, ORTA, tema.LACIVERT, 14 * k)
+    _yaz(p, QRectF(ic.left() + 330 * k, ic.top() + 50 * k, ic.width() - 400 * k, 34 * k), r["donem"], 18 * k, False, ORTA, tema.YAZI_SOLUK)
+    p.setPen(QPen(QColor(tema.YESIL), 4 * k))
+    p.drawLine(QPointF(ic.left(), ic.top() + ust_h), QPointF(ic.right(), ic.top() + ust_h))
+    _yaz(p, QRectF(ic.left(), ic.bottom() - 36 * k, ic.width() * 0.7, 32 * k),
+         f"Eşik: %{r['esik'] * 100:.0f}  ·  Net vardiya süresi: {tema.sayi(r['net_saat'], 2)} saat  ·  OEE ve zaman dağılımı Cormind hesabıdır; çalışma oranı programın hesabıdır",
+         12.5 * k, False, AL, tema.YAZI_SOLUK)
+    _yaz(p, QRectF(ic.right() - 520 * k, ic.bottom() - 36 * k, 520 * k, 32 * k), f"{r.get('alt_sag', '')}  ·  Sayfa {sayfa + 1}/{IDARI_SAYFA}",
+         12.5 * k, False, SAG, tema.YAZI_SOLUK)
+    govde = QRectF(ic.left(), ic.top() + ust_h + 16 * k, ic.width(), ic.height() - ust_h - 16 * k - 44 * k)
+    return govde, k
+
+
+def idari_ciz(p: QPainter, rect: QRectF, r: dict, sayfa: int = 0):
+    """İdari rapor: 1. sayfa değerlendirme metni ve tablolar, 2-3. sayfalar grafikler."""
+    p.save()
+    p.fillRect(rect, QColor("white"))
+    govde, k = _idari_basligi(p, rect, r, sayfa)
+    cm, sonuc, makineler = r.get("cormind") or {}, r["sonuc"], r["makineler"]
+    bosluk = 16 * k
+    if sayfa == 0:
+        ic = r["idari"]
+        sol = QRectF(govde.left(), govde.top(), govde.width() * 0.50, govde.height())
+        sag = QRectF(sol.right() + 28 * k, govde.top(), govde.width() - sol.width() - 28 * k, govde.height())
+        # sol: düzenlenebilir metin
+        h = []
+        for satir in (r.get("idari_metin") or "").split("\n"):
+            t = satir.strip()
+            if not t:
+                h.append("<div style='font-size:6px'>&nbsp;</div>")
+            elif t == tema.tr_buyuk(t) and len(t) > 3 and not t.startswith("-"):
+                h.append(f"<div style='color:{tema.LACIVERT};font-weight:700;font-size:17px;margin-top:6px'>{_html_kacis(t)}</div>")
+            elif t[:1].isdigit() and t[1:3] in (". ", ") "):
+                h.append(f"<div style='font-weight:700;margin-top:4px'>{_html_kacis(t)}</div>")
+            elif t.startswith("-"):
+                h.append(f"<div style='margin-left:18px'>• {_html_kacis(t.lstrip('- '))}</div>")
+            else:
+                h.append(f"<div>{_html_kacis(t)}</div>")
+        _html_ciz(p, sol, "".join(h), k)
+        # sağ: tablolar
+        th = f"background:{tema.LACIVERT};color:white;font-weight:700;padding:4px 6px"
+        td = "padding:3px 6px;border-bottom:1px solid #D9DEE8"
+        t = [f"<div style='color:{tema.LACIVERT};font-weight:700;font-size:17px'>TEZGÂH PERFORMANS DEĞERLERİ</div>",
+             "<table width='100%' cellspacing='0' cellpadding='0'>",
+             f"<tr><td style='{th}'>Tezgâh</td><td style='{th}' align='right'>OEE (Cormind)</td><td style='{th}' align='right'>Çalışma (bizim)</td>"
+             f"<td style='{th}'>Başlıca kayıp</td><td style='{th}'>Durum</td></tr>"]
+        for x in ic["perf"][:16]:
+            cal = yuzde(x["calisma"], 1) if x["calisma"] is not None else "–"
+            t.append(f"<tr><td style='{td}'><b>{_html_kacis(x['tezgah'])}</b></td><td style='{td}' align='right'>%{x['oee']:.1f}</td>"
+                     f"<td style='{td}' align='right'>{cal}</td><td style='{td}'>{_html_kacis(x['kayip'])}</td>"
+                     f"<td style='{td};color:{_DURUM_RENK.get(x['durum'], tema.YAZI)}'><b>● {x['durum']}</b></td></tr>")
+        if ic.get("oee_ort") is not None:
+            t.append(f"<tr><td style='{td};background:#EEF3E6'><b>Ortalama</b></td><td style='{td};background:#EEF3E6' align='right'><b>%{ic['oee_ort']:.1f}</b></td>"
+                     f"<td style='{td};background:#EEF3E6' align='right'><b>{yuzde(sonuc.genel[0], 1) if sonuc.genel[0] is not None else '–'}</b></td>"
+                     f"<td style='{td};background:#EEF3E6' colspan='2'>kaydı olan tezgâhların ortalaması · limit %{ic['limit']:.0f}</td></tr>")
+        t.append("</table>")
+        if ic["tezgah_tablo"]:
+            t += [f"<div style='color:{tema.LACIVERT};font-weight:700;font-size:17px;margin-top:14px'>TEZGÂH BAZLI BİLDİRİM ÖZETİ</div>",
+                  "<table width='100%' cellspacing='0' cellpadding='0'>",
+                  f"<tr><td style='{th}'>Tezgâh</td><td style='{th}'>Kayıt</td><td style='{th}'>En çok tekrarlayan</td><td style='{th}'>Açıklama</td></tr>"]
+            for x in ic["tezgah_tablo"][:14]:
+                ac = x["aciklama"] if len(x["aciklama"]) <= 190 else x["aciklama"][:187] + "…"
+                t.append(f"<tr><td style='{td}'><b>{_html_kacis(x['tezgah'])}</b></td><td style='{td}'>{x['kayit']} vardiya</td>"
+                         f"<td style='{td}'>{_html_kacis(x['kategori'])}</td><td style='{td}'>{_html_kacis(ac)}</td></tr>")
+            t.append("</table>")
+        _html_ciz(p, sag, "".join(t), k, 14.0)
+    elif sayfa == 1:
+        yari = (govde.height() - bosluk) / 2
+        cormind_oee_grafigi(p, QRectF(govde.left(), govde.top(), govde.width(), yari), cm)
+        genel_performans_grafigi(p, QRectF(govde.left(), govde.top() + yari + bosluk, govde.width(), yari), sonuc, makineler, r.get("mola_pay", 9.09))
+    else:
+        ust_h = govde.height() * 0.52
+        cormind_durus_grafigi(p, QRectF(govde.left(), govde.top(), govde.width(), ust_h), cm)
+        alt = QRectF(govde.left(), govde.top() + ust_h + bosluk, govde.width(), govde.height() - ust_h - bosluk)
+        sol = QRectF(alt.left(), alt.top(), alt.width() * 0.56, alt.height())
+        vardiya_grafigi(p, sol, sonuc, r["seflar"], 0, "Vardiya Bazlı Performans (Çalışma) Oranı", arka=False)
+        tum = list(makineler) + sorted(m for m in sonuc.hucreler if m not in makineler)
+        tw = min(alt.width() - sol.width() - 40 * k, alt.height() * 1.05)
+        tablo_ciz(p, QRectF(alt.right() - tw, alt.top(), tw, alt.height()), sonuc, tum, 0, 1.4)
+    p.restore()
+
+
+def sayfa_sayisi(r: dict) -> int:
+    return IDARI_SAYFA if r.get("duzen") == "idari" else 1
+
+
+def sayfa_ciz(p: QPainter, rect: QRectF, r: dict, sayfa: int = 0):
+    if r.get("duzen") == "idari":
+        idari_ciz(p, rect, r, sayfa)
+    else:
+        rapor_ciz(p, rect, r)
+
+
 def rapor_resmi(r: dict, genislik: int = 1400) -> QImage:
     h = int(genislik * 297 / 420)
-    img = QImage(genislik, h, QImage.Format_ARGB32)
-    img.fill(QColor("white"))
+    n = sayfa_sayisi(r)
+    ara = int(genislik * 0.012) if n > 1 else 0
+    img = QImage(genislik, h * n + ara * (n - 1), QImage.Format_ARGB32)
+    img.fill(QColor("#DDE1EA") if n > 1 else QColor("white"))
     p = QPainter(img)
     p.setRenderHint(QPainter.Antialiasing, True)
     p.setRenderHint(QPainter.SmoothPixmapTransform, True)
-    rapor_ciz(p, QRectF(0, 0, genislik, h), r)
+    for i in range(n):
+        sayfa_ciz(p, QRectF(0, i * (h + ara), genislik, h), r, i)
     p.end()
     return img

@@ -79,6 +79,19 @@ def kendini_sina() -> int:
     if not pdf.startswith(b"%PDF"):
         print("HATA: PDF üretilemedi")
         return 3
+    # idari rapor: KOT çözümleme ve 3 sayfalık PDF
+    from vardiya import veritabani as vt
+    from vardiya.kot import kot_coz
+    vt.kot_yaz(w.con, kot_coz("=== KOT === KOT NO: 2026-1104-0900 TARIH: 04.11.2026 SAAT: 09:00 --- TEZGAHLAR --- "
+                             "TEZGAH: IM21 | KATEGORI: SETUP | NEDEN: Deneme | ACIKLAMA: Deneme kaydı. | AKSIYON: - --- SONUC --- Deneme. DURUM: ACIK === SON ==="))
+    rp = w.sayfalar["rapor"]
+    rp.b_idari.click()
+    rp._yenile_simdi()
+    ipdf = pdf_bayt(rp._r)
+    if rp._r.get("duzen") != "idari" or not rp._r["idari"]["kok"] or not ipdf.startswith(b"%PDF"):
+        print("HATA: idari rapor üretilemedi")
+        return 6
+    print("IDARI TAMAM", len(ipdf), "bayt")
     print("TAMAM", tema.yuzde(w.sonuc.genel[0]), len(pdf), "bayt PDF")
     return 0
 

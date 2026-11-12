@@ -10,13 +10,14 @@ from typing import List, Optional
 from PySide6.QtCore import QBuffer, QByteArray, QIODevice, QMarginsF, QRectF, QSize, Qt, QTimer
 from PySide6.QtGui import (QGuiApplication, QImage, QKeySequence, QPageLayout, QPageSize, QPainter, QPdfWriter, QPixmap,
                            QShortcut)
-from PySide6.QtWidgets import (QApplication, QButtonGroup, QComboBox, QDateEdit, QFileDialog, QFrame, QHBoxLayout, QLabel,
-                               QLineEdit, QMessageBox, QPushButton, QScrollArea, QSpinBox, QStackedWidget, QVBoxLayout,
-                               QWidget)
+from PySide6.QtWidgets import (QApplication, QButtonGroup, QComboBox, QDateEdit, QDialog, QDialogButtonBox, QFileDialog, QFrame,
+                               QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPlainTextEdit, QPushButton, QScrollArea, QSpinBox,
+                               QStackedWidget, QVBoxLayout, QWidget)
 
 from . import cizim, tema, veritabani as vt
 from .donem import ay_sonu, hafta_basi, pd, qd
 from .hesap import VARDIYALAR, cormind_hesabi, hesapla
+from .kot import idari_icerik, kot_coz, metne_cevir
 from .sayfa_ortak import SefCombo, etiket, kart, resim_menusu
 
 TURLER = ("Günlük", "Haftalık", "Aylık", "Özel aralık")
@@ -31,8 +32,43 @@ def pdf_yaz(hedef, r: dict):
     p = QPainter(w)
     p.setRenderHint(QPainter.Antialiasing, True)
     p.setRenderHint(QPainter.SmoothPixmapTransform, True)
-    cizim.rapor_ciz(p, QRectF(0, 0, w.width(), w.height()), dict(r, yer_tutucu=False))
+    r2 = dict(r, yer_tutucu=False)
+    for i in range(cizim.sayfa_sayisi(r2)):
+        if i:
+            w.newPage()
+        cizim.sayfa_ciz(p, QRectF(0, 0, w.width(), w.height()), r2, i)
     p.end()
+
+
+class MetinDialog(QDialog):
+    """Çok satırlı metin girişi (KOT yapıştırma ve rapor metnini düzenleme)."""
+
+    def __init__(self, parent, baslik: str, aciklama: str, metin: str = "", ek_dugme: str = ""):
+        super().__init__(parent)
+        self.setWindowTitle(baslik)
+        self.resize(820, 600)
+        self.ek = False
+        l = QVBoxLayout(self)
+        l.addWidget(etiket(aciklama, "AltBaslik"))
+        self.kutu = QPlainTextEdit()
+        self.kutu.setPlainText(metin)
+        l.addWidget(self.kutu, 1)
+        d = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        d.button(QDialogButtonBox.Ok).setText("Tamam")
+        d.button(QDialogButtonBox.Cancel).setText("Vazgeç")
+        if ek_dugme:
+            b = d.addButton(ek_dugme, QDialogButtonBox.ResetRole)
+            b.clicked.connect(self._ek)
+        d.accepted.connect(self.accept)
+        d.rejected.connect(self.reject)
+        l.addWidget(d)
+
+    def _ek(self):
+        self.ek = True
+        self.accept()
+
+    def metin(self) -> str:
+        return self.kutu.toPlainText()
 
 
 def pdf_bayt(r: dict) -> bytes:
@@ -83,8 +119,11 @@ class RaporSayfasi(QWidget):
         pl.addWidget(etiket("RAPOR DÜZENİ", "KartBaslik"))
         satir = QHBoxLayout()
         self.duzen_grup = QButtonGroup(self)
-        self.b_makine, self.b_vardiya = QPushButton("Makine Bazlı"), QPushButton("Vardiya Bazlı")
-        for b, anahtar in ((self.b_makine, "makine"), (self.b_vardiya, "vardiya")):
+        self.b_makine, self.b_vardiya, self.b_idari = QPushButton("Makine"), QPushButton("Vardiya"), QPushButton("İdari")
+        self.b_makine.setToolTip("Makine bazlı rapor")
+        self.b_vardiya.setToolTip("Vardiya bazlı rapor")
+        self.b_idari.setToolTip("İdari rapor: grup lideri bildirimlerinden (KOT) değerlendirme metni, tablolar ve beş grafik (3 sayfa)")
+        for b, anahtar in ((self.b_makine, "makine"), (self.b_vardiya, "vardiya"), (self.b_idari, "idari")):
             b.setObjectName("Hizli")
             b.setCheckable(True)
             b.setProperty("duzen", anahtar)
@@ -186,6 +225,29 @@ class RaporSayfasi(QWidget):
         self.b_kaldir.clicked.connect(self.gorsel_kaldir)
         QShortcut(QKeySequence.Paste, self, activated=self._ctrl_v)
         pl.addWidget(self.gorsel_kutu)
+
+        self.idari_kutu = QWidget()
+        il = QVBoxLayout(self.idari_kutu)
+        il.setContentsMargins(0, 0, 0, 0)
+        il.setSpacing(6)
+        il.addWidget(etiket("GRUP LİDERİ BİLDİRİMLERİ (KOT)", "KartBaslik"))
+        self.kot_durum = etiket("", "AltBaslik")
+        il.addWidget(self.kot_durum)
+        self.b_kot = QPushButton("KOT Yapıştır…")
+        self.b_metin = QPushButton("Metni Düzenle")
+        self.b_kot_sil = QPushButton("KOT'ları Sil")
+        self.b_kot_sil.setToolTip("Seçili dönemin KOT kayıtlarını siler")
+        self.b_kot_sil.setObjectName("Tehlike")
+        il.addWidget(self.b_kot)
+        i1 = QHBoxLayout()
+        i1.addWidget(self.b_metin)
+        i1.addWidget(self.b_kot_sil)
+        il.addLayout(i1)
+        self.b_kot.clicked.connect(self.kot_yapistir)
+        self.b_metin.clicked.connect(self.metni_duzenle)
+        self.b_kot_sil.clicked.connect(self.kot_sil)
+        self.idari_kutu.hide()
+        pl.addWidget(self.idari_kutu)
         pl.addStretch(1)
 
         self.b_pdf = QPushButton("PDF Kaydet (A3)")
@@ -241,6 +303,14 @@ class RaporSayfasi(QWidget):
         t = self.tur.currentIndex()
         makine = self.b_makine.isChecked()
         son_ek = "PERFORMANS VE DURUŞ GRAFİKLERİ" if makine else ("VARDİYA BAZLI GRAFİKLERİ" if t == 0 else "VARDİYA GRAFİKLERİ")
+        if self.b_idari.isChecked():
+            if t == 0:
+                return f"{ilk.day}.{ilk.month}.{ilk.year} GÜNLÜK OEE VE DURUŞ ÖZET RAPORU"
+            if t == 1:
+                return f"{ilk.isocalendar()[1]}. HAFTA OEE VE DURUŞ ÖZET RAPORU"
+            if t == 2:
+                return f"{tema.tr_buyuk(tema.AYLAR[ilk.month - 1])} {ilk.year} OEE VE DURUŞ ÖZET RAPORU"
+            return f"{ilk:%d.%m.%Y} - {son:%d.%m.%Y} OEE VE DURUŞ ÖZET RAPORU"
         if t == 0:
             on = f"{ilk.day}.{ilk.month}.{ilk.year}"
         elif t == 1:
@@ -259,6 +329,7 @@ class RaporSayfasi(QWidget):
         ilk, son = self._donem()
         self.baslik.setText(self._oneri_baslik(ilk, son))
         self.gorsel_kutu.setVisible(self.b_makine.isChecked())
+        self.idari_kutu.setVisible(self.b_idari.isChecked())
         self._yukle_gorsel()
         self._zamanla()
 
@@ -281,14 +352,28 @@ class RaporSayfasi(QWidget):
         for v in VARDIYALAR:
             self.combolar[v].yenile(seflar.get(v, ""))
         donem = f"{ilk:%d.%m.%Y}" if ilk == son else f"{ilk:%d.%m.%Y} – {son:%d.%m.%Y}"
+        duzen = "makine" if self.b_makine.isChecked() else ("idari" if self.b_idari.isChecked() else "vardiya")
+        ek = {}
+        cm = cormind_hesabi(kayit, self._gunler, self.ana.ayar["makineler"], self.ana.hesap_ayar())
+        if duzen == "idari":
+            ayar = self.ana.hesap_ayar()
+            kotlar = vt.kot_getir(self.ana.con, ilk, son)
+            icerik = idari_icerik(kotlar, cm, {m: v[0] for m, v in sonuc.makine_ort.items()})
+            ozel = vt.metin_oku(self.ana.con, self._metin_anahtar(ilk, son))
+            ek = dict(idari=icerik, idari_metin=ozel if ozel is not None else metne_cevir(icerik),
+                      mola_pay=100.0 * ayar.mola_saat / ayar.net_saat)
+            self.kot_durum.setText(
+                (f"Bu dönemde {len(kotlar)} KOT kaydı, {sum(len(k.tezgahlar) for k in kotlar)} tezgâh açıklaması var."
+                 if kotlar else "Bu dönem için KOT kaydı yok. Copilot'tan aldığınız KOT bloklarını yapıştırın.")
+                + (" Metin elle düzenlenmiş." if ozel is not None else ""))
         return dict(
             baslik=self.baslik.text().strip() or self._oneri_baslik(ilk, son), donem=donem,
-            duzen="makine" if self.b_makine.isChecked() else "vardiya", sonuc=sonuc, makineler=self.ana.ayar["makineler"],
+            duzen=duzen, sonuc=sonuc, makineler=self.ana.ayar["makineler"], **ek,
             seflar=seflar, gorsel=self._gorsel if self.b_makine.isChecked() else None,
             bos_goster=self.ana.ayar.get("idle_makineleri_goster", False), esik=self.ana.ayar["esik"],
             net_saat=self.ana.hesap_ayar().net_saat, yer_tutucu=True,
             alt_sag=f"Oluşturma: {datetime.now():%d.%m.%Y %H:%M}", ilk=ilk, son=son,
-            cormind=cormind_hesabi(kayit, self._gunler, self.ana.ayar["makineler"], self.ana.hesap_ayar()))
+            cormind=cm)
 
     def yenile(self):
         self._varsayilan_tarihler()
@@ -337,6 +422,51 @@ class RaporSayfasi(QWidget):
         super().resizeEvent(e)
         if self._r:
             self._zamanla()
+
+    # ------------------------------------------------ idari rapor: KOT ve metin
+    @staticmethod
+    def _metin_anahtar(ilk, son) -> str:
+        return f"idari|{ilk.isoformat()}|{son.isoformat()}"
+
+    def kot_yapistir(self):
+        d = MetinDialog(self, "KOT yapıştır",
+                        "Copilot'tan aldığınız KOT bloklarını (=== KOT === ... === SON ===) buraya yapıştırın. Birden çok blok birlikte "
+                        "yapıştırılabilir; aynı KOT NO ikinci kez sayılmaz, güncellenir. Kayıtlar kendi tarihine göre saklanır.",
+                        QGuiApplication.clipboard().text() if "KOT" in (QGuiApplication.clipboard().text() or "") else "")
+        if not d.exec():
+            return
+        kotlar = kot_coz(d.metin())
+        if not kotlar:
+            QMessageBox.information(self, "KOT yapıştır", "Metinde okunabilir bir KOT bloğu bulunamadı.\n"
+                                    "Blok '=== KOT ===' satırıyla başlamalı ve 'TARIH: GG.AA.YYYY' içermelidir.")
+            return
+        yeni, guncel = vt.kot_yaz(self.ana.con, kotlar)
+        gunler = sorted({k.tarih for k in kotlar})
+        self.ana.mesaj(f"{len(kotlar)} KOT okundu: {yeni} yeni, {guncel} güncellendi · {gunler[0]:%d.%m.%Y} – {gunler[-1]:%d.%m.%Y} · "
+                       f"{sum(len(k.tezgahlar) for k in kotlar)} tezgâh açıklaması")
+        self._yenile_simdi()
+
+    def metni_duzenle(self):
+        r = self._hazir()
+        if not r or r.get("duzen") != "idari":
+            return
+        d = MetinDialog(self, "Rapor metnini düzenle",
+                        "Raporun ilk sayfasındaki metin. BÜYÜK HARFLE yazılan satır başlık, '-' ile başlayan satır madde olur. "
+                        "Tablolar ve rakamlar program tarafından hesaplanır, buradan değişmez.",
+                        r["idari_metin"], "Otomatik metne dön")
+        if not d.exec():
+            return
+        vt.metin_yaz(self.ana.con, self._metin_anahtar(r["ilk"], r["son"]), None if d.ek else d.metin())
+        self.ana.mesaj("Otomatik metne dönüldü." if d.ek else "Rapor metni kaydedildi.")
+        self._yenile_simdi()
+
+    def kot_sil(self):
+        ilk, son = self._donem()
+        if QMessageBox.question(self, "KOT kayıtlarını sil", f"{ilk:%d.%m.%Y} – {son:%d.%m.%Y} arasındaki KOT kayıtları silinsin mi?") != QMessageBox.Yes:
+            return
+        n = vt.kot_sil(self.ana.con, ilk, son)
+        self.ana.mesaj(f"{n} KOT kaydı silindi.")
+        self._yenile_simdi()
 
     # ------------------------------------------------ Cormind görüntüsü
     def _gorsel_anahtar(self) -> str:
@@ -439,7 +569,11 @@ class RaporSayfasi(QWidget):
             p = QPainter(yz)
             p.setRenderHint(QPainter.Antialiasing, True)
             p.setRenderHint(QPainter.SmoothPixmapTransform, True)
-            cizim.rapor_ciz(p, QRectF(0, 0, yz.width(), yz.height()), dict(r, yer_tutucu=False))
+            r2 = dict(r, yer_tutucu=False)
+            for i in range(cizim.sayfa_sayisi(r2)):
+                if i:
+                    yz.newPage()
+                cizim.sayfa_ciz(p, QRectF(0, 0, yz.width(), yz.height()), r2, i)
             p.end()
 
     def _rapor_resmi(self):
@@ -461,7 +595,7 @@ class RaporSayfasi(QWidget):
         QApplication.setOverrideCursor(Qt.WaitCursor)
         try:
             pdf = pdf_bayt(r)
-            tur = f"{'Makine bazlı' if r['duzen'] == 'makine' else 'Vardiya bazlı'} · {TURLER[self.tur.currentIndex()]}"
+            tur = f"{ {'makine': 'Makine bazlı', 'vardiya': 'Vardiya bazlı', 'idari': 'İdari rapor'}[r['duzen']] } · {TURLER[self.tur.currentIndex()]}"
             vt.arsiv_kaydet(self.ana.con, r["baslik"], tur, r["ilk"].isoformat(), r["son"].isoformat(),
                             json.dumps({"esik": r["esik"], "net_saat": r["net_saat"], "seflar": r["seflar"]}, ensure_ascii=False),
                             json.dumps(sonuc_ozeti(r["sonuc"]), ensure_ascii=False), pdf)

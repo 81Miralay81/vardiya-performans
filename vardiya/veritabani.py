@@ -67,6 +67,14 @@ CREATE TABLE IF NOT EXISTS arsiv (
     ayar_json TEXT, sonuc_json TEXT,
     pdf BLOB
 );
+CREATE TABLE IF NOT EXISTS kot (
+    no      TEXT PRIMARY KEY,
+    tarih   TEXT NOT NULL,
+    saat    TEXT,
+    vardiya INTEGER,
+    veri    TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS metin (anahtar TEXT PRIMARY KEY, icerik TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS gorsel (
     anahtar TEXT PRIMARY KEY,
     png BLOB NOT NULL,
@@ -263,4 +271,54 @@ def arsiv_getir(con, id_: int) -> Optional[dict]:
 
 def arsiv_sil(con, id_: int) -> None:
     con.execute("DELETE FROM arsiv WHERE id=?", (id_,))
+    con.commit()
+
+
+# ------------------------------------------------------------------ KOT kayıtları (grup lideri bildirimleri)
+def kot_yaz(con, kotlar) -> Tuple[int, int]:
+    """KOT kayıtlarını saklar; aynı KOT NO varsa günceller. (yeni, güncellenen) döner."""
+    from dataclasses import asdict
+    yeni = guncel = 0
+    for k in kotlar:
+        var = con.execute("SELECT 1 FROM kot WHERE no=?", (k.no,)).fetchone()
+        d = asdict(k)
+        d["tarih"] = k.tarih.isoformat()
+        con.execute("INSERT INTO kot(no, tarih, saat, vardiya, veri) VALUES(?,?,?,?,?) "
+                    "ON CONFLICT(no) DO UPDATE SET tarih=excluded.tarih, saat=excluded.saat, vardiya=excluded.vardiya, veri=excluded.veri",
+                    (k.no, d["tarih"], k.saat, k.vardiya, json.dumps(d, ensure_ascii=False)))
+        if var:
+            guncel += 1
+        else:
+            yeni += 1
+    con.commit()
+    return yeni, guncel
+
+
+def kot_getir(con, ilk: date, son: date) -> list:
+    from .kot import Kot, KotTezgah
+    sonuc = []
+    for r in con.execute("SELECT veri FROM kot WHERE tarih BETWEEN ? AND ? ORDER BY tarih, saat", (ilk.isoformat(), son.isoformat())):
+        d = json.loads(r["veri"])
+        tz = [KotTezgah(**t) for t in d.pop("tezgahlar", [])]
+        d["tarih"] = date.fromisoformat(d["tarih"])
+        sonuc.append(Kot(tezgahlar=tz, **d))
+    return sonuc
+
+
+def kot_sil(con, ilk: date, son: date) -> int:
+    n = con.execute("DELETE FROM kot WHERE tarih BETWEEN ? AND ?", (ilk.isoformat(), son.isoformat())).rowcount
+    con.commit()
+    return n
+
+
+def metin_oku(con, anahtar: str) -> Optional[str]:
+    r = con.execute("SELECT icerik FROM metin WHERE anahtar=?", (anahtar,)).fetchone()
+    return r["icerik"] if r else None
+
+
+def metin_yaz(con, anahtar: str, icerik: Optional[str]) -> None:
+    if icerik is None:
+        con.execute("DELETE FROM metin WHERE anahtar=?", (anahtar,))
+    else:
+        con.execute("INSERT INTO metin(anahtar, icerik) VALUES(?,?) ON CONFLICT(anahtar) DO UPDATE SET icerik=excluded.icerik", (anahtar, icerik))
     con.commit()
