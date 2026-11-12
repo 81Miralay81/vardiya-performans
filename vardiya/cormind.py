@@ -67,14 +67,26 @@ def tip_adi(kayit: dict, ariza_adlari: Dict[int, str]) -> str:
             return "Belgelenmemiş Duruş"
         ad = ariza_adlari.get(int(et), "")
         return ad or f"Arıza {int(et)}"
+    if t == -1 and et is not None:
+        # "Çalışmıyor" durumuna neden girilmişse (ör. İŞ EMRİ PLAN YOK) Cormind onu nedenin adıyla gösterir
+        try:
+            ad = ariza_adlari.get(int(et), "")
+        except (TypeError, ValueError):
+            ad = ""
+        if ad:
+            return ad
     return SABIT_TIPLER.get(t, f"Tip {t}")
 
 
-def kayit_satiri(k: dict, makine_adlari: Dict[int, str], ariza_adlari: Dict[int, str]) -> Optional[tuple]:
-    """Cormind kaydı -> veritabanı satırı (makine, başlangıç, bitiş, operatör, tip, iş emri, ürün adı, ürün kodu)."""
+def kayit_satiri(k: dict, makine_adlari: Dict[int, str], ariza_adlari: Dict[int, str],
+                 simdi: Optional[datetime] = None) -> Optional[tuple]:
+    """Cormind kaydı -> veritabanı satırı (makine, başlangıç, bitiş, operatör, tip, iş emri, ürün adı, ürün kodu).
+    simdi verilirse sürmekte olan (bitişi olmayan) kayıt o ana kadar sürmüş sayılır; verilmezse alınmaz."""
     bas, bit = tr_zaman(k.get("started_at")), tr_zaman(k.get("ended_at"))
+    if bit is None and bas is not None and simdi is not None and not k.get("ended_at") and simdi > bas:
+        bit = simdi
     if bas is None or bit is None or bit < bas:
-        return None                                   # sürmekte olan (bitişi olmayan) kayıt henüz alınmaz
+        return None
     mk = k.get("machine") if isinstance(k.get("machine"), dict) else {}
     makine = _ad(mk, "name", "code") or makine_adlari.get(k.get("machine_id"), "")
     if not makine:
@@ -165,14 +177,26 @@ class Istemci:
                    ilerleme: Optional[Callable[[int, int], None]] = None) -> List[dict]:
         bas = datetime(ilk.year, ilk.month, ilk.day, tzinfo=TR)
         bit = datetime(son.year, son.month, son.day, tzinfo=TR) + timedelta(days=1)
-        where = (f"\"MachineAction\".\"started_at\" >= '{bas.isoformat()}' AND \"MachineAction\".\"started_at\" < '{bit.isoformat()}'"
-                 + (f" AND \"MachineAction\".\"machine_id\" IN ({','.join(str(int(i)) for i in makine_idleri)})" if makine_idleri else ""))
+        mk = (f" AND \"MachineAction\".\"machine_id\" IN ({','.join(str(int(i)) for i in makine_idleri)})" if makine_idleri else "")
+        # Döneme DEĞEN bütün kayıtlar: dönemden önce başlayıp içine uzananlar (ör. günlerce süren İŞ EMRİ PLAN YOK)
+        # ve hâlâ sürenler de gelir. Sunucu bu sorguyu kabul etmezse eski sorguya (yalnızca dönemde başlayanlar) dönülür.
+        where_genis = (f"\"MachineAction\".\"started_at\" < '{bit.isoformat()}' AND (\"MachineAction\".\"ended_at\" >= '{bas.isoformat()}'"
+                       f" OR \"MachineAction\".\"ended_at\" IS NULL)" + mk)
+        where_dar = (f"\"MachineAction\".\"started_at\" >= '{bas.isoformat()}' AND \"MachineAction\".\"started_at\" < '{bit.isoformat()}'" + mk)
+        self.dar_sorgu = False
+        where = where_genis
         sonuc: List[dict] = []
         offset, toplam = 0, 0
         while True:
-            d = self._graphql("MachineAction", {
-                "where": where, "relations": ["goods", "operator", "operator.user", "machine"],
-                "order": {"start": "ASC"}, "limit": SAYFA, "offset": offset})
+            kosul = {"where": where, "relations": ["goods", "operator", "operator.user", "machine"],
+                     "order": {"start": "ASC"}, "limit": SAYFA, "offset": offset}
+            try:
+                d = self._graphql("MachineAction", kosul)
+            except CormindHata:
+                if where is where_genis and offset == 0:
+                    where, self.dar_sorgu = where_dar, True
+                    continue
+                raise
             parca = d.get("entities") or []
             toplam = int(d.get("count") or toplam or 0)
             sonuc += parca
@@ -195,8 +219,9 @@ def cek(con, adres: str, kullanici: str, sifre: str, ilk: date, son: date, makin
     makine_adlari: Dict[int, str] = {}
     satirlar, atlanan = [], 0
     tipler: Dict[str, int] = {}
+    simdi = datetime.now(TR).replace(tzinfo=None, microsecond=0)
     for k in ham:
-        s = kayit_satiri(k, makine_adlari, ariza)
+        s = kayit_satiri(k, makine_adlari, ariza, simdi)
         if s is None:
             atlanan += 1
             continue
@@ -211,6 +236,10 @@ def cek(con, adres: str, kullanici: str, sifre: str, ilk: date, son: date, makin
         con.execute("DELETE FROM kayit WHERE baslangic >= ? AND baslangic < ?",
                     (ilk.strftime("%Y-%m-%d 00:00:00"), (son + timedelta(days=1)).strftime("%Y-%m-%d 00:00:00")))
         con.commit()
+    # aynı makine + başlangıçlı eski satır başka bir tip adıyla duruyorsa (ör. önceden "Çalışmıyor" diye alınmış) çift sayılmasın
+    BICIM = "%Y-%m-%d %H:%M:%S"
+    con.executemany("DELETE FROM kayit WHERE makine=? AND baslangic=? AND tip<>?", [(s[0], s[1].strftime(BICIM), s[4] or "") for s in satirlar])
+    con.commit()
     yeni, guncel, ayni = vt.kayit_yaz(con, satirlar)
     ay = vt.ayar_oku(con)
     bilinen = set(ay["makineler"])
@@ -222,4 +251,5 @@ def cek(con, adres: str, kullanici: str, sifre: str, ilk: date, son: date, makin
     vt.aktarim_kaydet(con, f"Cormind ({ilk:%d.%m.%Y}–{son:%d.%m.%Y})", len(ham), yeni, guncel, ayni, atlanan,
                       ilk_g.strftime("%Y-%m-%d") if ilk_g else None, son_g.strftime("%Y-%m-%d") if son_g else None)
     return {"toplam": len(ham), "yeni": yeni, "guncel": guncel, "ayni": ayni, "atlanan": atlanan, "silinen": silinen,
-            "tipler": dict(sorted(tipler.items(), key=lambda x: -x[1])), "yeni_makineler": eklenen}
+            "tipler": dict(sorted(tipler.items(), key=lambda x: -x[1])), "yeni_makineler": eklenen,
+            "dar_sorgu": bool(getattr(ist, "dar_sorgu", False))}
