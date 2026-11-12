@@ -29,14 +29,15 @@ def performans_verisi(ana) -> dict:
     sonuc, ayar = ana.sonuc, ana.hesap_ayar()
     mola_pay = 100.0 * ayar.mola_saat / ayar.net_saat
     veri = {"genel": None, "aciklama": "", "donem": "", "vardiyalar": [], "makineler": [],
-            "molaDk": round(ayar.mola_saat * 60), "molaPay": mola_pay, "tablo": "", "tabloMakineler": []}
+            "molaDk": round(ayar.mola_saat * 60), "molaPay": mola_pay, "tablo": "", "tabloMakineler": [],
+            "esik": round(ayar.esik * 100)}
     for v in (1, 2, 3):
         veri["vardiyalar"].append({"v": v, "calisma": None, "makine": None, "gun": 0, "sef": (ana.seflar or {}).get(v, "")})
     if not sonuc:
         return veri
     gunler = ana.donem_gunleri()
     veri["genel"] = sonuc.genel[0]
-    kural = {"gunluk": "günlük kural", "donem": "dönem kuralı"}.get(ayar.kural, ayar.kural)
+    kural = "dönem kuralı" if ayar.kural == "donem" else "günlük kural · " + dict(tema.YONTEMLER).get(ayar.yontem, "").lower()
     veri["aciklama"] = f"{sonuc.hesap_gunu()} gün · eşik %{round(ayar.esik * 100)} · {kural}"
     if gunler:
         veri["donem"] = f"{min(gunler):%d.%m.%Y} – {max(gunler):%d.%m.%Y}"
@@ -53,18 +54,20 @@ def performans_verisi(ana) -> dict:
     veri["tablo"] = "data:image/png;base64," + bytes(ba.toBase64()).decode("ascii")
     veri["tabloMakineler"] = tum
     dokum = durus_dokumu(getattr(ana, "kayit", []) or [], gunler)
-    sirali = [m for m in ana.ayar.get("makineler", []) if m in sonuc.makine_ort]
-    sirali += sorted(m for m in sonuc.makine_ort if m not in sirali)
-    for m in sirali:
-        c, _d, mo = sonuc.makine_ort[m]
-        if c is None:
-            continue
+    for m in tum:
         hucre = sonuc.hucreler.get(m, {})
+        ort = sonuc.makine_ort.get(m)
+        if ort and ort[0] is not None:
+            c, mo, alti = ort[0], ort[2], False
+        elif m in sonuc.esik_alti:          # kaydı var ama hiçbir vardiyada eşiği geçemedi: görünür, hesaba girmez
+            c, mo, alti = sonuc.esik_alti[m][0], sonuc.esik_alti[m][2], True
+        else:
+            continue
         veri["makineler"].append({
-            "ad": m, "calisma": max(0.0, min(1.0, c)), "mola": max(0.0, min(1.0, mo or 0.0)),
+            "ad": m, "calisma": max(0.0, min(1.0, c)), "mola": max(0.0, min(1.0, mo or 0.0)), "esikAlti": alti,
             "v": [hucre[v][0] if v in hucre else None for v in (1, 2, 3)],
             "molaV": [hucre[v][2] if v in hucre else None for v in (1, 2, 3)],
-            "durus": {t: round(s, 4) for t, s in dokum.get(m, {}).items()},
+            "durus": {t: round(x, 4) for t, x in dokum.get(m, {}).items()},
         })
     return veri
 

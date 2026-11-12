@@ -83,6 +83,7 @@ class HesapAyar:
     cakisma_coz: bool = True    # aynı anda birden fazla kayıt varsa bir kez say (Çalışma > Mola > Duruş)
     net_saat_zorla: Optional[float] = None   # yalnızca testlerde (örn. Excel'deki 7,33)
     kural: str = "gunluk"       # "gunluk": %60 her gün ayrı | "donem": Excel gibi, dönem ortalamasına göre
+    yontem: str = "vardiya"     # ortalama yöntemi (günlük kuralda): "vardiya" | "gun" | "hucre"
 
     @property
     def net_saat(self) -> float:
@@ -205,6 +206,8 @@ class DonemSonuc:
     genel: Tuple[Optional[float], Optional[float], Optional[float]]
     verisiz_gunler: List[date]          # seçilen aralıkta hiç kaydı olmayan günler
     bos_vardiyalar: List[Tuple[date, int]]  # kaydı olup hiçbir makinenin eşiği geçemediği / kaydı olmayan vardiyalar
+    # kaydı olduğu halde hiçbir vardiyada eşiği geçemeyen makineler: ham ortalama (çalışma, duruş, mola). Hesaba girmez.
+    esik_alti: Dict[str, Tuple[float, float, float]] = field(default_factory=dict)
 
     def hesap_gunu(self) -> int:
         """En az bir vardiyasıyla ortalamaya giren gün sayısı (tablodaki 'Çalışma Gün')."""
@@ -270,16 +273,40 @@ def _donem_kurali(gunluk, gunler: List[date], kayitli_gunler: set, esik: float) 
     return DonemSonuc(gunler, vardiyalar, hucreler, makine_ort, genel, verisiz, bos)
 
 
+def _esik_alti(gunluk, gunler, kayitli_gunler, sayilan) -> Dict[str, Tuple[float, float, float]]:
+    """Seçili günlerde kaydı olup hesaba hiç girmeyen makinelerin ham (eşiksiz) ortalaması."""
+    top: Dict[str, List[float]] = {}
+    for (g, _v), gv in gunluk.items():
+        if g not in kayitli_gunler or g not in gunler:
+            continue
+        for m, (c, d, mo) in gv.ham.items():
+            if m in sayilan or (c + d + mo) <= 0:
+                continue
+            t = top.setdefault(m, [0.0, 0.0, 0.0, 0])
+            t[0] += c; t[1] += d; t[2] += mo; t[3] += 1
+    return {m: (t[0] / t[3], t[1] / t[3], t[2] / t[3]) for m, t in top.items() if t[3]}
+
+
+YONTEMLER = ("vardiya", "gun", "hucre")
+
+
 def donem_hesapla(gunluk: Dict[Tuple[date, int], GunVardiya], gunler: List[date],
-                  veri_gunleri: Optional[set] = None, kural: str = "gunluk", esik: float = 0.60) -> DonemSonuc:
+                  veri_gunleri: Optional[set] = None, kural: str = "gunluk", esik: float = 0.60,
+                  yontem: str = "vardiya") -> DonemSonuc:
     """veri_gunleri: kaydı o gün başlayan günler. Verilirse, yalnızca önceki günden uzayan kayıtlarla görünen
     günler (tatil, hafta sonu) 'kayıtsız' sayılır."""
     gunler = sorted(set(gunler))
     kayitli_gunler = set(veri_gunleri) if veri_gunleri is not None else {g for (g, _v) in gunluk.keys()}
     if kural == "donem":
-        return _donem_kurali(gunluk, gunler, kayitli_gunler, esik)
+        r = _donem_kurali(gunluk, gunler, kayitli_gunler, esik)
+        r.esik_alti = _esik_alti(gunluk, set(gunler), kayitli_gunler, set(r.makine_ort))
+        return r
+    if yontem not in YONTEMLER:
+        yontem = "vardiya"
     vardiyalar: Dict[int, VardiyaOzet] = {}
     makine_hucre: Dict[str, Dict[int, List[Tuple[float, float, float]]]] = {}
+    makine_gun: Dict[str, Dict[date, List[Tuple[float, float, float]]]] = {}
+    gun_ozet: Dict[date, List[Tuple[float, float, float]]] = {}
     bos: List[Tuple[date, int]] = []
 
     for v in VARDIYALAR:
@@ -298,8 +325,10 @@ def donem_hesapla(gunluk: Dict[Tuple[date, int], GunVardiya], gunler: List[date]
             d.append(gv.durus)
             mo.append(gv.mola)
             s.append(gv.sayi)
+            gun_ozet.setdefault(g, []).append((gv.calisma, gv.durus, gv.mola))
             for m, deger in gv.makineler.items():
                 makine_hucre.setdefault(m, {}).setdefault(v, []).append(deger)
+                makine_gun.setdefault(m, {}).setdefault(g, []).append(deger)
         oz.gun_sayisi = len(c)
         oz.calisma, oz.durus, oz.mola = _ort(c), _ort(d), _ort(mo)
         oz.makine_sayisi = _ort(s)
@@ -315,27 +344,34 @@ def donem_hesapla(gunluk: Dict[Tuple[date, int], GunVardiya], gunler: List[date]
                 sum(x[1] for x in liste) / len(liste),
                 sum(x[2] for x in liste) / len(liste),
             )
-        cs = [x[0] for x in hucreler[m].values()]
-        ds = [x[1] for x in hucreler[m].values()]
-        ms = [x[2] for x in hucreler[m].values()]
-        c_ort = _ort(cs)
-        makine_ort[m] = (min(1.0, c_ort) if c_ort is not None else None, _ort(ds), _ort(ms))
+        if yontem == "gun":          # önce her günün (sayılan vardiyalarının) ortalaması, sonra günlerin ortalaması
+            parca = [tuple(sum(x[i] for x in l) / len(l) for i in range(3)) for l in makine_gun[m].values()]
+        elif yontem == "hucre":      # sayılan bütün vardiyalar eşit ağırlıkla (süre toplamı)
+            parca = [x for l in vd.values() for x in l]
+        else:                        # önce her vardiyanın ortalaması, sonra üç vardiyanın ortalaması
+            parca = list(hucreler[m].values())
+        c_ort = _ort([x[0] for x in parca])
+        makine_ort[m] = (min(1.0, c_ort) if c_ort is not None else None, _ort([x[1] for x in parca]), _ort([x[2] for x in parca]))
 
-    vc = [o.calisma for o in vardiyalar.values() if o.calisma is not None]
-    vd_ = [o.durus for o in vardiyalar.values() if o.durus is not None]
-    vm = [o.mola for o in vardiyalar.values() if o.mola is not None]
-    genel_c = _ort(vc)
-    genel = (min(1.0, genel_c) if genel_c is not None else None, _ort(vd_), _ort(vm))
+    if yontem == "gun":
+        parca = [tuple(sum(x[i] for x in l) / len(l) for i in range(3)) for l in gun_ozet.values()]
+    elif yontem == "hucre":
+        parca = [x for vd in makine_hucre.values() for l in vd.values() for x in l]
+    else:
+        parca = [(o.calisma, o.durus, o.mola) for o in vardiyalar.values() if o.calisma is not None]
+    genel_c = _ort([x[0] for x in parca])
+    genel = (min(1.0, genel_c) if genel_c is not None else None, _ort([x[1] for x in parca]), _ort([x[2] for x in parca]))
 
     verisiz = [g for g in gunler if g not in kayitli_gunler]
-    return DonemSonuc(gunler, vardiyalar, hucreler, makine_ort, genel, verisiz, bos)
+    return DonemSonuc(gunler, vardiyalar, hucreler, makine_ort, genel, verisiz, bos,
+                      _esik_alti(gunluk, set(gunler), kayitli_gunler, set(makine_ort)))
 
 
 # --------------------------------------------------------------------------- kısayol
 def hesapla(kayitlar, gunler: List[date], ayar: Optional[HesapAyar] = None, veri_gunleri: Optional[set] = None) -> DonemSonuc:
     ayar = ayar or HesapAyar()
     gunluk = gunluk_hesapla(topla(kayitlar, ayar), ayar)
-    return donem_hesapla(gunluk, gunler, veri_gunleri, ayar.kural, ayar.esik)
+    return donem_hesapla(gunluk, gunler, veri_gunleri, ayar.kural, ayar.esik, ayar.yontem)
 
 
 def durus_dokumu(kayitlar: Iterable[Tuple[str, str, datetime, datetime]], gunler: Iterable[date]) -> Dict[str, Dict[str, float]]:

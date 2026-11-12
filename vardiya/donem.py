@@ -81,8 +81,10 @@ class DonemCubugu(QFrame):
     degisti = Signal()
     esik_degisti = Signal(float)
     kural_degisti = Signal(str)
+    yontem_degisti = Signal(str)
 
-    def __init__(self, kapsam_getir, esik: float, parent: Optional[QWidget] = None, kural: str = "gunluk"):
+    def __init__(self, kapsam_getir, esik: float, parent: Optional[QWidget] = None, kural: str = "gunluk",
+                 yontem: str = "vardiya"):
         super().__init__(parent)
         self.setObjectName("Kart")
         self._kapsam_getir = kapsam_getir
@@ -133,7 +135,7 @@ class DonemCubugu(QFrame):
             self.kural.addItem(ad, anahtar)
         self.kural.setToolTip("\n\n".join(tema.KURAL_ACIKLAMA.values()))
         self.kural.setCurrentIndex(max(0, self.kural.findData(kural)))
-        self.kural.activated.connect(lambda _=0: self.kural_degisti.emit(self.kural.currentData()))
+        self.kural.activated.connect(lambda _=0: (self.yontem_yaz(), self.kural_degisti.emit(self.kural.currentData())))
         lay.addWidget(self.kural)
         lay2.addWidget(self._etiket("Tarih aralığı"))
         self.bas = QDateEdit()
@@ -153,6 +155,28 @@ class DonemCubugu(QFrame):
         self.bilgi = QLabel("")
         self.bilgi.setObjectName("AltBaslik")
         lay2.addWidget(self.bilgi, 1)
+        lay2.addWidget(self._etiket("Ortalama yöntemi"))
+        self.yontem = QComboBox()
+        for anahtar, ad in tema.YONTEMLER:
+            self.yontem.addItem(ad, anahtar)
+        self.yontem.setToolTip(tema.YONTEM_ORNEK + "\n\n" + "\n\n".join(tema.YONTEM_ACIKLAMA.values()))
+        self.yontem.setCurrentIndex(max(0, self.yontem.findData(yontem)))
+        self.yontem.activated.connect(lambda _=0: (self.yontem_yaz(), self.yontem_degisti.emit(self.yontem.currentData())))
+        lay2.addWidget(self.yontem)
+        self.yontem_aciklama = QLabel("")
+        self.yontem_aciklama.setObjectName("AltBaslik")
+        self.yontem_aciklama.setWordWrap(True)
+        dis.addWidget(self.yontem_aciklama)
+        self.yontem_yaz()
+
+    def yontem_yaz(self):
+        """Seçili ortalama yönteminin açıklamasını çubuğun altına yazar."""
+        donem = self.kural.currentData() == "donem"
+        self.yontem.setEnabled(not donem)
+        if donem:
+            self.yontem_aciklama.setText(tema.YONTEM_DONEMDE)
+        else:
+            self.yontem_aciklama.setText(tema.YONTEM_ACIKLAMA[self.yontem.currentData()] + "   ·   " + tema.YONTEM_ORNEK)
 
     @staticmethod
     def _etiket(t):

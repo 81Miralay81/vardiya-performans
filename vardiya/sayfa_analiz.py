@@ -143,7 +143,8 @@ class AnalizSayfasi(QWidget):
         g = s.genel[self.secim]
         gun = s.hesap_gunu()
         self.k_genel.d.setText(tema.yuzde(g) if g is not None else "-")
-        kural = "dönem kuralı (Excel gibi)" if self.ana.ayar.get("hesap_kurali") == "donem" else "günlük kural"
+        kural = ("dönem kuralı (Excel gibi)" if self.ana.ayar.get("hesap_kurali") == "donem" else
+                 "günlük kural · " + dict(tema.YONTEMLER).get(self.ana.ayar.get("hesap_yontemi", "vardiya"), "").lower())
         self.k_genel.a.setText(f"{gun} gün · eşik %{self.ana.ayar['esik'] * 100:.0f} · {kural}")
         for v in VARDIYALAR:
             oz = s.vardiyalar[v]

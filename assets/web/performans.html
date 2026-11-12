@@ -48,7 +48,7 @@ tr.secili td{background:#e3e8fb}
    <div class="kart"><div class="kb"><b>Makine bazlı performans</b><span>sütunun çalışma ya da duruş kısmına tıklayın: duruşlar · mola kısmına tıklayın: vardiya bazlı mola</span></div>
     <div id="gm"></div>
     <div class="gosterge"><span><i style="background:#5e9b2a"></i>Çalışma</span><span><i style="background:#d64541"></i>Duruş</span>
-     <span><i style="background:#f28c28"></i>Mola yapılan</span><span><i style="background:#7b4fa8"></i>Molada çalışılan</span></div>
+     <span><i style="background:#f28c28"></i>Mola yapılan</span><span><i style="background:#7b4fa8"></i>Molada çalışılan</span><span><i style="background:repeating-linear-gradient(135deg,#c9cedb 0 2px,#fff 2px 5px);border:1px solid #c9cedb"></i>Taralı: eşik altı, hesaba girmez</span></div>
    </div>
   </div>
  </div>
@@ -63,7 +63,8 @@ function tipRenk(t){ if(SABIT[t]) return SABIT[t]; let h=0; for(const c of t) h=
 const D=13;
 const yz=(x,b)=>x==null?"":(x*100).toFixed(b==null?1:b).replace(".",",")+"%";
 const sa=h=>{const d=Math.round(h*60);return Math.floor(d/60)+":"+String(d%60).padStart(2,"0")};
-const ton=(r,f)=>{const n=parseInt(r.slice(1),16),k=[n>>16,(n>>8)&255,n&255].map(v=>Math.round(f<0?v*(1+f):v+(255-v)*f));return "rgb("+k.join(",")+")"};
+const ton=(r,f)=>{let k; if(r[0]==="#"){const n=parseInt(r.slice(1),16);k=[n>>16,(n>>8)&255,n&255]} else k=r.match(/\d+/g).slice(0,3).map(Number);
+ return "rgb("+k.map(v=>Math.round(f<0?v*(1+f):v+(255-v)*f)).join(",")+")"};
 const kacis=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 // üç boyutlu blok: yUst < yAlt (piksel). ustYuz: üst yüzü çiz.
@@ -79,6 +80,10 @@ function kup(x,yAlt,yUst,gen,renk,yazi,zemin,gecikme,ustYuz,yaziRenk){
  if(yazi) cocuk.push({type:"text",style:{text:yazi,x:x,y:yUst+h/2,textAlign:"center",textVerticalAlign:"middle",fill:yaziRenk||"#fff",font:"700 11px Segoe UI"}});
  return {type:"group",originY:zemin,scaleY:1,enterFrom:{scaleY:0},enterAnimation:{duration:750,delay:gecikme||0,easing:"cubicOut"},children:cocuk};
 }
+let _tarama=null;
+function tarama(){ if(_tarama) return _tarama; const c=document.createElement("canvas"); c.width=c.height=10; const x=c.getContext("2d");
+ x.fillStyle="rgba(255,255,255,.35)"; x.fillRect(0,0,10,10); x.strokeStyle="rgba(90,98,120,.5)"; x.lineWidth=1.4;
+ x.beginPath(); x.moveTo(-2,8); x.lineTo(8,-2); x.moveTo(2,12); x.lineTo(12,2); x.stroke(); return _tarama={image:c,repeat:"repeat"}; }
 const ipucu={backgroundColor:"#fff",borderColor:"#d5dbea",textStyle:{color:"#1b1e2b",fontSize:12.5},extraCssText:"box-shadow:0 8px 24px rgba(21,9,88,.16);border-radius:10px"};
 const eksenY=(o)=>Object.assign({type:"value",axisLabel:{color:"#6b7285",formatter:"{value}%"},splitLine:{lineStyle:{color:"#e3e7ef",type:"dashed"}}},o||{});
 const eksenX=(veri,o)=>Object.assign({type:"category",data:veri,axisLabel:{color:"#1b1e2b",fontWeight:700,fontSize:12,interval:0},axisLine:{lineStyle:{color:"#9aa3b8",width:2}},axisTick:{show:false}},o||{});
@@ -130,13 +135,21 @@ function makineCiz(){
    renderItem:(prm,api)=>{const a=api.value(1),u=api.value(2); if(!(u-a>0.05)) return null;
      const pa=api.coord([api.value(0),a]),pu=api.coord([api.value(0),u]),sifir=api.coord([0,0])[1];
      const gen=Math.min(api.size([1,0])[0]*0.52,46), buyuk=u-a;
+     const m=ms[prm.dataIndex], alti=!!m.esikAlti;
      let yazi=""; if(si<2&&buyuk>=7) yazi=buyuk.toFixed(0)+"%"; else if(si>=2&&buyuk>=3.2&&gen>=24) yazi=buyuk.toFixed(0);
-     return kup(pa[0],pa[1],pu[1],gen,renk,yazi,sifir,prm.dataIndex*35,si===1||(si===0&&ms[prm.dataIndex].calisma>=0.9995))}}));
+     const ust=si===1||(si===0&&m.calisma>=0.9995);
+     const g=kup(pa[0],pa[1],pu[1],gen,alti?ton(renk,0.38):renk,alti?"":yazi,sifir,prm.dataIndex*35,ust);
+     if(!alti) return g;
+     g.children.push({type:"rect",shape:{x:pa[0]-gen/2,y:pu[1],width:gen,height:pa[1]-pu[1]},style:{fill:tarama()}});
+     if(yazi) g.children.push({type:"text",style:{text:yazi,x:pa[0],y:(pa[1]+pu[1])/2,textAlign:"center",textVerticalAlign:"middle",fill:"#2b3040",font:"700 11px Segoe UI"}});
+     if(ust) g.children.push({type:"text",style:{text:"{b|"+yz(m.calisma,0)+"}\neşik altı\nhesaba girmez",x:pa[0]+D/2,y:pu[1]-D*0.55-22,textAlign:"center",textVerticalAlign:"middle",
+        fill:"#6b7285",font:"600 9.5px Segoe UI",lineHeight:12,rich:{b:{fill:"#1b1e2b",fontWeight:700,fontSize:12}}}});
+     return g}}));
  gm.setOption({animationDuration:700,
   tooltip:Object.assign({trigger:"axis",axisPointer:{type:"shadow",shadowStyle:{color:"rgba(36,26,140,.06)"}},
-   formatter:p=>{const m=ms[p[0].dataIndex];const dk=V.molaDk;return `<b>${kacis(m.ad)}</b><br><span style="color:${YESIL}">●</span> Çalışma: <b>${yz(m.calisma)}</b><br><span style="color:${KIRMIZI}">●</span> Duruş: <b>${yz(1-m.calisma)}</b><br>`+
+   formatter:p=>{const m=ms[p[0].dataIndex];const dk=V.molaDk;return `<b>${kacis(m.ad)}</b>${m.esikAlti?' · <span style="color:#d64541">eşik altı (%'+V.esik+'): hesaba girmez</span>':''}<br><span style="color:${YESIL}">●</span> Çalışma: <b>${yz(m.calisma)}</b><br><span style="color:${KIRMIZI}">●</span> Duruş: <b>${yz(1-m.calisma)}</b><br>`+
      `<span style="color:${TURUNCU}">●</span> Mola yapılan: <b>${yz(m.mola)}</b> · günde ort. ${(m.mola*dk).toFixed(0)} dk<br><span style="color:${MOR}">●</span> Molada çalışılan: <b>${yz(1-m.mola)}</b> · günde ort. ${((1-m.mola)*dk).toFixed(0)} dk`}},ipucu),
-  grid:{left:46,right:86,top:22,bottom:ms.length>18?46:30},
+  grid:{left:46,right:86,top:ms.some(m=>m.esikAlti)?50:22,bottom:ms.length>18?46:30},
   xAxis:eksenX(ms.map(m=>m.ad),{axisLabel:{color:"#1b1e2b",fontWeight:700,fontSize:ms.length>18?10.5:12,interval:0,rotate:ms.length>18?50:0},axisLine:{show:false}}),
   yAxis:eksenY({min:-10,max:110,interval:10,axisLabel:{color:"#6b7285",formatter:v=>v<0||v>100?(v===-10?"-"+P.toFixed(0)+"%":""):v+"%"}}),
   series:seriler.concat([{type:"line",data:[],silent:true,markLine:{symbol:"none",silent:true,data:[

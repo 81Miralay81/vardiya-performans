@@ -137,3 +137,18 @@ KURAL_ACIKLAMA = {
         "sayılır; makine sayısı dönem boyunca sabittir. Zayıf günler ortalamayı düşürür. Rakamlar eski Excel'inizle "
         "karşılaştırılabilir."),
 }
+
+
+YONTEMLER = (("vardiya", "Vardiya sırasıyla"), ("gun", "Gün sırasıyla"), ("hucre", "Ayrımsız (süre toplamı)"))
+YONTEM_ORNEK = "Örnek: 1. gün üç vardiya 80 / 80 / 80, 2. gün 75 / 90 / 40 (40 eşik altı, atılır)"
+YONTEM_ACIKLAMA = {
+    "vardiya": ("VARDİYA SIRASIYLA: Önce her vardiyanın, eşiği geçen günlerinin ortalaması alınır; sonra üç vardiyanın ortalaması "
+                "alınır. Tablodaki ORTALAMA sütunu, yanındaki üç vardiya sütununun ortalamasıdır. "
+                "Örnekte: (77,5 + 85 + 80) / 3 = %80,83"),
+    "gun": ("GÜN SIRASIYLA: Önce her günün, eşiği geçen vardiyalarının ortalaması alınır; sonra günlerin ortalaması alınır. "
+            "Bütün vardiyaları eşik altında kalan gün bölene girmez. Örnekte: (80 + 82,5) / 2 = %81,25"),
+    "hucre": ("AYRIMSIZ (SÜRE TOPLAMI): Eşiği geçen bütün vardiyalar, gün ve vardiya ayrımı yapılmadan toplanır ve sayısına "
+              "bölünür; her vardiya eşit ağırlık taşır. Örnekte: (80 + 80 + 80 + 75 + 90) / 5 = %81,00"),
+}
+YONTEM_DONEMDE = ("Dönem kuralında ortalama yöntemi uygulanmaz: her vardiyanın dönem toplamı kayıtlı gün sayısına bölünür, "
+                  "sonra üç vardiyanın ortalaması alınır.")

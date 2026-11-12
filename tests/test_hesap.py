@@ -177,3 +177,32 @@ def test_donem_kurali_makine_donem_boyunca_sayilir():
     assert don.vardiyalar[2].makine_sayisi == 2.0           # dönem kuralında IM1 ve IM3; IM2 ortalaması %50
     assert "IM2" not in don.hucreler
     assert abs(don.hucreler["IM3"][2][0] - (1.0 + 0.2998) / 2) < 5e-3
+
+
+def test_ortalama_yontemleri():
+    """2 gün: 1. gün 80/80/80, 2. gün 75/90/40 (eşik %60: 3. vardiya atılır)."""
+    from datetime import date, datetime, timedelta
+    from vardiya.hesap import HesapAyar, hesapla
+    net = HesapAyar().net_saat
+    kayit = []
+    for gun, oranlar in ((3, (0.80, 0.80, 0.80)), (4, (0.75, 0.90, 0.40))):
+        for v, o in enumerate(oranlar):
+            b = datetime(2026, 11, gun, v * 8, 0)
+            kayit.append(("IM21", "Çalışma", b, b + timedelta(hours=net * o)))
+    gunler = [date(2026, 11, 3), date(2026, 11, 4)]
+    def ort(y):
+        return hesapla(kayit, gunler, HesapAyar(yontem=y)).makine_ort["IM21"][0]
+    assert abs(ort("vardiya") - (0.775 + 0.85 + 0.80) / 3) < 1e-6
+    assert abs(ort("gun") - (0.80 + 0.825) / 2) < 1e-6
+    assert abs(ort("hucre") - (0.80 * 3 + 0.75 + 0.90) / 5) < 1e-6
+
+
+def test_esik_alti_makine_gorunur_ama_sayilmaz():
+    from datetime import date, datetime, timedelta
+    from vardiya.hesap import HesapAyar, hesapla
+    net = HesapAyar().net_saat
+    b = datetime(2026, 11, 3, 8, 0)
+    kayit = [("IM21", "Çalışma", b, b + timedelta(hours=net * 0.9)), ("IM22", "Çalışma", b, b + timedelta(hours=net * 0.4))]
+    r = hesapla(kayit, [date(2026, 11, 3)], HesapAyar())
+    assert "IM22" not in r.makine_ort and abs(r.esik_alti["IM22"][0] - 0.4) < 1e-6
+    assert "IM21" not in r.esik_alti and abs(r.genel[0] - 0.9) < 1e-6
