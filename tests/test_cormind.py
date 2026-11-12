@@ -167,3 +167,46 @@ def test_kapatilmamis_eski_kayit_sonraki_kayitla_biter():
     r = cormind.suren_kayitlari_kapat(ham)
     assert r[0]["ended_at"] == "2026-10-21T05:00:00.000Z"       # eski, kapatılmamış: sonraki kayıtla biter
     assert r[2]["ended_at"] is None and r[3]["ended_at"] is None   # makinenin son kaydı: hâlâ sürüyor
+
+
+def test_aylara_bol():
+    from datetime import date
+    assert cormind.aylara_bol(date(2026, 11, 2), date(2026, 11, 8)) == [(date(2026, 11, 2), date(2026, 11, 8))]
+    assert cormind.aylara_bol(date(2026, 11, 1), date(2026, 11, 30)) == [(date(2026, 11, 1), date(2026, 11, 30))]
+    p = cormind.aylara_bol(date(2025, 11, 15), date(2026, 2, 10))
+    assert p == [(date(2025, 11, 15), date(2025, 11, 30)), (date(2025, 12, 1), date(2025, 12, 31)),
+                 (date(2026, 1, 1), date(2026, 1, 31)), (date(2026, 2, 1), date(2026, 2, 10))]
+    assert len(cormind.aylara_bol(date(2025, 11, 13), date(2026, 11, 12))) == 13
+
+
+def test_ay_ay_cekim_ilerleme_ve_suren_kayit(tmp_path, monkeypatch):
+    """Uzun aralık ay ay çekilir, her adım bildirilir; bir ayda süren kayıt sonraki ayın ilk kaydıyla biter; durdurulabilir."""
+    from datetime import date
+    istekler = []
+
+    def sahte_hareketler(self, ilk, son, idler, ilerleme=None, uzanan=True):
+        istekler.append((ilk, son, uzanan))
+        self.dar_sorgu = self.kesildi = False
+        if ilerleme:
+            ilerleme(1, 1)
+        if ilk.month == 9:      # Eylül: kayıt sürüyor (bitişi yok)
+            return [_kayit(1, "IM21", -1, None, "2026-09-10T05:00:00.000Z", None)]
+        if ilk.month == 10:     # Ekim: aynı makinede yeni kayıt 5 Ekim 11:00'de (TR) başlıyor
+            return [_kayit(2, "IM21", 0, None, "2026-10-05T08:00:00.000Z", "2026-10-05T09:00:00.000Z")]
+        return []
+
+    monkeypatch.setattr(cormind.Istemci, "giris", lambda self, k, s: None)
+    monkeypatch.setattr(cormind.Istemci, "ariza_adlari", lambda self: {})
+    monkeypatch.setattr(cormind.Istemci, "hareketler", sahte_hareketler)
+    con = vt.ac(str(tmp_path / "a.db"))
+    adimlar = []
+    r = cormind.cek(con, "http://x", "u", "p", date(2026, 9, 1), date(2026, 11, 5), [5], adim=adimlar.append, parca_arasi_sn=0)
+    assert [(a, b) for a, b, _ in istekler] == [(date(2026, 9, 1), date(2026, 9, 30)), (date(2026, 10, 1), date(2026, 10, 31)), (date(2026, 11, 1), date(2026, 11, 5))]
+    assert [u for _, _, u in istekler] == [True, False, False]          # eskiye bakan sorgu yalnızca ilk ayda
+    assert r["parca_sayisi"] == 3 and r["biten_parca"] == 3 and r["toplam"] == 2 and not r["durduruldu"]
+    assert adimlar[0]["asama"] == "baglaniyor" and adimlar[-1]["asama"] == "kaydedildi" and adimlar[-1]["parca"] == 3
+    satir = con.execute("SELECT bitis FROM kayit WHERE makine='IM21' AND tip='Çalışmıyor'").fetchone()
+    assert satir["bitis"] == "2026-10-05 11:00:00"                       # süren kayıt, sonraki ayın ilk kaydıyla bitti
+    istekler.clear()
+    r2 = cormind.cek(con, "http://x", "u", "p", date(2026, 9, 1), date(2026, 11, 5), [5], iptal=lambda: len(istekler) >= 1, parca_arasi_sn=0)
+    assert r2["durduruldu"] and r2["biten_parca"] == 1 and len(istekler) == 1

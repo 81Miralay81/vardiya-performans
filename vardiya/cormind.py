@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import http.cookiejar
 import json
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -175,6 +176,7 @@ class Istemci:
 
     GERIYE_GUN = 90        # dönemden önce başlayan kayıtlar için en fazla ne kadar geriye bakılır
     AZAMI_SAYFA = 40       # tek sorguda en fazla sayfa (40 x 2000 kayıt); aşılırsa durulur
+    SAYFA_ARASI_SN = 0.3
 
     def _sayfala(self, where: str, ilerleme, onceki: int = 0) -> List[dict]:
         sonuc: List[dict] = []
@@ -190,11 +192,12 @@ class Istemci:
                 ilerleme(onceki + len(sonuc), onceki + toplam)
             if len(parca) < SAYFA or (toplam and len(sonuc) >= toplam):
                 return sonuc
+            time.sleep(self.SAYFA_ARASI_SN)     # sunucuyu yormamak için sayfalar arasında kısa bekleme
         self.kesildi = True                      # beklenenden çok kayıt: sunucuyu yormamak için duruldu
         return sonuc
 
     def hareketler(self, ilk: date, son: date, makine_idleri: List[int],
-                   ilerleme: Optional[Callable[[int, int], None]] = None) -> List[dict]:
+                   ilerleme: Optional[Callable[[int, int], None]] = None, uzanan: bool = True) -> List[dict]:
         """Önce seçilen günlerde BAŞLAYAN kayıtlar (hızlı sorgu). Sonra, ayrı ve sınırlı bir sorguyla, en çok
         GERIYE_GUN gün önce başlayıp döneme uzanan ya da hâlâ süren kayıtlar. İkinci sorgu başarısız olursa
         birincinin sonucu yine kullanılır (dar_sorgu = True)."""
@@ -207,6 +210,8 @@ class Istemci:
                         f" AND (\"MachineAction\".\"ended_at\" >= '{bas.isoformat()}' OR \"MachineAction\".\"ended_at\" IS NULL)" + mk)
         self.dar_sorgu, self.kesildi = False, False
         sonuc = self._sayfala(where_dar, ilerleme)
+        if not uzanan:
+            return sonuc
         try:
             sonuc = self._sayfala(where_uzanan, ilerleme, len(sonuc)) + sonuc
         except CormindHata:
@@ -230,48 +235,126 @@ def suren_kayitlari_kapat(ham: List[dict]) -> List[dict]:
     return ham
 
 
-def cek(con, adres: str, kullanici: str, sifre: str, ilk: date, son: date, makine_idleri: List[int],
-        ilerleme: Optional[Callable[[int, int], None]] = None) -> dict:
-    """Cormind'den çekip veritabanına yazar. Dönüş: sayılar ve tip dağılımı."""
+AY_ADLARI = ("Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık")
+BICIM = "%Y-%m-%d %H:%M:%S"
+
+
+def aylara_bol(ilk: date, son: date, azami_gun: int = 31) -> List[Tuple[date, date]]:
+    """Aralık azami_gun'den uzunsa takvim aylarına bölünür (Cormind uzun aralığı tek seferde vermiyor)."""
+    if (son - ilk).days < azami_gun:
+        return [(ilk, son)]
+    parcalar, bas = [], ilk
+    while bas <= son:
+        ay_sonu = (date(bas.year + (bas.month == 12), bas.month % 12 + 1, 1) - timedelta(days=1))
+        bit = min(son, ay_sonu)
+        parcalar.append((bas, bit))
+        bas = bit + timedelta(days=1)
+    return parcalar
+
+
+def _parca_cek(con, ist: "Istemci", ariza: Dict[int, str], ilk: date, son: date, makine_idleri: List[int],
+               ilerleme, uzanan: bool) -> dict:
+    """Bir parçayı (en çok bir ay) çekip yazar. Süren (bitişi olmayan) kayıtlar parça sonuna ya da şimdiye kadar yazılır
+    ve 'acik' olarak bildirilir; çağıran sonraki parçaya göre bitişlerini düzeltir."""
     from . import veritabani as vt
-    ist = Istemci(adres)
-    ist.giris(kullanici, sifre)
-    ariza = ist.ariza_adlari()
-    ham = suren_kayitlari_kapat(ist.hareketler(ilk, son, makine_idleri, ilerleme))
+    ham = suren_kayitlari_kapat(ist.hareketler(ilk, son, makine_idleri, ilerleme, uzanan))
     makine_adlari: Dict[int, str] = {}
     satirlar, atlanan = [], 0
     tipler: Dict[str, int] = {}
     simdi = datetime.now(TR).replace(tzinfo=None, microsecond=0)
+    parca_sonu = min(simdi, datetime(son.year, son.month, son.day) + timedelta(days=1))
+    acik: Dict[str, Tuple[datetime, str]] = {}
+    ilk_bas: Dict[str, datetime] = {}
     for k in ham:
-        s = kayit_satiri(k, makine_adlari, ariza, simdi)
+        s = kayit_satiri(k, makine_adlari, ariza, parca_sonu)
         if s is None:
             atlanan += 1
             continue
         satirlar.append(s)
         tipler[s[4]] = tipler.get(s[4], 0) + 1
+        if s[1] >= datetime(ilk.year, ilk.month, ilk.day) and (s[0] not in ilk_bas or s[1] < ilk_bas[s[0]]):
+            ilk_bas[s[0]] = s[1]
+        if not k.get("ended_at"):
+            acik[s[0]] = (s[1], s[4] or "")
     # O günlerin eski kayıtları (Excel'den ya da önceki çekimden) silinip Cormind'dekiyle değiştirilir:
     # saniye yuvarlama farkından çift kayıt oluşmasın, düzeltilmiş tip adları eskilerin yerine geçsin.
     silinen = 0
     if satirlar:
-        silinen = con.execute("SELECT COUNT(*) FROM kayit WHERE baslangic >= ? AND baslangic < ?",
-                              (ilk.strftime("%Y-%m-%d 00:00:00"), (son + timedelta(days=1)).strftime("%Y-%m-%d 00:00:00"))).fetchone()[0]
-        con.execute("DELETE FROM kayit WHERE baslangic >= ? AND baslangic < ?",
-                    (ilk.strftime("%Y-%m-%d 00:00:00"), (son + timedelta(days=1)).strftime("%Y-%m-%d 00:00:00")))
+        aralik = (ilk.strftime("%Y-%m-%d 00:00:00"), (son + timedelta(days=1)).strftime("%Y-%m-%d 00:00:00"))
+        silinen = con.execute("SELECT COUNT(*) FROM kayit WHERE baslangic >= ? AND baslangic < ?", aralik).fetchone()[0]
+        con.execute("DELETE FROM kayit WHERE baslangic >= ? AND baslangic < ?", aralik)
         con.commit()
     # aynı makine + başlangıçlı eski satır başka bir tip adıyla duruyorsa (ör. önceden "Çalışmıyor" diye alınmış) çift sayılmasın
-    BICIM = "%Y-%m-%d %H:%M:%S"
     con.executemany("DELETE FROM kayit WHERE makine=? AND baslangic=? AND tip<>?", [(s[0], s[1].strftime(BICIM), s[4] or "") for s in satirlar])
     con.commit()
     yeni, guncel, ayni = vt.kayit_yaz(con, satirlar)
-    ay = vt.ayar_oku(con)
-    bilinen = set(ay["makineler"])
-    eklenen = sorted({s[0] for s in satirlar} - bilinen)
-    if eklenen:
-        vt.ayar_yaz(con, "makineler", sorted(bilinen | set(eklenen)))
     ilk_g = min((s[1] for s in satirlar), default=None)
     son_g = max((s[1] for s in satirlar), default=None)
     vt.aktarim_kaydet(con, f"Cormind ({ilk:%d.%m.%Y}–{son:%d.%m.%Y})", len(ham), yeni, guncel, ayni, atlanan,
                       ilk_g.strftime("%Y-%m-%d") if ilk_g else None, son_g.strftime("%Y-%m-%d") if son_g else None)
     return {"toplam": len(ham), "yeni": yeni, "guncel": guncel, "ayni": ayni, "atlanan": atlanan, "silinen": silinen,
-            "tipler": dict(sorted(tipler.items(), key=lambda x: -x[1])), "yeni_makineler": eklenen,
-            "dar_sorgu": bool(getattr(ist, "dar_sorgu", False)), "kesildi": bool(getattr(ist, "kesildi", False))}
+            "tipler": tipler, "makineler": {s[0] for s in satirlar}, "acik": acik, "ilk_bas": ilk_bas, "parca_sonu": parca_sonu}
+
+
+def cek(con, adres: str, kullanici: str, sifre: str, ilk: date, son: date, makine_idleri: List[int],
+        ilerleme: Optional[Callable[[int, int], None]] = None, adim: Optional[Callable[[dict], None]] = None,
+        iptal: Optional[Callable[[], bool]] = None, parca_arasi_sn: float = 1.0, uzanan: bool = True) -> dict:
+    """Cormind'den çekip veritabanına yazar. Bir aydan uzun aralık ay ay çekilir; her ay bitince kaydedilir.
+    adim(bilgi): ilerleme bildirimi (parca, parca_sayisi, ilk, son, asama, kayit, toplam, kaydedilen).
+    iptal(): True dönerse sıradaki parçaya geçilmez. Dönüş: sayılar ve tip dağılımı."""
+    from . import veritabani as vt
+
+    def bildir(**b):
+        if adim:
+            adim(b)
+
+    parcalar = aylara_bol(ilk, son)
+    n = len(parcalar)
+    bildir(parca=0, parca_sayisi=n, ilk=ilk, son=son, asama="baglaniyor", kayit=0, toplam=0, kaydedilen=0)
+    ist = Istemci(adres)
+    ist.giris(kullanici, sifre)
+    ariza = ist.ariza_adlari()
+    t = {"toplam": 0, "yeni": 0, "guncel": 0, "ayni": 0, "atlanan": 0, "silinen": 0}
+    tipler: Dict[str, int] = {}
+    makineler: set = set()
+    acik: Dict[str, Tuple[datetime, str]] = {}
+    dar = kesildi = durduruldu = False
+    biten = 0
+    for i, (p_ilk, p_son) in enumerate(parcalar):
+        if iptal and iptal():
+            durduruldu = True
+            break
+        if i:
+            time.sleep(parca_arasi_sn)
+
+        def sayfa_ilerleme(kayit, toplam, _i=i, _a=p_ilk, _b=p_son):
+            if ilerleme:
+                ilerleme(kayit, toplam)
+            bildir(parca=_i + 1, parca_sayisi=n, ilk=_a, son=_b, asama="cekiliyor", kayit=kayit, toplam=toplam, kaydedilen=t["toplam"])
+
+        bildir(parca=i + 1, parca_sayisi=n, ilk=p_ilk, son=p_son, asama="cekiliyor", kayit=0, toplam=0, kaydedilen=t["toplam"])
+        r = _parca_cek(con, ist, ariza, p_ilk, p_son, makine_idleri, sayfa_ilerleme, uzanan=(uzanan and i == 0))
+        dar, kesildi = dar or ist.dar_sorgu, kesildi or ist.kesildi
+        # önceki parçadan süren kayıtlar: bu parçada o makinenin ilk kaydı başladığında biter; yoksa bu parçanın sonuna uzar
+        for m, (bas, tip) in list(acik.items()):
+            bitis = r["ilk_bas"].get(m)
+            con.execute("UPDATE kayit SET bitis=? WHERE makine=? AND baslangic=? AND tip=?",
+                        ((bitis or r["parca_sonu"]).strftime(BICIM), m, bas.strftime(BICIM), tip))
+            if bitis:
+                del acik[m]
+        con.commit()
+        acik.update(r["acik"])
+        for k in t:
+            t[k] += r[k]
+        for ad, sayi in r["tipler"].items():
+            tipler[ad] = tipler.get(ad, 0) + sayi
+        makineler |= r["makineler"]
+        biten = i + 1
+        bildir(parca=i + 1, parca_sayisi=n, ilk=p_ilk, son=p_son, asama="kaydedildi", kayit=r["toplam"], toplam=r["toplam"], kaydedilen=t["toplam"])
+    ay = vt.ayar_oku(con)
+    bilinen = set(ay["makineler"])
+    eklenen = sorted(makineler - bilinen)
+    if eklenen:
+        vt.ayar_yaz(con, "makineler", sorted(bilinen | set(eklenen)))
+    return dict(t, tipler=dict(sorted(tipler.items(), key=lambda x: -x[1])), yeni_makineler=eklenen, dar_sorgu=dar, kesildi=kesildi,
+                parca_sayisi=n, biten_parca=biten, durduruldu=durduruldu)

@@ -54,17 +54,23 @@ class CormindIs(QThread):
     """Cormind'den çekme işi arka planda yürür (pencere donmaz). Kendi veritabanı bağlantısını açar."""
     bitti = Signal(dict)
     hata = Signal(str)
+    adim = Signal(dict)
 
-    def __init__(self, db_yolu, adres, kullanici, sifre, ilk, son, idler, parent=None):
+    def __init__(self, db_yolu, adres, kullanici, sifre, ilk, son, idler, parent=None, uzanan=True):
         super().__init__(parent)
         self.a = (db_yolu, adres, kullanici, sifre, ilk, son, idler)
+        self._dur = False
+        self.uzanan = uzanan
+
+    def durdur(self):
+        self._dur = True
 
     def run(self):
         db_yolu, adres, kullanici, sifre, ilk, son, idler = self.a
         try:
             con = vt.ac(db_yolu)
             try:
-                self.bitti.emit(cormind.cek(con, adres, kullanici, sifre, ilk, son, idler))
+                self.bitti.emit(cormind.cek(con, adres, kullanici, sifre, ilk, son, idler, adim=self.adim.emit, iptal=lambda: self._dur, uzanan=self.uzanan))
             finally:
                 con.close()
         except cormind.CormindHata as e:
@@ -119,8 +125,27 @@ class CormindKarti(QFrame):
         s2.addWidget(QLabel("–"))
         s2.addWidget(self.bit)
         s2.addWidget(self.btn)
+        self.b_dur = QPushButton("Durdur")
+        self.b_dur.setObjectName("Tehlike")
+        self.b_dur.setToolTip("Sıradaki aya geçmeden durur; o ana kadar çekilenler kayıtlı kalır")
+        self.b_dur.clicked.connect(self._durdur)
+        self.b_dur.hide()
+        s2.addWidget(self.b_dur)
         s2.addStretch(1)
         l.addLayout(s2)
+        from PySide6.QtWidgets import QCheckBox
+        self.uzanan = QCheckBox("Önceden başlayıp seçilen günlere uzanan duruşları da getir (en çok 90 gün geriye bakar)")
+        self.uzanan.setToolTip("Günlerce süren 'İŞ EMRİ PLAN YOK' gibi duruşlar seçilen günlerden önce başlamış olabilir.\n"
+                               "İşaretliyken Cormind'e ikinci, sınırlı bir sorgu daha gönderilir. Çekim yavaşlarsa işareti kaldırın.")
+        self.uzanan.setChecked(str(self._ayar.value("cormind/uzanan", "1")) != "0")
+        l.addWidget(self.uzanan)
+        l.addWidget(etiket("Bir aydan uzun aralık ay ay çekilir (Cormind toplu çekime izin vermiyor); her ay bitince kaydedilir.", "AltBaslik"))
+        from PySide6.QtWidgets import QProgressBar
+        self.cubuk = QProgressBar()
+        self.cubuk.setTextVisible(True)
+        self.cubuk.setFixedHeight(18)
+        self.cubuk.hide()
+        l.addWidget(self.cubuk)
         self.durum = etiket("", "AltBaslik")
         self.durum.hide()
         l.addWidget(self.durum)
@@ -146,16 +171,51 @@ class CormindKarti(QFrame):
         self._ayar.setValue("cormind/sifre", base64.b64encode(s.encode("utf8")).decode())
         vt.ayar_yaz(self.ana.con, "cormind_adres", self.adres.text().strip())
         self.btn.setEnabled(False)
-        self._yaz("Cormind'e bağlanılıyor, veriler çekiliyor… (gün sayısı çoksa birkaç dakika sürebilir)")
+        self.b_dur.setEnabled(True)
+        self.b_dur.show()
+        self.cubuk.setRange(0, 0)               # belirsiz: bağlanıyor
+        self.cubuk.setFormat("Bağlanılıyor…")
+        self.cubuk.show()
+        self._yaz("Cormind'e bağlanılıyor…")
         idler = self.ana.ayar.get("cormind_makine_idleri") or cormind.VARSAYILAN_MAKINE_IDLERI
-        self._is = CormindIs(self.ana.db_yolu, self.adres.text(), k, s, ilk, son, idler, self)
+        self._ayar.setValue("cormind/uzanan", "1" if self.uzanan.isChecked() else "0")
+        self._is = CormindIs(self.ana.db_yolu, self.adres.text(), k, s, ilk, son, idler, self, self.uzanan.isChecked())
         self._is.bitti.connect(self._bitti)
+        self._is.adim.connect(self._adim)
         self._is.hata.connect(lambda m: self._son(m, hata=True))
         self._is.start()
 
+    def _durdur(self):
+        if self._is is not None and self._is.isRunning():
+            self._is.durdur()
+            self.b_dur.setEnabled(False)
+            self._yaz("Durduruluyor: şu anki ay bitince durulacak, çekilenler kayıtlı kalacak…")
+
+    def _adim(self, b: dict):
+        """Çekim ilerlemesi: hangi parça, hangi aşama, kaç kayıt."""
+        n, i = b["parca_sayisi"], b["parca"]
+        if b["asama"] == "baglaniyor":
+            return
+        ad = (f"{cormind.AY_ADLARI[b['ilk'].month - 1]} {b['ilk'].year}" if n > 1 else f"{b['ilk']:%d.%m.%Y} – {b['son']:%d.%m.%Y}")
+        say = lambda x: f"{x:,}".replace(",", ".")
+        pay = (b["kayit"] / b["toplam"]) if b["toplam"] else (1.0 if b["asama"] == "kaydedildi" else 0.0)
+        self.cubuk.setRange(0, 1000)
+        self.cubuk.setValue(int(1000 * ((i - 1) + min(1.0, pay)) / max(1, n)))
+        self.cubuk.setFormat(f"{i}/{n}  ·  %p%" if n > 1 else "%p%")
+        if b["asama"] == "cekiliyor":
+            ayrinti = (f"{say(b['kayit'])} / {say(b['toplam'])} kayıt alındı" if b["toplam"] else "Cormind'den yanıt bekleniyor…")
+            metin = f"{ad} çekiliyor: {ayrinti}"
+        else:
+            metin = f"{ad} kaydedildi: {say(b['kayit'])} kayıt"
+        if n > 1:
+            metin = f"Adım {i}/{n} · " + metin + f"  ·  şu ana kadar toplam {say(b['kaydedilen'])} kayıt kaydedildi"
+        self._yaz(metin)
+
     def _bitti(self, r: dict):
         tip = ", ".join(f"{ad}: {n}" for ad, n in list(r["tipler"].items())[:12])
-        metin = (f"{r['toplam']} kayıt alındı ve kaydedildi"
+        metin = ((f"DURDURULDU: {r['biten_parca']}/{r['parca_sayisi']} ay çekildi. " if r.get("durduruldu") else "")
+                 + (f"{r['parca_sayisi']} ay sırayla çekildi. " if r.get("parca_sayisi", 1) > 1 and not r.get("durduruldu") else "")
+                 + f"{r['toplam']} kayıt alındı ve kaydedildi"
                  + (f" (seçilen günlerde daha önce kayıtlı olan {r['silinen']} kayıt Cormind'dekiyle değiştirildi)" if r.get("silinen") else "")
                  + (f"; {r['atlanan']} kayıt atlandı" if r["atlanan"] else "") + f".\nTip dağılımı: {tip}"
                  + ("\nUYARI: Cormind geniş sorguyu kabul etmedi; yalnızca seçilen günlerde BAŞLAYAN kayıtlar alındı. "
@@ -169,6 +229,8 @@ class CormindKarti(QFrame):
 
     def _son(self, metin: str, hata: bool = False):
         self.btn.setEnabled(True)
+        self.b_dur.hide()
+        self.cubuk.hide()
         self._yaz(metin, hata)
 
     def _yaz(self, metin: str, hata: bool = False):
