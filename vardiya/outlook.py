@@ -104,3 +104,22 @@ def mailleri_getir(ilk: date, son: date, gonderen: str = "Kalip Uretim", konu: s
     for m in bulunan:
         tek.setdefault((m.zaman, m.konu.strip()), m)
     return sorted(tek.values(), key=lambda m: m.zaman)[:azami]
+
+
+def mail_hazirla(alicilar: str, konu: str, html: str, ekler: List[str]) -> None:
+    """Outlook'ta alıcıları, konusu, metni ve ekleri hazır bir mail penceresi açar. Göndermez: kullanıcı bakıp 'Gönder'e basar."""
+    try:
+        import win32com.client  # type: ignore
+    except Exception as ex:  # noqa: BLE001
+        raise RuntimeError("Mail hazırlama yalnızca Windows'ta, klasik masaüstü Outlook kuruluyken çalışır.") from ex
+    try:
+        uyg = win32com.client.Dispatch("Outlook.Application")
+        m = uyg.CreateItem(0)                    # 0 = e-posta
+        m.To = "; ".join(a.strip() for a in re.split(r"[;,\n]+", alicilar or "") if a.strip())
+        m.Subject = konu
+        m.HTMLBody = html
+        for yol in ekler:
+            m.Attachments.Add(yol)
+        m.Display()
+    except Exception as ex:  # noqa: BLE001
+        raise RuntimeError(f"Outlook'ta mail hazırlanamadı.\n({ex})") from ex

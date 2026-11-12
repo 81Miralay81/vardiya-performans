@@ -257,6 +257,10 @@ class RaporSayfasi(QWidget):
         self.b_kot.clicked.connect(self.kot_yapistir)
         self.b_metin.clicked.connect(self.metni_duzenle)
         self.b_kot_sil.clicked.connect(self.kot_sil)
+        self.b_mail = QPushButton("Mail Hazırla")
+        self.b_mail.setToolTip("Raporu PDF olarak ekleyip Ayarlar'daki alıcılara gidecek maili Outlook'ta açar; bakıp Gönder'e basarsınız")
+        self.b_mail.clicked.connect(self.mail_hazirla)
+        il.addWidget(self.b_mail)
         self.idari_kutu.hide()
         pl.addWidget(self.idari_kutu)
         pl.addStretch(1)
@@ -523,6 +527,43 @@ class RaporSayfasi(QWidget):
             QMessageBox.warning(self, "Outlook'tan al", ozet + uyari)
         self.ana.mesaj(ozet)
         self._yenile_simdi()
+
+    def mail_hazirla(self):
+        """İdari raporu PDF olarak ekleyip alıcılara gidecek maili Outlook'ta açar (göndermez)."""
+        from html import escape
+        import tempfile
+        from . import outlook, yapay
+        r = self._hazir()
+        if not r or r.get("duzen") != "idari":
+            return
+        alicilar = yapay.ayar_oku()["alicilar"]
+        if not alicilar.strip():
+            QMessageBox.information(self, "Mail hazırla", "Önce Ayarlar sayfasının altındaki 'İdari rapor alıcıları' kutusuna adresleri girip kaydedin.")
+            return
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            yol = os.path.join(tempfile.mkdtemp(prefix="vardiya_"), self._dosya_adi(r) + ".pdf")
+            pdf_yaz(yol, r)
+            ic = r["idari"]
+            satirlar = "".join(
+                f"<tr><td style='padding:3px 10px;border-bottom:1px solid #ddd'><b>{escape(x['tezgah'])}</b></td>"
+                f"<td style='padding:3px 10px;border-bottom:1px solid #ddd' align='right'>%{x['oee']:.1f}</td>"
+                f"<td style='padding:3px 10px;border-bottom:1px solid #ddd'>{escape(x['kayip'])}</td>"
+                f"<td style='padding:3px 10px;border-bottom:1px solid #ddd'>{escape(x['durum'])}</td></tr>" for x in ic["perf"][:12])
+            html = (f"<div style='font-family:Segoe UI,Arial;font-size:11pt'><p>Merhaba,</p>"
+                    f"<p><b>{escape(r['baslik'])}</b> ({escape(r['donem'])}) ektedir.</p><p>{escape(ic['ozet'])}</p>"
+                    + (f"<table cellspacing='0' style='border-collapse:collapse;font-size:10.5pt'><tr style='background:#150958;color:#fff'>"
+                       f"<td style='padding:4px 10px'>Tezgâh</td><td style='padding:4px 10px'>OEE (Cormind)</td><td style='padding:4px 10px'>Başlıca kayıp</td>"
+                       f"<td style='padding:4px 10px'>Durum</td></tr>{satirlar}</table>" if satirlar else "")
+                    + "<p>Ayrıntılar ekteki raporda.</p></div>")
+            outlook.mail_hazirla(alicilar, r["baslik"], html, [yol])
+        except RuntimeError as ex:
+            QApplication.restoreOverrideCursor()
+            QMessageBox.warning(self, "Mail hazırla", str(ex))
+            return
+        finally:
+            QApplication.restoreOverrideCursor()
+        self.ana.mesaj("Mail Outlook'ta açıldı: alıcılar, metin ve PDF eki hazır. Bakıp 'Gönder'e basın.")
 
     def kot_yapistir(self):
         d = MetinDialog(self, "KOT yapıştır",

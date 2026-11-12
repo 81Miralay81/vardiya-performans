@@ -165,13 +165,15 @@ class AyarSayfasi(QWidget):
             "metinleri (imza ve kişi adları çıkarılarak) Google Gemini'ye gönderilip KOT formuna döktürülür; anahtar yoksa ya da servise "
             "ulaşılamazsa program kendi algoritmasıyla ayırır. Bu ayarlar yalnızca bu bilgisayarda saklanır.", "AltBaslik"))
         fy = _QF()
-        self.y_gonderen, self.y_konu, self.y_anahtar, self.y_model = _QL(), _QL(), _QL(), _QL()
+        self.y_gonderen, self.y_konu, self.y_anahtar, self.y_model, self.y_alicilar = _QL(), _QL(), _QL(), _QL(), _QL()
+        self.y_alicilar.setPlaceholderText("ad@sirket.com; ad2@sirket.com  (noktalı virgülle ayırın)")
         self.y_anahtar.setEchoMode(_QL.Password)
         self.y_anahtar.setPlaceholderText("Gemini API anahtarı (boş bırakılırsa yapay zekâ kullanılmaz)")
         fy.addRow("Mail göndereni", self.y_gonderen)
         fy.addRow("Mail konusunda geçen", self.y_konu)
         fy.addRow("Gemini anahtarı", self.y_anahtar)
         fy.addRow("Model adı", self.y_model)
+        fy.addRow("İdari rapor alıcıları", self.y_alicilar)
         ky.layout().addLayout(fy)
         ys = QHBoxLayout()
         by, bd = QPushButton("Bu Ayarları Kaydet"), QPushButton("Bağlantıyı Dene")
@@ -181,10 +183,10 @@ class AyarSayfasi(QWidget):
         ys.addWidget(self.y_durum, 1)
         ky.layout().addLayout(ys)
         ya = yapay.ayar_oku()
-        self.y_gonderen.setText(ya["gonderen"]); self.y_konu.setText(ya["konu"]); self.y_anahtar.setText(ya["anahtar"]); self.y_model.setText(ya["model"])
+        self.y_gonderen.setText(ya["gonderen"]); self.y_konu.setText(ya["konu"]); self.y_anahtar.setText(ya["anahtar"]); self.y_model.setText(ya["model"]); self.y_alicilar.setText(ya["alicilar"])
 
         def _y_kaydet():
-            yapay.ayar_yaz(self.y_anahtar.text(), self.y_model.text(), self.y_gonderen.text(), self.y_konu.text())
+            yapay.ayar_yaz(self.y_anahtar.text(), self.y_model.text(), self.y_gonderen.text(), self.y_konu.text(), self.y_alicilar.text())
             self.y_durum.setText("Kaydedildi.")
 
         def _y_dene():

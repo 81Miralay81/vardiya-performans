@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import urllib.error
 import urllib.request
-from typing import List
+from typing import List, Optional
 
 VARSAYILAN_MODEL = "gemini-3.8-flash"
 ADRES = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
@@ -57,10 +57,11 @@ def ayar_oku() -> dict:
     except Exception:  # noqa: BLE001
         anahtar = ""
     return {"anahtar": anahtar, "model": a.value("yapay/model", VARSAYILAN_MODEL) or VARSAYILAN_MODEL,
-            "gonderen": a.value("kot/gonderen", "Kalip Uretim"), "konu": a.value("kot/konu", "OEE") or "OEE"}
+            "gonderen": a.value("kot/gonderen", "Kalip Uretim"), "konu": a.value("kot/konu", "OEE") or "OEE",
+            "alicilar": a.value("rapor/alicilar", "") or ""}
 
 
-def ayar_yaz(anahtar: str, model: str, gonderen: str, konu: str) -> None:
+def ayar_yaz(anahtar: str, model: str, gonderen: str, konu: str, alicilar: Optional[str] = None) -> None:
     import base64
     from PySide6.QtCore import QSettings
     a = QSettings("Teknorot", "VardiyaPerformans")
@@ -68,3 +69,5 @@ def ayar_yaz(anahtar: str, model: str, gonderen: str, konu: str) -> None:
     a.setValue("yapay/model", (model or "").strip() or VARSAYILAN_MODEL)
     a.setValue("kot/gonderen", (gonderen or "").strip())
     a.setValue("kot/konu", (konu or "").strip() or "OEE")
+    if alicilar is not None:
+        a.setValue("rapor/alicilar", alicilar.strip())
