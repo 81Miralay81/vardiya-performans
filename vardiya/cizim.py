@@ -265,7 +265,7 @@ def tablo_resmi(sonuc, makineler, secim=0, genislik=660, satir=30, yazi_carpani=
 
 
 # ============================================================ Cormind zaman dağılım grafiği (rapor için)
-def cormind_durus_grafigi(p: QPainter, rect: QRectF, cm: Dict[str, dict], baslik: Optional[str] = "Zaman Dağılım Grafiği (Cormind hesabı)",
+def cormind_durus_grafigi(p: QPainter, rect: QRectF, cm: Dict[str, dict], baslik: Optional[str] = "Zaman Dağılım Grafiği (Cormind)",
                           limit: float = 15.0):
     """cm: hesap.cormind_hesabi çıktısı. Her makinede duruş türleri üst üste, mola süresi (eksi ise) sıfırın altında."""
     s = olcek(rect)
@@ -434,7 +434,7 @@ def rapor_ciz(p: QPainter, rect: QRectF, r: dict):
     govde = QRectF(ic.left(), ic.top() + ust_h + 18 * k, ic.width(), ic.height() - ust_h - 18 * k - 50 * k)
     sonuc, makineler = r["sonuc"], r["makineler"]
     if r["duzen"] == "makine":
-        ust_yuk = govde.height() * 0.50
+        ust_yuk = govde.height() * 0.42
         cerceve = QRectF(govde.left(), govde.top(), govde.width(), ust_yuk)
         makine_grafigi(p, cerceve, sonuc, makineler, 0, "Makine Bazlı Performans (Çalışma) Oranı", r.get("bos_goster", False), arka=False)
         alt = QRectF(govde.left(), govde.top() + ust_yuk + 14 * k, govde.width(), govde.height() - ust_yuk - 14 * k)
@@ -472,7 +472,7 @@ def rapor_ciz(p: QPainter, rect: QRectF, r: dict):
 
 
 # ============================================================ idari rapor
-def cormind_oee_grafigi(p: QPainter, rect: QRectF, cm: Dict[str, dict], baslik: Optional[str] = "OEE Grafiği (Cormind hesabı)", limit: float = 85.0):
+def cormind_oee_grafigi(p: QPainter, rect: QRectF, cm: Dict[str, dict], baslik: Optional[str] = "OEE Grafiği (Cormind)", limit: float = 85.0):
     s = olcek(rect)
     p.save()
     p.setRenderHint(QPainter.Antialiasing, True)
@@ -661,7 +661,7 @@ def _idari_basligi(p: QPainter, rect: QRectF, r: dict, sayfa: int):
     p.setPen(QPen(QColor(tema.YESIL), 4 * k))
     p.drawLine(QPointF(ic.left(), ic.top() + ust_h), QPointF(ic.right(), ic.top() + ust_h))
     _yaz(p, QRectF(ic.left(), ic.bottom() - 36 * k, ic.width() * 0.7, 32 * k),
-         f"Eşik: %{r['esik'] * 100:.0f}  ·  Net vardiya süresi: {tema.sayi(r['net_saat'], 2)} saat  ·  OEE ve zaman dağılımı Cormind hesabıdır; çalışma oranı programın hesabıdır",
+         f"Eşik: %{r['esik'] * 100:.0f}  ·  Net vardiya süresi: {tema.sayi(r['net_saat'], 2)} saat",
          12.5 * k, False, AL, tema.YAZI_SOLUK)
     _yaz(p, QRectF(ic.right() - 520 * k, ic.bottom() - 36 * k, 520 * k, 32 * k), f"{r.get('alt_sag', '')}  ·  Sayfa {sayfa + 1}/{IDARI_SAYFA}",
          12.5 * k, False, SAG, tema.YAZI_SOLUK)
@@ -700,7 +700,7 @@ def idari_ciz(p: QPainter, rect: QRectF, r: dict, sayfa: int = 0):
         td = "padding:3px 6px;border-bottom:1px solid #D9DEE8"
         t = [f"<div style='color:{tema.LACIVERT};font-weight:700;font-size:17px'>TEZGÂH PERFORMANS DEĞERLERİ</div>",
              "<table width='100%' cellspacing='0' cellpadding='0'>",
-             f"<tr><td style='{th}'>Tezgâh</td><td style='{th}' align='right'>OEE (Cormind)</td><td style='{th}' align='right'>Çalışma (bizim)</td>"
+             f"<tr><td style='{th}'>Tezgâh</td><td style='{th}' align='right'>OEE (Cormind)</td><td style='{th}' align='right'>Çalışma</td>"
              f"<td style='{th}'>Başlıca kayıp</td><td style='{th}'>Durum</td></tr>"]
         for x in ic["perf"][:16]:
             cal = yuzde(x["calisma"], 1) if x["calisma"] is not None else "–"
@@ -727,7 +727,7 @@ def idari_ciz(p: QPainter, rect: QRectF, r: dict, sayfa: int = 0):
         cormind_oee_grafigi(p, QRectF(govde.left(), govde.top(), govde.width(), yari), cm)
         genel_performans_grafigi(p, QRectF(govde.left(), govde.top() + yari + bosluk, govde.width(), yari), sonuc, makineler, r.get("mola_pay", 9.09))
     else:
-        ust_h = govde.height() * 0.52
+        ust_h = govde.height() * 0.62
         cormind_durus_grafigi(p, QRectF(govde.left(), govde.top(), govde.width(), ust_h), cm)
         alt = QRectF(govde.left(), govde.top() + ust_h + bosluk, govde.width(), govde.height() - ust_h - bosluk)
         sol = QRectF(alt.left(), alt.top(), alt.width() * 0.56, alt.height())
