@@ -159,7 +159,7 @@ DURUS_RENK = {"İŞ EMRİ PLAN YOK": "#f5c400", "Çalışmıyor": "#ff8a1f", "K�
               "KESİCİ TAKIM-UC KONTROL": "#c9b27c", "MEKANİK ARIZA": "#8b96a3", "SETUP BEKLEME": "#12a37a",
               "Belgelenmemiş Duruş": "#f29bc0", "Kurulum": "#1c7ed6", "SETUP": "#1c7ed6", "Kalite Kontrol": "#ff9f80",
               "ÇAPAK ALMA": "#7a5fd0", "KALIP KONTROLÜ": "#ffb020", "ELEKTRİK ARIZA": "#d9d400", "ELEMAN YETERSİZLİĞİ": "#a14a2b",
-              "GRUP LİDERİ BEKLEME": "#7b5a36", "CAM BEKLEME": "#4dd0c0"}
+              "GRUP LİDERİ BEKLEME": "#7b5a36", "CAM BEKLEME": "#4dd0c0", "MAKİNA ARIZASI": "#8db600", "Kayıt Yok": "#aab1c0"}
 _DURUS_PALET = ("#f5c400", "#ff8a1f", "#4aa3ee", "#e0245e", "#c9b27c", "#8b96a3", "#12a37a", "#f29bc0", "#1c7ed6", "#ff9f80",
                 "#7a5fd0", "#ffb020", "#d9d400", "#a14a2b", "#7b5a36", "#4dd0c0", "#5b8c2a", "#b0478f")
 MOLA_RENK = "#7b4fa8"

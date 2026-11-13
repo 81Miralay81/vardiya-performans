@@ -222,4 +222,5 @@ def test_cormind_hesabi():
     assert abs(r["IM60"]["durus"]["SETUP"] - 100 * 171 / 1320) < 1e-6
     assert abs(r["IM60"]["mola"] - 100 * (30.4 - 120) / 1320) < 1e-6
     assert abs(r["IM23"]["toplam"] - 100.0) < 1e-6 and r["IM23"]["oee"] == 0.0     # 1440/1320 = %109, eksi %9 mola
-    assert abs(r["IM27"]["mola"] + 100 * 120 / 1320) < 1e-6 and r["IM27"]["oee"] == 100.0   # hiç kaydı yok
+    assert abs(r["IM27"]["mola"] + 100 * 120 / 1320) < 1e-6 and r["IM27"]["oee"] == 0.0     # hiç kaydı yok: çalışmadı sayılır
+    assert abs(r["IM27"]["durus"]["Kayıt Yok"] - 100 * 1440 / 1320) < 1e-6

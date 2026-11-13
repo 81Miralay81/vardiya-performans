@@ -358,3 +358,145 @@ def cek(con, adres: str, kullanici: str, sifre: str, ilk: date, son: date, makin
         vt.ayar_yaz(con, "makineler", sorted(bilinen | set(eklenen)))
     return dict(t, tipler=dict(sorted(tipler.items(), key=lambda x: -x[1])), yeni_makineler=eklenen, dar_sorgu=dar, kesildi=kesildi,
                 parca_sayisi=n, biten_parca=biten, durduruldu=durduruldu)
+
+
+# ============================================================ ham döküm (teşhis)
+def _kisalt(k: dict, sinir: int = 700) -> str:
+    """Bir ham kaydı tek satır, kısa JSON yapar (ilişkili nesnelerden yalnızca tanıtıcı alanlar kalır)."""
+    ozet = {}
+    for a, v in k.items():
+        if isinstance(v, dict):
+            if a == "operator":
+                continue                                    # kişi bilgisi döküme girmez
+            ozet[a] = {x: y for x, y in v.items() if x in ("id", "code", "name", "type", "title") and not isinstance(y, (dict, list))}
+        elif isinstance(v, list):
+            ozet[a] = f"[{len(v)} öğe]"
+        else:
+            ozet[a] = v
+    m = json.dumps(ozet, ensure_ascii=False, default=str)
+    return m if len(m) <= sinir else m[:sinir] + "…"
+
+
+def ham_dokum(adres: str, kullanici: str, sifre: str, ilk: date, son: date, makine_idleri: List[int],
+              yaz: Optional[Callable[[str], None]] = None, iptal: Optional[Callable[[], bool]] = None) -> str:
+    """Cormind'in seçilen günler için verdiği ham kayıtları özetler (yalnızca okur, veritabanına hiçbir şey yazmaz).
+    Amaç: Cormind'in kendi grafiğiyle aramızdaki ad ve eksik kayıt farkının nedenini görmek."""
+    s: List[str] = []
+
+    def y(m: str = ""):
+        s.append(m)
+        if yaz:
+            yaz(m)
+
+    def durdu() -> bool:
+        return bool(iptal and iptal())
+
+    if (son - ilk).days > 7:
+        son = ilk + timedelta(days=7)
+    y(f"CORMIND HAM DÖKÜM  {datetime.now():%d.%m.%Y %H:%M:%S}   aralık {ilk:%d.%m.%Y} – {son:%d.%m.%Y}")
+    ist = Istemci(adres)
+    ist.giris(kullanici, sifre)
+    y("Giriş tamam.")
+    y()
+    # 1) duruş türleri tablosu
+    ariza = ist.ariza_adlari()
+    try:
+        ft = ist._graphql("FailureType", {"limit": 1000, "offset": 0}).get("entities", [])  # noqa: SLF001
+    except CormindHata as e:
+        ft = []
+        y(f"FailureType alınamadı: {e}")
+    y(f"1) DURUŞ TÜRLERİ TABLOSU (FailureType): {len(ft)} satır")
+    for x in ft:
+        y("   " + _kisalt(x, 400))
+    y()
+    # 2) kayıtlar (çekimle aynı sorgular)
+    ham = ist.hareketler(ilk, son, makine_idleri, None, True)
+    y(f"2) KAYITLAR: {len(ham)} adet" + ("   (uzanan sorgu BAŞARISIZ oldu)" if ist.dar_sorgu else "") + ("   (sayfa sınırında KESİLDİ)" if ist.kesildi else ""))
+    if ham:
+        y("   Bir kaydın alan adları: " + ", ".join(sorted(ham[0].keys())))
+    bas = datetime(ilk.year, ilk.month, ilk.day)
+    bit = datetime(son.year, son.month, son.day) + timedelta(days=1)
+    simdi = datetime.now(TR).replace(tzinfo=None, microsecond=0)
+    ham = suren_kayitlari_kapat(ham)
+
+    def dakika(k) -> float:
+        a, b = tr_zaman(k.get("started_at")), tr_zaman(k.get("ended_at")) or min(simdi, bit)
+        if a is None:
+            return 0.0
+        return max(0.0, (min(b, bit) - max(a, bas)).total_seconds() / 60.0)
+
+    def mk_adi(k) -> str:
+        mk = k.get("machine") if isinstance(k.get("machine"), dict) else {}
+        return _ad(mk, "name", "code") or f"id {k.get('machine_id')}"
+
+    # 3) tür birleşimleri
+    ekstra = [a for a in (ham[0].keys() if ham else []) if a.endswith("_id") or a.endswith("_type") or a in ("status", "reason", "state", "planned", "is_planned")]
+    ekstra = [a for a in ekstra if a not in ("machine_id", "operator_id", "goods_id", "id")]
+    birlesim: Dict[tuple, list] = {}
+    for k in ham:
+        anahtar = (k.get("type"), k.get("entity_type"), k.get("goods") is not None or k.get("goods_id") is not None) + tuple(
+            (a, k.get(a)) for a in ekstra if a not in ("entity_type",) and not isinstance(k.get(a), (dict, list)) and a != "entity_id")
+        b = birlesim.setdefault(anahtar, [0, 0.0, k])
+        b[0] += 1
+        b[1] += dakika(k)
+    y()
+    y(f"3) TÜR BİRLEŞİMLERİ ({len(birlesim)} çeşit)  [type, entity_type, iş emri var mı, diğer alanlar]")
+    for anahtar, (adet, dk, ornek) in sorted(birlesim.items(), key=lambda z: -z[1][1])[:60]:
+        y(f"   type={anahtar[0]} entity_type={anahtar[1]} is_emri={'var' if anahtar[2] else 'YOK'} {dict(anahtar[3:]) or ''}")
+        y(f"      {adet} kayıt, dönem içinde {dk / 60:.1f} saat, bizim verdiğimiz ad: '{tip_adi(ornek, ariza)}'")
+        y("      örnek: " + _kisalt(ornek))
+    # 4) makine makine uzun duruşlar
+    y()
+    y("4) MAKİNE MAKİNE, 30 dakikadan uzun çalışma dışı kayıtlar (en uzun 12)")
+    makineye: Dict[str, list] = {}
+    gorulen_id = set()
+    for k in ham:
+        gorulen_id.add(k.get("machine_id") or (k.get("machine") or {}).get("id"))
+        if k.get("type") == 0:
+            continue
+        dk = dakika(k)
+        if dk >= 30:
+            makineye.setdefault(mk_adi(k), []).append((dk, k))
+    for m in sorted(makineye):
+        y(f"   {m}")
+        for dk, k in sorted(makineye[m], key=lambda z: -z[0])[:12]:
+            a, b = tr_zaman(k.get("started_at")), tr_zaman(k.get("ended_at"))
+            g = k.get("goods") if isinstance(k.get("goods"), dict) else {}
+            y(f"      {a:%d.%m.%Y %H:%M} – {(b.strftime('%d.%m.%Y %H:%M') if b else 'SÜRÜYOR'):16}  {dk / 60:6.1f} sa  type={k.get('type')} et={k.get('entity_type')}"
+              f"  iş emri={g.get('code') or 'YOK'}  ad='{tip_adi(k, ariza)}'")
+    # 5) hiç kaydı gelmeyen makineler: dönemden önceki son kayıtları
+    eksik = [i for i in makine_idleri if i not in gorulen_id]
+    y()
+    y(f"5) HİÇ KAYDI GELMEYEN MAKİNELER: {len(eksik)} adet (numaralar: {eksik}). Her birinin en son kaydı:")
+    bas_iso = datetime(ilk.year, ilk.month, ilk.day, tzinfo=TR).isoformat()
+    for i in eksik:
+        if durdu():
+            break
+        try:
+            d = ist._graphql("MachineAction", {"where": f"\"MachineAction\".\"machine_id\" = {int(i)}",  # noqa: SLF001
+                                               "relations": ["goods", "machine"], "order": {"start": "DESC"}, "limit": 2, "offset": 0})
+            y(f"   makine no {i}: toplam {d.get('count')} kayıt")
+            for k in d.get("entities") or []:
+                y("      " + _kisalt(k))
+        except CormindHata as e:
+            y(f"   makine no {i}: sorgu hatası: {e}")
+        time.sleep(0.3)
+    # 6) geriye bakma süresi yetiyor mu (yalnızca sayım)
+    y()
+    y("6) DÖNEME UZANAN KAYIT SAYISI (yalnızca sayım, kayıt çekilmez)")
+    mk = f" AND \"MachineAction\".\"machine_id\" IN ({','.join(str(int(i)) for i in makine_idleri)})" if makine_idleri else ""
+    for gun in (90, 365, 1500):
+        if durdu():
+            break
+        geri = (datetime(ilk.year, ilk.month, ilk.day, tzinfo=TR) - timedelta(days=gun)).isoformat()
+        for ad, kosul in (("bitişi dönemde ya da sonra", f"\"MachineAction\".\"ended_at\" >= '{bas_iso}'"), ("bitişi boş (sürüyor)", "\"MachineAction\".\"ended_at\" IS NULL")):
+            try:
+                d = ist._graphql("MachineAction", {"where": f"\"MachineAction\".\"started_at\" >= '{geri}' AND \"MachineAction\".\"started_at\" < '{bas_iso}' AND {kosul}" + mk,  # noqa: SLF001
+                                                   "limit": 1, "offset": 0})
+                y(f"   {gun:>4} gün geriye, {ad}: {d.get('count')} kayıt")
+            except CormindHata as e:
+                y(f"   {gun:>4} gün geriye, {ad}: sorgu hatası: {e}")
+            time.sleep(0.3)
+    y()
+    y("DÖKÜM DURDURULDU" if durdu() else "DÖKÜM BİTTİ")
+    return "\n".join(s)

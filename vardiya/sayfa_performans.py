@@ -171,10 +171,15 @@ class PerformansSayfasi(QWidget):
         kc.layout().addWidget(etiket(
             "Bu bölüm Cormind'in kendi hesabıdır ve yukarıdaki hesaptan bağımsızdır: eşik ve hesap yöntemi uygulanmaz. Cormind çalışma süresini "
             "toplamaz; duruşları net süreye (her 480 dakikanın 440'ı) böler, mola hakkını düşer ve OEE = 100 − toplam der. Kaydı olmayan süre "
-            "çalışılmış sayılır; hiç kaydı olmayan makine %100 görünür.", "AltBaslik"))
-        self.g_oee = CizimWidget(lambda p, r: cizim.cormind_oee_grafigi(p, r, self._cormind, "OEE Grafiği (Cormind)"), 300, 300,
+            "çalışılmış sayılır. Dönemde hiç kaydı olmayan makine çalışmamış sayılır: OEE %0, duruş %100 ('Kayıt Yok').", "AltBaslik"))
+        self.kilavuz = False                    # makineleri ayıran ince dikey çizgiler (onaylanınca açılacak)
+
+        def _s(r):                              # iki grafik aynı ölçekte çizilir: makineler alt alta aynı hizada
+            return cizim.olcek(QRectF(0, 0, r.width(), 300))
+
+        self.g_oee = CizimWidget(lambda p, r: cizim.cormind_oee_grafigi(p, r, self._cormind, "OEE Grafiği (Cormind)", s=_s(r), kilavuz=self.kilavuz), 300, 300,
                                  kopya_resim=lambda: self.g_oee.resim(2.0))
-        self.g_zaman = CizimWidget(lambda p, r: cizim.cormind_durus_grafigi(p, r, self._cormind, "Zaman Dağılım Grafiği (Cormind)"), 470, 300,
+        self.g_zaman = CizimWidget(lambda p, r: cizim.cormind_durus_grafigi(p, r, self._cormind, "Zaman Dağılım Grafiği (Cormind)", s=_s(r), kilavuz=self.kilavuz), 470, 300,
                                    kopya_resim=lambda: self.g_zaman.resim(2.0))
         kc.layout().addWidget(self.g_oee)
         kc.layout().addWidget(self.g_zaman)

@@ -264,11 +264,21 @@ def tablo_resmi(sonuc, makineler, secim=0, genislik=660, satir=30, yazi_carpani=
     return img
 
 
+def _kilavuz(p: QPainter, alan: QRectF, slot: float, n: int, ust: float, alt: float, s: float):
+    """Makineleri ayıran ince, yarı saydam dikey çizgiler (üst ve alt grafik aynı hizada okunabilsin diye)."""
+    p.setPen(QPen(QColor(36, 26, 140, 46), max(1.0, 0.9 * s)))
+    for i in range(n + 1):
+        x = alan.left() + slot * i
+        p.drawLine(QPointF(x, ust), QPointF(x, alt))
+
+
+
 # ============================================================ Cormind zaman dağılım grafiği (rapor için)
 def cormind_durus_grafigi(p: QPainter, rect: QRectF, cm: Dict[str, dict], baslik: Optional[str] = "Zaman Dağılım Grafiği (Cormind)",
-                          limit: float = 15.0):
-    """cm: hesap.cormind_hesabi çıktısı. Her makinede duruş türleri üst üste, mola süresi (eksi ise) sıfırın altında."""
-    s = olcek(rect)
+                          limit: float = 15.0, s: Optional[float] = None, kilavuz: bool = False):
+    """cm: hesap.cormind_hesabi çıktısı. Her makinede duruş türleri üst üste, mola süresi (eksi ise) sıfırın altında.
+    s verilirse ölçek odur (OEE grafiğiyle aynı ölçek verilince makineler alt alta aynı hizaya gelir)."""
+    s = s or olcek(rect)
     p.save()
     p.setRenderHint(QPainter.Antialiasing, True)
     p.setRenderHint(QPainter.TextAntialiasing, True)
@@ -322,6 +332,8 @@ def cormind_durus_grafigi(p: QPainter, rect: QRectF, cm: Dict[str, dict], baslik
     slot = alan.width() / n
     genislik = min(slot * 0.64, 46 * s)
     dondur = slot < 40 * s
+    if kilavuz:
+        _kilavuz(p, alan, slot, n, rect.top(), alan.bottom() + 44 * s, s)
 
     def parca(cx, a, u, renk_, eksi=False):
         r_ = QRectF(cx - genislik / 2, yy(u), genislik, yy(a) - yy(u))
@@ -472,8 +484,9 @@ def rapor_ciz(p: QPainter, rect: QRectF, r: dict):
 
 
 # ============================================================ idari rapor
-def cormind_oee_grafigi(p: QPainter, rect: QRectF, cm: Dict[str, dict], baslik: Optional[str] = "OEE Grafiği (Cormind)", limit: float = 85.0):
-    s = olcek(rect)
+def cormind_oee_grafigi(p: QPainter, rect: QRectF, cm: Dict[str, dict], baslik: Optional[str] = "OEE Grafiği (Cormind)", limit: float = 85.0,
+                        s: Optional[float] = None, kilavuz: bool = False):
+    s = s or olcek(rect)
     p.save()
     p.setRenderHint(QPainter.Antialiasing, True)
     p.setRenderHint(QPainter.TextAntialiasing, True)
@@ -495,6 +508,8 @@ def cormind_oee_grafigi(p: QPainter, rect: QRectF, cm: Dict[str, dict], baslik: 
     slot = alan.width() / len(makineler)
     genislik = min(slot * 0.62, 46 * s)
     dondur = slot < 40 * s
+    if kilavuz:
+        _kilavuz(p, alan, slot, len(makineler), alan.top() - 22 * s, rect.bottom(), s)
     for i, m in enumerate(makineler):
         v = cm[m]["oee"]
         cx = alan.left() + slot * (i + 0.5)

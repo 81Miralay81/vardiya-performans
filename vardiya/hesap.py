@@ -389,6 +389,9 @@ def durus_dokumu(kayitlar: Iterable[Tuple[str, str, datetime, datetime]], gunler
     return sonuc
 
 
+KAYIT_YOK = "Kayıt Yok"
+
+
 def cormind_hesabi(kayitlar: Iterable[Tuple[str, str, datetime, datetime]], gunler: Iterable[date], makineler: Iterable[str],
                    ayar: Optional[HesapAyar] = None) -> Dict[str, dict]:
     """Cormind'in kendi rapor mantığı (bizim hesaptan bağımsız; eşik ve hesap yöntemi uygulanmaz).
@@ -396,7 +399,8 @@ def cormind_hesabi(kayitlar: Iterable[Tuple[str, str, datetime, datetime]], gunl
     Temel süre = seçili sürenin net kısmı (her 480 dakikanın 440'ı). Her duruş = dakikası / temel süre.
     'Mola Süresi' = (kaydedilen mola - mola hakkı) / temel süre (mola girilmediyse eksi çıkar).
     Toplam = duruşlar + mola süresi;  OEE = 100 - toplam (0 ile 100 arasında).
-    Çalışma kayıtları hiç toplanmaz: kaydı olmayan süre çalışılmış sayılır, hiç kaydı olmayan makine %100 çıkar.
+    Çalışma kayıtları hiç toplanmaz: kaydı olmayan süre çalışılmış sayılır.
+    Dönemde HİÇ kaydı olmayan makine çalışmamış sayılır: tamamı 'Kayıt Yok' duruşu, OEE 0.
     Dönen değerler yüzde (0-100 ölçeğinde)."""
     ayar = ayar or HesapAyar()
     gset = set(gunler)
@@ -405,12 +409,14 @@ def cormind_hesabi(kayitlar: Iterable[Tuple[str, str, datetime, datetime]], gunl
     hak_dk = sure_dk * (ayar.mola_saat * 60.0) / ayar.vardiya_dk
     durus: Dict[str, Dict[str, float]] = {}
     mola: Dict[str, float] = {}
+    gorulen: set = set()                       # dönemde herhangi bir kaydı (çalışma dahil) olan makineler
     for makine, tip, bas, bit in kayitlar:
         st = statu_bul(tip)
-        if st == CALISIYOR:
-            continue
         dk = sum(sn for gun, _v, sn in bol(bas, bit, True) if gun in gset) / 60.0
         if dk <= 0:
+            continue
+        gorulen.add(makine)
+        if st == CALISIYOR:
             continue
         if st == MOLA:
             mola[makine] = mola.get(makine, 0.0) + dk
@@ -425,6 +431,8 @@ def cormind_hesabi(kayitlar: Iterable[Tuple[str, str, datetime, datetime]], gunl
     for m in sirali:
         d = {t: 100.0 * dk / net_dk for t, dk in durus.get(m, {}).items()}
         mo = 100.0 * (mola.get(m, 0.0) - hak_dk) / net_dk
+        if m not in gorulen:                   # hiç kaydı yok: çalışmadı (Cormind'deki %109 duruş + eksi %9 mola görünümü)
+            d = {KAYIT_YOK: 100.0 * sure_dk / net_dk}
         toplam = sum(d.values()) + mo
         sonuc[m] = {"durus": d, "mola": mo, "toplam": toplam, "oee": max(0.0, min(100.0, 100.0 - toplam))}
     return sonuc

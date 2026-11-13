@@ -132,6 +132,11 @@ class CormindKarti(QFrame):
         self.b_dur.hide()
         s2.addWidget(self.b_dur)
         s2.addStretch(1)
+        self.b_dokum = QPushButton("Ham Döküm (teşhis)")
+        self.b_dokum.setToolTip("Cormind'in bu günler için verdiği ham kayıtları özetler (en çok 7 gün). Hiçbir şey kaydetmez;\n"
+                                "Cormind'in kendi grafiğiyle aramızdaki farkın nedenini bulmak içindir.")
+        self.b_dokum.clicked.connect(self.dokum)
+        s2.addWidget(self.b_dokum)
         l.addLayout(s2)
         from PySide6.QtWidgets import QCheckBox
         self.uzanan = QCheckBox("Önceden başlayıp seçilen günlere uzanan duruşları da getir (en çok 90 gün geriye bakar)")
@@ -155,6 +160,84 @@ class CormindKarti(QFrame):
             return base64.b64decode(self._ayar.value("cormind/sifre", "")).decode("utf8")
         except Exception:  # noqa: BLE001
             return ""
+
+    def dokum(self):
+        """Ham dökümü ayrı pencerede, arka planda çalıştırır; metin kopyalanabilir ve yerel kayıt klasörüne yazılır."""
+        import os
+        import threading
+        from PySide6.QtCore import QTimer
+        from PySide6.QtGui import QFont
+        from PySide6.QtWidgets import QDialog, QPlainTextEdit
+        from . import teshis
+        k, s = self.kullanici.text().strip(), self.sifre.text()
+        if not k or not s:
+            self._yaz("Kullanıcı adı ve şifre girin.", hata=True)
+            return
+        ilk = date(self.bas.date().year(), self.bas.date().month(), self.bas.date().day())
+        son = date(self.bit.date().year(), self.bit.date().month(), self.bit.date().day())
+        if son < ilk:
+            ilk, son = son, ilk
+        idler = self.ana.ayar.get("cormind_makine_idleri") or cormind.VARSAYILAN_MAKINE_IDLERI
+        adres = self.adres.text()
+        d = QDialog(self)
+        d.setWindowTitle("Cormind ham döküm (teşhis)")
+        d.resize(1100, 700)
+        dl = QVBoxLayout(d)
+        metin = QPlainTextEdit()
+        metin.setReadOnly(True)
+        f = QFont("Consolas")
+        f.setStyleHint(QFont.Monospace)
+        f.setPointSize(9)
+        metin.setFont(f)
+        metin.setLineWrapMode(QPlainTextEdit.NoWrap)
+        dl.addWidget(metin, 1)
+        alt = QHBoxLayout()
+        b_kop = QPushButton("Tümünü Kopyala")
+        b_kop.clicked.connect(lambda: QApplication.clipboard().setText(metin.toPlainText()))
+        b_kl = QPushButton("Dosyanın Klasörünü Aç")
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
+        b_kl.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(teshis.kayit_klasoru())))
+        alt.addWidget(b_kop)
+        alt.addWidget(b_kl)
+        alt.addStretch(1)
+        dl.addLayout(alt)
+        satirlar, kilit, durum = [], threading.Lock(), {"dur": False}
+
+        def ekle(m):
+            with kilit:
+                satirlar.append(m)
+
+        def calis():
+            try:
+                rapor = cormind.ham_dokum(adres, k, s, ilk, son, idler, ekle, lambda: durum["dur"])
+                yol = os.path.join(teshis.kayit_klasoru(), "cormind_dokum.txt")
+                with open(yol, "w", encoding="utf-8") as dosya:
+                    dosya.write(rapor)
+                ekle("")
+                ekle("Dosyaya da yazıldı: " + yol)
+            except Exception as e:  # noqa: BLE001
+                ekle(f"HATA: {type(e).__name__}: {e}")
+
+        is_ = threading.Thread(target=calis, name="cormind-dokum", daemon=True)
+        zaman = QTimer(d)
+        zaman.setInterval(200)
+
+        def aktar():
+            with kilit:
+                yeni = satirlar[:]
+                satirlar.clear()
+            for m in yeni:
+                metin.appendPlainText(m)
+            if not is_.is_alive() and not yeni:
+                zaman.stop()
+
+        zaman.timeout.connect(aktar)
+        metin.setPlainText("Cormind'e bağlanılıyor…")
+        is_.start()
+        zaman.start()
+        d.exec()
+        durum["dur"] = True
 
     def cek(self):
         if self._is is not None and self._is.isRunning():
