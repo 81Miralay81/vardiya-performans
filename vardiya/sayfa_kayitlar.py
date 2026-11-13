@@ -8,6 +8,7 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QComboBox, QDateEdit, QFileDialog, QHBoxLayout, QHeaderView,
                                QLabel, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
 
+from .takvim import TarihKutusu
 from . import tema, veritabani as vt
 from .hesap import statu_bul, vardiya_bul
 from .sayfa_ortak import etiket, kart, tablo_menusu
@@ -51,7 +52,7 @@ class KayitlarSayfasi(QWidget):
         kok.addLayout(ust)
 
         f = kart(QHBoxLayout, 12)
-        self.bas, self.bit = QDateEdit(), QDateEdit()
+        self.bas, self.bit = TarihKutusu(), TarihKutusu()
         for e in (self.bas, self.bit):
             e.setCalendarPopup(True)
             e.setDisplayFormat("dd.MM.yyyy")

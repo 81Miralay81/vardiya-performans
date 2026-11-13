@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (QApplication, QButtonGroup, QComboBox, QDateEdit,
                                QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPlainTextEdit, QPushButton, QScrollArea, QSpinBox,
                                QStackedWidget, QVBoxLayout, QWidget)
 
+from .takvim import TarihKutusu
 from . import cizim, tema, veritabani as vt
 from .donem import ay_sonu, hafta_basi, pd, qd
 from .hesap import VARDIYALAR, cormind_hesabi, hesapla
@@ -140,7 +141,7 @@ class RaporSayfasi(QWidget):
         pl.addWidget(self.tur)
         self.yigin = QStackedWidget()
         ref = self.ana.son_veri_gunu()
-        self.gun_sec = QDateEdit(qd(ref))
+        self.gun_sec = TarihKutusu(qd(ref))
         self.gun_sec.setCalendarPopup(True)
         self.gun_sec.setDisplayFormat("dd.MM.yyyy")
         self.yigin.addWidget(self.gun_sec)
@@ -176,7 +177,7 @@ class RaporSayfasi(QWidget):
         o = QWidget()
         ol = QHBoxLayout(o)
         ol.setContentsMargins(0, 0, 0, 0)
-        self.o_bas, self.o_bit = QDateEdit(qd(ref - timedelta(days=6))), QDateEdit(qd(ref))
+        self.o_bas, self.o_bit = TarihKutusu(qd(ref - timedelta(days=6))), TarihKutusu(qd(ref))
         for e in (self.o_bas, self.o_bit):
             e.setCalendarPopup(True)
             e.setDisplayFormat("dd.MM.yyyy")

@@ -8,6 +8,7 @@ from PySide6.QtCore import QDate, Qt, Signal
 from PySide6.QtWidgets import (QButtonGroup, QComboBox, QDateEdit, QDialog, QDialogButtonBox, QDoubleSpinBox, QFrame, QHBoxLayout,
                                QLabel, QListWidget, QListWidgetItem, QPushButton, QVBoxLayout, QWidget)
 
+from .takvim import TarihKutusu
 from . import tema
 
 
@@ -137,8 +138,8 @@ class DonemCubugu(QFrame):
         self.kural.setCurrentIndex(max(0, self.kural.findData("gunluk")))
         self.kural.activated.connect(lambda _=0: (self.yontem_yaz(), self.kural_degisti.emit(self.kural.currentData())))
         lay2.addWidget(self._etiket("Tarih aralığı"))
-        self.bas = QDateEdit()
-        self.bit = QDateEdit()
+        self.bas = TarihKutusu()
+        self.bit = TarihKutusu()
         for e in (self.bas, self.bit):
             e.setCalendarPopup(True)
             e.setDisplayFormat("dd.MM.yyyy")

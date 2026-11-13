@@ -11,6 +11,7 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (QApplication, QDateEdit, QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton,
                                QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget, QHeaderView, QAbstractItemView)
 
+from .takvim import TarihKutusu
 from . import cormind, ice_aktar, tema, veritabani as vt
 from .sayfa_ortak import etiket, kart, tablo_menusu
 
@@ -109,7 +110,7 @@ class CormindKarti(QFrame):
         l.addLayout(s1)
         s2 = QHBoxLayout()
         s2.setSpacing(8)
-        self.bas, self.bit = QDateEdit(), QDateEdit()
+        self.bas, self.bit = TarihKutusu(), TarihKutusu()
         for e in (self.bas, self.bit):
             e.setCalendarPopup(True)
             e.setDisplayFormat("dd.MM.yyyy")
