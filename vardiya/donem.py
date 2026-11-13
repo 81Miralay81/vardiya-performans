@@ -8,7 +8,7 @@ from PySide6.QtCore import QDate, Qt, Signal
 from PySide6.QtWidgets import (QButtonGroup, QComboBox, QDateEdit, QDialog, QDialogButtonBox, QDoubleSpinBox, QFrame, QHBoxLayout,
                                QLabel, QListWidget, QListWidgetItem, QPushButton, QVBoxLayout, QWidget)
 
-from .takvim import TarihKutusu
+from .takvim import AralikSecici, TarihKutusu
 from . import tema
 
 
@@ -145,9 +145,11 @@ class DonemCubugu(QFrame):
             e.setDisplayFormat("dd.MM.yyyy")
             e.setFixedWidth(132)
             e.dateChanged.connect(self._tarih_elle)
-        lay2.addWidget(self.bas)
-        lay2.addWidget(QLabel("–"))
-        lay2.addWidget(self.bit)
+        self.bas.hide()                       # değerleri tutar; seçim tek takvimden (AralikSecici) yapılır
+        self.bit.hide()
+        self.aralik_secici = AralikSecici(self)
+        self.aralik_secici.secildi.connect(self._aralik_secildi)
+        lay2.addWidget(self.aralik_secici)
         self.gunler_btn = QPushButton("Günleri işaretle…")
         self.gunler_btn.setObjectName("Hizli")
         self.gunler_btn.clicked.connect(self._gunler_ac)
@@ -233,6 +235,7 @@ class DonemCubugu(QFrame):
         self.bas.setDate(qd(ilk))
         self.bit.setDate(qd(son))
         self._bloke = False
+        self.aralik_secici.goster(ilk, son)
         gunler = [ilk + timedelta(days=i) for i in range((son - ilk).days + 1)]
         if koru:
             self._isaretli = {g for g in gunler if self._kapsam.get(g) and (g in self._isaretli or g not in self._bilinen)}
@@ -242,6 +245,13 @@ class DonemCubugu(QFrame):
         self._bilgi_yaz()
         if sinyal:
             self.degisti.emit()
+
+    def _aralik_secildi(self, ilk: date, son: date):
+        self._bloke = True
+        self.bas.setDate(qd(ilk))
+        self.bit.setDate(qd(son))
+        self._bloke = False
+        self._tarih_elle()
 
     def _tarih_elle(self):
         if self._bloke:
@@ -265,6 +275,11 @@ class DonemCubugu(QFrame):
             self._bilgi_yaz()
             self.degisti.emit()
 
+    def uyari_yaz(self, bozuk: int):
+        """Hesaba alınmayan bozuk kayıt varsa bilgi satırına kırmızı uyarı ekler."""
+        self._bozuk = bozuk
+        self._bilgi_yaz()
+
     def _bilgi_yaz(self):
         if self._ilk is None:
             self.bilgi.setText("Henüz veri yok")
@@ -274,4 +289,9 @@ class DonemCubugu(QFrame):
         metin = f"{len(self.gunler())} gün hesaba giriyor"
         if verisiz:
             metin += f"  ·  {len(verisiz)} gün kayıtsız"
+        bozuk = getattr(self, "_bozuk", 0)
+        if bozuk:
+            metin += (f"  ·  <span style='color:#c0392b;font-weight:700'>⚠ {bozuk} bozuk (çakışan) kayıt hesaba alınmadı;"
+                      " bu günleri Cormind'den yeniden çekin</span>")
+            self.bilgi.setTextFormat(Qt.RichText)
         self.bilgi.setText(metin)

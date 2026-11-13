@@ -18,7 +18,9 @@ from PySide6.QtGui import QColor, QImage
 try:
     from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings
     from PySide6.QtWebEngineWidgets import QWebEngineView
-    WEB_VAR = os.environ.get("VARDIYA_WEB_YOK") != "1"
+    from PySide6.QtCore import QSettings as _QS
+    # Ayarlar'dan "sade grafik" seçilmişse web motoru hiç kullanılmaz (programın kendi çizimi)
+    WEB_VAR = os.environ.get("VARDIYA_WEB_YOK") != "1" and str(_QS("Teknorot", "VardiyaPerformans").value("grafik/web", "1")) != "0"
 except Exception:  # noqa: BLE001
     QWebEngineView = None  # type: ignore
     QWebEnginePage = object  # type: ignore

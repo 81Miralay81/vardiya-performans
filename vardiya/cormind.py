@@ -364,10 +364,9 @@ def _parca_cek(con, ist: "Istemci", ariza: Dict[int, str], ilk: date, son: date,
         aralik = (ilk.strftime("%Y-%m-%d 00:00:00"), (son + timedelta(days=1)).strftime("%Y-%m-%d 00:00:00"))
         silinen = con.execute("SELECT COUNT(*) FROM kayit WHERE baslangic >= ? AND baslangic < ?", aralik).fetchone()[0]
         con.execute("DELETE FROM kayit WHERE baslangic >= ? AND baslangic < ?", aralik)
-        con.commit()
+        # (commit yok: silme ile yeni kayıtların yazılması tek işlemdir; arada program kapanırsa eski kayıtlar yerinde kalır)
     # aynı makine + başlangıçlı eski satır başka bir tip adıyla duruyorsa (ör. önceden "Çalışmıyor" diye alınmış) çift sayılmasın
     con.executemany("DELETE FROM kayit WHERE makine=? AND baslangic=? AND tip<>?", [(s[0], s[1].strftime(BICIM), s[4] or "") for s in satirlar])
-    con.commit()
     yeni, guncel, ayni = vt.kayit_yaz(con, satirlar)
     ilk_g = min((s[1] for s in satirlar), default=None)
     son_g = max((s[1] for s in satirlar), default=None)

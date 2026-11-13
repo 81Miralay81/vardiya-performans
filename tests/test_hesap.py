@@ -224,3 +224,14 @@ def test_cormind_hesabi():
     assert abs(r["IM23"]["toplam"] - 100.0) < 1e-6 and r["IM23"]["oee"] == 0.0     # 1440/1320 = %109, eksi %9 mola
     assert abs(r["IM27"]["mola"] + 100 * 120 / 1320) < 1e-6 and r["IM27"]["oee"] == 0.0     # hiç kaydı yok: çalışmadı sayılır
     assert abs(r["IM27"]["durus"]["Çalışmıyor"] - 100 * 1440 / 1320) < 1e-6
+
+
+def test_bozuk_uzun_calisma_kaydi_ayiklanir():
+    """Günlerce uzatılmış bir çalışma kaydı duruşları silip makineyi %100 göstermemeli."""
+    from datetime import datetime as dt
+    g = date(2026, 11, 3)
+    k = [("IM22", "Çalışma", dt(2026, 11, 3, 0), dt(2026, 11, 3, 6)),
+         ("IM22", "MEKANİK ARIZA", dt(2026, 11, 3, 6), dt(2026, 11, 3, 23, 59))]
+    temiz = hesapla(k, [g])
+    bozuk = hesapla(k + [("IM22", "Çalışma", dt(2026, 10, 1), dt(2026, 11, 12))], [g])
+    assert bozuk.bozuk_kayit == 1 and bozuk.makine_ort == temiz.makine_ort and temiz.bozuk_kayit == 0

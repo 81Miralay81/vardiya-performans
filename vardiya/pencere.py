@@ -10,7 +10,7 @@ from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import (QApplication, QButtonGroup, QFrame, QHBoxLayout, QLabel, QMainWindow, QPushButton,
                                QStackedWidget, QVBoxLayout, QWidget)
 
-from . import tema, teshis, veritabani as vt
+from . import acilis, tema, teshis, veritabani as vt
 from .donem import DonemCubugu
 from .hesap import HesapAyar, hesapla
 from .sayfa_analiz import AnalizSayfasi
@@ -111,6 +111,7 @@ class AnaPencere(QMainWindow):
         self.donem.kural_degisti.connect(self._kural_degisti)
         sag.addWidget(self.donem)
         self.yigin = QStackedWidget()
+        acilis.ilerle(60, "Sayfalar hazırlanıyor")
         self.sayfalar = {
             "veri": VeriSayfasi(self),
             "kayitlar": KayitlarSayfasi(self),
@@ -140,8 +141,11 @@ class AnaPencere(QMainWindow):
         self._mesaj_zamanlayici.setSingleShot(True)
         self._mesaj_zamanlayici.timeout.connect(self.mesaj_etiketi.hide)
 
+        acilis.ilerle(72, "Kayıtlı veriler okunuyor")
         self.donem.veri_yenilendi(ilk_secim=True)
+        acilis.ilerle(80, "Son 7 günün hesabı yapılıyor")
         self.yenile()
+        acilis.ilerle(90, "Grafikler hazırlanıyor")
         self.sayfa_ac("performans" if self.kapsam() else "veri")
         self._guncelleme = None
         if guncelleme.calisan_exe() and not os.environ.get("VARDIYA_GUNCELLEME_YOK"):
@@ -264,20 +268,38 @@ class AnaPencere(QMainWindow):
         self.sayfalar["ayar"].yenile()
 
     def yenile(self):
+        import time as _t
         QApplication.setOverrideCursor(Qt.WaitCursor)
+        bekle, t0, n_kayit = None, _t.perf_counter(), 0
         try:
             secili = self.donem.gunler()
             ilk, son = self.donem.aralik()
             if not secili:
                 self.sonuc, self.seflar, self.kayit = None, {}, []
             else:
+                gun_sayisi = (son - ilk).days + 1
+                if gun_sayisi > 31 and self.isVisible():          # 1 aydan uzun dönem: uyar ve ilerlemeyi göster
+                    bekle = acilis.BeklemePenceresi(
+                        self, "Grafikler hazırlanıyor, lütfen bekleyin…",
+                        f"Seçilen aralık {gun_sayisi} gün ({ilk:%d.%m.%Y} – {son:%d.%m.%Y}). Bir aydan uzun aralıklarda "
+                        "hesap ve grafiklerin çizimi uzun sürebilir.")
+                    bekle.adim(5, "Kayıtlar veri tabanından okunuyor…")
                 tum = [ilk + timedelta(days=i) for i in range((son - ilk).days + 1)]
                 kapsam = self.kapsam()
                 gunler = sorted(set(secili) | {g for g in tum if not kapsam.get(g)})
                 kayit = vt.kayitlari_getir(self.con, min(gunler), max(gunler))
+                n_kayit = len(kayit)
+                if bekle:
+                    tahmin = acilis.hiz_oku() * n_kayit / 1000.0
+                    bekle.adim(30, f"{n_kayit:,} kayıt hesaplanıyor · tahmini kalan süre: yaklaşık {acilis.sure_yazisi(tahmin)}".replace(",", "."))
                 self.kayit = kayit
                 self.sonuc = hesapla(kayit, gunler, self.hesap_ayar(), set(kapsam))
+                self.donem.uyari_yaz(self.sonuc.bozuk_kayit)
                 self.seflar = vt.sef_getir(self.con, secili, self.ayar)
+                if bekle:
+                    gecen = _t.perf_counter() - t0
+                    bekle.adim(65, f"Grafikler çiziliyor · tahmini kalan süre: yaklaşık "
+                                   f"{acilis.sure_yazisi(max(1.0, acilis.hiz_oku() * n_kayit / 1000.0 - gecen))}")
             k = self.kapsam()
             if k:
                 n = self.con.execute("SELECT COUNT(*) FROM kayit").fetchone()[0]
@@ -294,3 +316,7 @@ class AnaPencere(QMainWindow):
         self.sayfalar["veri"].yenile()
         if hasattr(self, "sayfalar") and self.yigin.currentWidget() is self.sayfalar["rapor"]:
             self.sayfalar["rapor"].yenile()
+        if bekle:
+            bekle.adim(100, "Hazır")
+            bekle.close()
+        acilis.hiz_yaz(n_kayit, _t.perf_counter() - t0)

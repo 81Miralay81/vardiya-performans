@@ -9,6 +9,8 @@ Excel'deki mantığın yeni kuralları:
 """
 from __future__ import annotations
 
+import bisect
+
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Dict, Iterable, List, Optional, Tuple
@@ -208,6 +210,7 @@ class DonemSonuc:
     bos_vardiyalar: List[Tuple[date, int]]  # kaydı olup hiçbir makinenin eşiği geçemediği / kaydı olmayan vardiyalar
     # kaydı olduğu halde hiçbir vardiyada eşiği geçemeyen makineler: ham ortalama (çalışma, duruş, mola). Hesaba girmez.
     esik_alti: Dict[str, Tuple[float, float, float]] = field(default_factory=dict)
+    bozuk_kayit: int = 0                # hesaba alınmayan bozuk (çakışan) uzun çalışma kaydı sayısı
 
     def hesap_gunu(self) -> int:
         """En az bir vardiyasıyla ortalamaya giren gün sayısı (tablodaki 'Çalışma Gün')."""
@@ -368,10 +371,50 @@ def donem_hesapla(gunluk: Dict[Tuple[date, int], GunVardiya], gunler: List[date]
 
 
 # --------------------------------------------------------------------------- kısayol
+BOZUK_UZUN_SAAT = 8.0      # bundan uzun bir çalışma kaydı...
+BOZUK_CAKISMA_DK = 30.0    # ...aynı makinenin başka kayıtlarıyla bundan fazla çakışıyorsa bozuktur
+
+
+def bozuk_kayitlari_ayikla(kayitlar) -> Tuple[list, int]:
+    """Bozuk (çakışan) uzun çalışma kayıtlarını ayıklar.
+    Cormind'de bir makine aynı anda tek durumdadır. Saatlerce süren bir çalışma kaydı aynı makinenin duruş, mola ya da
+    başka çalışma kayıtlarıyla yarım saatten fazla çakışıyorsa (ör. bitişi boş gelip günlerce uzatılmış kayıt) o kayıt
+    gerçek değildir. Hesaba alınırsa çakışma çözümünde çalışma öncelikli olduğu için bütün duruşları siler ve makine
+    %100 çalışıyor görünür. Bu yüzden atılır; o sürenin gerçek kayıtları yoksa grafik boş kalır."""
+    kayitlar = list(kayitlar)
+    makineye: Dict[str, list] = {}
+    for i, (m, tip, bas, bit) in enumerate(kayitlar):
+        makineye.setdefault(m, []).append((bas, bit, i, statu_bul(tip) == CALISIYOR))
+    bozuk = set()
+    uzun = timedelta(hours=BOZUK_UZUN_SAAT)
+    for liste in makineye.values():
+        liste.sort(key=lambda r: r[0])
+        baslar = [r[0] for r in liste]
+        for bas, bit, i, calisma in liste:
+            if not calisma or bit - bas <= uzun:
+                continue
+            cak = 0.0
+            for bas2, bit2, j, _c in liste[bisect.bisect_left(baslar, bas - timedelta(days=60)):bisect.bisect_right(baslar, bit)]:
+                if j == i or j in bozuk:
+                    continue
+                o = (min(bit, bit2) - max(bas, bas2)).total_seconds()
+                if o > 0:
+                    cak += o
+                    if cak > BOZUK_CAKISMA_DK * 60:
+                        bozuk.add(i)
+                        break
+    if not bozuk:
+        return kayitlar, 0
+    return [k for i, k in enumerate(kayitlar) if i not in bozuk], len(bozuk)
+
+
 def hesapla(kayitlar, gunler: List[date], ayar: Optional[HesapAyar] = None, veri_gunleri: Optional[set] = None) -> DonemSonuc:
     ayar = ayar or HesapAyar()
+    kayitlar, bozuk = bozuk_kayitlari_ayikla(kayitlar)
     gunluk = gunluk_hesapla(topla(kayitlar, ayar), ayar)
-    return donem_hesapla(gunluk, gunler, veri_gunleri, ayar.kural, ayar.esik, ayar.yontem)
+    sonuc = donem_hesapla(gunluk, gunler, veri_gunleri, ayar.kural, ayar.esik, ayar.yontem)
+    sonuc.bozuk_kayit = bozuk
+    return sonuc
 
 
 def durus_dokumu(kayitlar: Iterable[Tuple[str, str, datetime, datetime]], gunler: Iterable[date]) -> Dict[str, Dict[str, float]]:

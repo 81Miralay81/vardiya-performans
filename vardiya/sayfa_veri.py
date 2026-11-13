@@ -11,7 +11,7 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (QApplication, QDateEdit, QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton,
                                QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget, QHeaderView, QAbstractItemView)
 
-from .takvim import TarihKutusu
+from .takvim import AralikSecici, TarihKutusu
 from . import cormind, ice_aktar, tema, veritabani as vt
 from .sayfa_ortak import etiket, kart, tablo_menusu
 
@@ -122,9 +122,13 @@ class CormindKarti(QFrame):
         self.btn.setObjectName("Ana")
         self.btn.clicked.connect(self.cek)
         s2.addWidget(etiket("Tarih aralığı", "KartBaslik", kelime=False))
-        s2.addWidget(self.bas)
-        s2.addWidget(QLabel("–"))
-        s2.addWidget(self.bit)
+        self.bas.hide()
+        self.bit.hide()
+        self.aralik = AralikSecici(self)
+        self.aralik.goster(dun, dun)
+        self.aralik.secildi.connect(lambda a, b: (self.bas.setDate(QDate(a.year, a.month, a.day)),
+                                                 self.bit.setDate(QDate(b.year, b.month, b.day))))
+        s2.addWidget(self.aralik)
         s2.addWidget(self.btn)
         self.b_dur = QPushButton("Durdur")
         self.b_dur.setObjectName("Tehlike")

@@ -165,6 +165,25 @@ class AyarSayfasi(QWidget):
         bs.addWidget(bt)
         bs.addStretch(1)
         kd.layout().addLayout(bs)
+        from PySide6.QtCore import QSettings
+        gs = QHBoxLayout()
+        gs.addWidget(QLabel("Grafik görünümü"))
+        self.grafik = QComboBox()
+        self.grafik.addItem("3B, hareketli (web grafik motoru)", "1")
+        self.grafik.addItem("Sade, hızlı (programın kendi çizimi)", "0")
+        ayarlar = QSettings("Teknorot", "VardiyaPerformans")
+        self.grafik.setCurrentIndex(0 if str(ayarlar.value("grafik/web", "1")) != "0" else 1)
+
+        def _grafik(_i):
+            QSettings("Teknorot", "VardiyaPerformans").setValue("grafik/web", self.grafik.currentData())
+            self.grafik_not.setText("Program yeniden açılınca geçerli olur. Raporlar ve hesaplar iki görünümde de aynıdır.")
+
+        self.grafik.activated.connect(_grafik)
+        gs.addWidget(self.grafik)
+        self.grafik_not = QLabel("Raporlar ve hesaplar iki görünümde de aynıdır; yalnızca grafiklerin görünüşü değişir.")
+        self.grafik_not.setObjectName("AltBaslik")
+        gs.addWidget(self.grafik_not, 1)
+        kd.layout().addLayout(gs)
         ic.addWidget(kd)
 
         # ------------------------------------------------ Outlook ve yapay zekâ (idari rapor)
