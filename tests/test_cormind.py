@@ -53,6 +53,9 @@ class Sahte(BaseHTTPRequestHandler):
             if q["model"] == "FailureType":
                 return self._yaz({"data": {"entities": [{"id": 7, "name": "ÇAY MOLASI"}], "count": 1}})
             c = q["condition"]
+            if '"machine_id" = ' in c["where"]:      # makinenin aralıktan önceki son kaydı: bu örnekte yok
+                assert "2026-11-09T00:00:00+03:00" in c["where"] and c["limit"] == 1
+                return self._yaz({"data": {"entities": [], "count": 0}})
             assert "2026-11-09T00:00:00+03:00" in c["where"] and "IN (5,6)" in c["where"]
             if "ended_at" in c["where"]:                # döneme uzanan eski kayıt sorgusu: bu örnekte yok
                 assert "2026-11-09T00:00:00+03:00" in c["where"]
@@ -111,13 +114,15 @@ def test_yanlis_sifre(tmp_path):
 
 
 def test_calismiyor_nedenli_ve_suren_kayit():
-    """Çalışmıyor (-1) durumuna neden girilmişse nedenin adı kullanılır; süren kayıt 'şimdi'ye kadar sayılır."""
+    """Çalışmıyor (-1) nedenleri ayrı listeden: 1 İŞ EMRİ PLAN YOK, 2 MAKİNA ARIZASI (arıza tablosundaki 1 = Kısa Duruş ile karışmaz)."""
     from datetime import datetime
-    adlar = {12: "İŞ EMRİ PLAN YOK"}
-    assert cormind.tip_adi({"type": -1, "entity_type": 12}, adlar) == "İŞ EMRİ PLAN YOK"
+    adlar = {1: "Kısa Duruş", 12: "Başka"}
+    assert cormind.tip_adi({"type": -1, "entity_type": 1}, adlar) == "İŞ EMRİ PLAN YOK"
+    assert cormind.tip_adi({"type": -1, "entity_type": 2}, adlar) == "MAKİNA ARIZASI"
+    assert cormind.tip_adi({"type": 1, "entity_type": 1}, adlar) == "Kısa Duruş"
     assert cormind.tip_adi({"type": -1, "entity_type": None}, adlar) == "Çalışmıyor"
     assert cormind.tip_adi({"type": -1, "entity_type": 99}, adlar) == "Çalışmıyor"
-    k = {"type": -1, "entity_type": 12, "started_at": "2026-10-20T05:00:00.000Z", "ended_at": None, "machine": {"id": 1, "name": "IM24"}}
+    k = {"type": -1, "entity_type": 1, "started_at": "2026-10-20T05:00:00.000Z", "ended_at": None, "machine": {"id": 1, "name": "IM24"}}
     assert cormind.kayit_satiri(k, {}, adlar) is None
     s = cormind.kayit_satiri(k, {}, adlar, datetime(2026, 11, 12, 10, 0))
     assert s[0] == "IM24" and s[1] == datetime(2026, 10, 20, 8, 0) and s[2] == datetime(2026, 11, 12, 10, 0) and s[4] == "İŞ EMRİ PLAN YOK"
@@ -136,13 +141,13 @@ def test_iki_sinirli_sorgu():
     i = I("http://x")
     i.hareketler(date(2026, 11, 2), date(2026, 11, 7), [5])
     assert len(gorulen) == 2 and "ended_at" not in gorulen[0] and '"started_at" >= \'2026-11-02T00:00:00+03:00\'' in gorulen[0]
-    w = gorulen[1]
-    assert '"started_at" >= \'2025-11-02T00:00:00+03:00\'' in w and '"started_at" < \'2026-11-02T00:00:00+03:00\'' in w and "IS NULL" in w
+    w = gorulen[1]                                  # makine başına aralıktan önceki son kayıt (yaşı ne olursa olsun)
+    assert '"machine_id" = 5' in w and '"started_at" < \'2026-11-02T00:00:00+03:00\'' in w and ">=" not in w
     assert not i.dar_sorgu and not i.kesildi
 
     class D(cormind.Istemci):                      # ikinci sorgu reddedilirse birincinin sonucu kalır
         def _graphql(self, model, kosul):
-            if "ended_at" in kosul["where"]:
+            if '"machine_id" = ' in kosul["where"]:
                 raise cormind.CormindHata("kabul edilmedi")
             return {"entities": [{"id": 1}], "count": 1}
 
@@ -335,3 +340,13 @@ def test_kayit_siniri(monkeypatch):
     s, saat = _sahte(10 ** 6, lambda n, o: 0.5)
     r = _cek(s, saat, monkeypatch)
     assert len(r) == cormind.Istemci.AZAMI_KAYIT and s.kesildi and _tam(r, cormind.Istemci.AZAMI_KAYIT)
+
+
+def test_bitis_end_alanindan():
+    """Cormind çoğu kayıtta ended_at'i boş bırakıp 'end' (milisaniye) alanını dolduruyor."""
+    from datetime import datetime
+    k = {"started_at": "2025-04-29T13:00:57.540Z", "ended_at": None, "end": "1745931657541"}
+    assert cormind.bitis_zamani(k) == datetime(2025, 4, 29, 16, 0, 57)
+    ham = [dict(k, machine_id=1), {"machine_id": 1, "started_at": "2025-05-01T05:00:00.000Z", "ended_at": None, "end": None}]
+    r = cormind.suren_kayitlari_kapat(ham)
+    assert r[0]["ended_at"] is None and cormind.bitis_zamani(r[0]) == datetime(2025, 4, 29, 16, 0, 57)   # end'i olan dokunulmaz

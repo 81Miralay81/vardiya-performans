@@ -59,6 +59,25 @@ SABIT_TIPLER = {0: "Çalışma", -1: "Çalışmıyor", 5: "Kurulum", 6: "Kalite 
                 105: "YEMEK MOLASI", 106: "ÇAY MOLASI"}
 
 
+# "Çalışmıyor" (type -1) durumunun nedenleri arıza tablosundan DEĞİL, ayrı sabit bir listeden gelir
+# (ham dökümle doğrulandı: -1/1 Cormind'de İŞ EMRİ PLAN YOK, -1/2 MAKİNA ARIZASI olarak görünüyor; 1 numaralı arıza ise "Kısa Duruş").
+CALISMIYOR_NEDENLERI = {1: "İŞ EMRİ PLAN YOK", 2: "MAKİNA ARIZASI"}
+
+
+def bitis_zamani(k: dict) -> Optional[datetime]:
+    """Kaydın bitişi: ended_at; o boşsa 'end' alanı (milisaniye). Cormind çoğu kayıtta ended_at'i boş bırakıp end'i dolduruyor."""
+    b = tr_zaman(k.get("ended_at"))
+    if b is not None:
+        return b
+    e = k.get("end")
+    try:
+        if e not in (None, ""):
+            return datetime.fromtimestamp(int(e) / 1000.0, TR).replace(tzinfo=None, microsecond=0)
+    except (TypeError, ValueError, OverflowError, OSError):
+        pass
+    return None
+
+
 def tip_adi(kayit: dict, ariza_adlari: Dict[int, str]) -> str:
     """Duruş (type 1): arıza türünün adı, yoksa 'Belgelenmemiş Duruş'. Diğerleri sabit tablodan; bilinmeyen 'Tip n'."""
     t = kayit.get("type")
@@ -69,13 +88,10 @@ def tip_adi(kayit: dict, ariza_adlari: Dict[int, str]) -> str:
         ad = ariza_adlari.get(int(et), "")
         return ad or f"Arıza {int(et)}"
     if t == -1 and et is not None:
-        # "Çalışmıyor" durumuna neden girilmişse (ör. İŞ EMRİ PLAN YOK) Cormind onu nedenin adıyla gösterir
         try:
-            ad = ariza_adlari.get(int(et), "")
+            return CALISMIYOR_NEDENLERI.get(int(et), "Çalışmıyor")
         except (TypeError, ValueError):
-            ad = ""
-        if ad:
-            return ad
+            return "Çalışmıyor"
     return SABIT_TIPLER.get(t, f"Tip {t}")
 
 
@@ -83,9 +99,9 @@ def kayit_satiri(k: dict, makine_adlari: Dict[int, str], ariza_adlari: Dict[int,
                  simdi: Optional[datetime] = None) -> Optional[tuple]:
     """Cormind kaydı -> veritabanı satırı (makine, başlangıç, bitiş, operatör, tip, iş emri, ürün adı, ürün kodu).
     simdi verilirse sürmekte olan (bitişi olmayan) kayıt o ana kadar sürmüş sayılır; verilmezse alınmaz."""
-    bas, bit = tr_zaman(k.get("started_at")), tr_zaman(k.get("ended_at"))
-    if bit is None and bas is not None and simdi is not None and not k.get("ended_at") and simdi > bas:
-        bit = simdi
+    bas, bit = tr_zaman(k.get("started_at")), bitis_zamani(k)
+    if bit is None and bas is not None and simdi is not None and simdi > bas:
+        bit = simdi                              # yalnızca makinenin hâlâ süren son kaydı buraya kalır
     if bas is None or bit is None or bit < bas:
         return None
     mk = k.get("machine") if isinstance(k.get("machine"), dict) else {}
@@ -293,6 +309,24 @@ class Istemci:
         sonuc = self._sayfala(where_dar, ilerleme)
         if not uzanan:
             return sonuc
+        if makine_idleri:
+            # Her makinenin aralıktan ÖNCEKİ son kaydı: aralık başındaki durumu odur (aylardır süren duruş dahil, yaşı ne olursa
+            # olsun). Daha eski "bitişi boş" kayıtlar alınmaz: Cormind onları kapatmadan bırakıyor, gerçekte sonraki kayıtla bitmişler.
+            onceki = []
+            try:
+                for i in makine_idleri:
+                    d = self._graphql("MachineAction", {
+                        "where": f"\"MachineAction\".\"machine_id\" = {int(i)} AND \"MachineAction\".\"started_at\" < '{bas.isoformat()}'",
+                        "relations": ["goods", "operator", "operator.user", "machine"],
+                        "order": {"start": "DESC"}, "limit": 1, "offset": 0})
+                    for k in d.get("entities") or []:
+                        b_ = bitis_zamani(k)
+                        if b_ is None or b_ > bas.replace(tzinfo=None):
+                            onceki.append(k)
+                    time.sleep(self.SAYFA_ARASI_SN)
+            except CormindHata:
+                self.dar_sorgu = True
+            return onceki + sonuc
         try:
             sonuc = self._sayfala(where_uzanan, ilerleme, len(sonuc)) + sonuc
         except CormindHata:
@@ -309,7 +343,7 @@ def suren_kayitlari_kapat(ham: List[dict]) -> List[dict]:
     for liste in makineye.values():
         liste.sort(key=lambda k: k.get("started_at") or "")
         for i, k in enumerate(liste[:-1]):
-            if not k.get("ended_at"):
+            if not k.get("ended_at") and bitis_zamani(k) is None:
                 sonraki = next((x.get("started_at") for x in liste[i + 1:] if (x.get("started_at") or "") > (k.get("started_at") or "")), None)
                 if sonraki:
                     k["ended_at"] = sonraki
@@ -355,7 +389,7 @@ def _parca_cek(con, ist: "Istemci", ariza: Dict[int, str], ilk: date, son: date,
         tipler[s[4]] = tipler.get(s[4], 0) + 1
         if s[1] >= datetime(ilk.year, ilk.month, ilk.day) and (s[0] not in ilk_bas or s[1] < ilk_bas[s[0]]):
             ilk_bas[s[0]] = s[1]
-        if not k.get("ended_at"):
+        if bitis_zamani(k) is None:
             acik[s[0]] = (s[1], s[4] or "")
     # O günlerin eski kayıtları (Excel'den ya da önceki çekimden) silinip Cormind'dekiyle değiştirilir:
     # saniye yuvarlama farkından çift kayıt oluşmasın, düzeltilmiş tip adları eskilerin yerine geçsin.
@@ -368,6 +402,12 @@ def _parca_cek(con, ist: "Istemci", ariza: Dict[int, str], ilk: date, son: date,
     # aynı makine + başlangıçlı eski satır başka bir tip adıyla duruyorsa (ör. önceden "Çalışmıyor" diye alınmış) çift sayılmasın
     con.executemany("DELETE FROM kayit WHERE makine=? AND baslangic=? AND tip<>?", [(s[0], s[1].strftime(BICIM), s[4] or "") for s in satirlar])
     yeni, guncel, ayni = vt.kayit_yaz(con, satirlar)
+    # Önceki çekimlerden kalmış, bu aralığın öncesinde başlayıp içine taşan kayıt (ör. yarım kalan çekimde "şu an"a kadar
+    # uzatılmış olan) makinenin bu aralıktaki ilk kaydında kapatılır: aynı anda iki durum olamaz.
+    parca_basi = datetime(ilk.year, ilk.month, ilk.day).strftime(BICIM)
+    con.executemany("UPDATE kayit SET bitis=? WHERE makine=? AND baslangic<? AND bitis>?",
+                    [(b.strftime(BICIM), m, parca_basi, b.strftime(BICIM)) for m, b in ilk_bas.items()])
+    con.commit()
     ilk_g = min((s[1] for s in satirlar), default=None)
     son_g = max((s[1] for s in satirlar), default=None)
     vt.aktarim_kaydet(con, f"Cormind ({ilk:%d.%m.%Y}–{son:%d.%m.%Y})", len(ham), yeni, guncel, ayni, atlanan,
@@ -502,7 +542,7 @@ def ham_dokum(adres: str, kullanici: str, sifre: str, ilk: date, son: date, maki
     ham = suren_kayitlari_kapat(ham)
 
     def dakika(k) -> float:
-        a, b = tr_zaman(k.get("started_at")), tr_zaman(k.get("ended_at")) or min(simdi, bit)
+        a, b = tr_zaman(k.get("started_at")), bitis_zamani(k) or min(simdi, bit)
         if a is None:
             return 0.0
         return max(0.0, (min(b, bit) - max(a, bas)).total_seconds() / 60.0)
@@ -542,7 +582,7 @@ def ham_dokum(adres: str, kullanici: str, sifre: str, ilk: date, son: date, maki
     for m in sorted(makineye):
         y(f"   {m}")
         for dk, k in sorted(makineye[m], key=lambda z: -z[0])[:12]:
-            a, b = tr_zaman(k.get("started_at")), tr_zaman(k.get("ended_at"))
+            a, b = tr_zaman(k.get("started_at")), bitis_zamani(k)
             g = k.get("goods") if isinstance(k.get("goods"), dict) else {}
             y(f"      {a:%d.%m.%Y %H:%M} – {(b.strftime('%d.%m.%Y %H:%M') if b else 'SÜRÜYOR'):16}  {dk / 60:6.1f} sa  type={k.get('type')} et={k.get('entity_type')}"
               f"  iş emri={g.get('code') or 'YOK'}  ad='{tip_adi(k, ariza)}'")

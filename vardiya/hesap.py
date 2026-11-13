@@ -448,7 +448,9 @@ def durus_adi(tip: str, bas: datetime, bit: datetime) -> str:
     """Gösterilecek duruş adı. Uzun bir kayıt hiçbir zaman 'Kısa Duruş' adıyla gösterilmez."""
     ad = tip or "Belirtilmemiş"
     if tr_kucuk(ad) == tr_kucuk(KISA_DURUS) and (bit - bas).total_seconds() / 60.0 > KISA_DURUS_AZAMI_DK:
-        return CALISMIYOR                  # nedeni bilinmeyen uzun duruş "Çalışmıyor" sayılır
+        # Eski çekimlerde Cormind'in "Çalışmıyor – İŞ EMRİ PLAN YOK" durumu yanlışlıkla "Kısa Duruş" adıyla kaydedildi
+        # (ham dökümle doğrulandı). Uzun "Kısa Duruş" bu yüzden İŞ EMRİ PLAN YOK'tur; yeniden çekilen günlerde ad doğru gelir.
+        return "İŞ EMRİ PLAN YOK"
     return ad
 
 
