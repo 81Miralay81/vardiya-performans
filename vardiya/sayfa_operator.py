@@ -327,9 +327,17 @@ class OperatorSayfasi(QWidget):
         self.b_excel = QPushButton("Excel'e Aktar")
         self.b_bilgi.clicked.connect(self.bilgi_goster)
         self.b_excel.clicked.connect(self.excele_aktar)
-        for b in (self.b_haric, self.b_bilgi, self.b_excel):
+        self.b_duran = QPushButton("Operatör varken duran makineler")
+        self.b_duran.setCheckable(True)
+        self.b_duran.setToolTip("Seçili günlerde üzerinde operatör kayıtlıyken duruşta bekleyen makineleri gösterir / gizler")
+        self.b_duran.toggled.connect(self._duran_goster)
+        for b in (self.b_duran, self.b_haric, self.b_bilgi, self.b_excel):
             ust.addWidget(b, 0, Qt.AlignTop)
         kok.addLayout(ust)
+        from .operatorlu_durus import OperatorluDurusKarti
+        self.duran = OperatorluDurusKarti()
+        self.duran.hide()
+        kok.addWidget(self.duran, 1)
         gl = QHBoxLayout()
         gl.addWidget(etiket("Görünüm", "KartBaslik", kelime=False))
         self.gorunum = QComboBox()
@@ -371,12 +379,23 @@ class OperatorSayfasi(QWidget):
         if self._kirli:
             self.yenile()
 
+    def _duran_goster(self, acik: bool):
+        self.duran.setVisible(acik)
+        if acik:
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            try:
+                self.duran.yenile(self.ana.con, self.ana.donem_gunleri())
+            finally:
+                QApplication.restoreOverrideCursor()
+
     def yenile(self):
         if not self.isVisible():
             self._kirli = True
             return
         self._kirli = False
         gunler = self.ana.donem_gunleri()
+        if self.duran.isVisible():
+            self.duran.yenile(self.ana.con, gunler)
         QApplication.setOverrideCursor(Qt.WaitCursor)
         try:
             gorunum = self.gorunum.currentData()

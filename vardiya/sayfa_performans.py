@@ -173,24 +173,6 @@ class PerformansSayfasi(QWidget):
         kd.hide()                               # bir makineye tıklanana kadar gizli
         kok.addWidget(kd)
 
-        # ---------------------------------------------------------------- operatör varken duran makineler
-        ko, _b, self.o_alt, _s2 = _kart_baslikli("Operatör varken duran makineler",
-                                                "seçili günlerde üzerinde operatör kayıtlıyken duruşta bekleyen makineler (grafikte 👤)")
-        from PySide6.QtWidgets import QAbstractItemView, QHeaderView, QTableWidget
-        self.o_tablo = QTableWidget(0, 4)
-        self.o_tablo.setHorizontalHeaderLabels(["Makine", "Operatör", "Duruşta geçen süre", "Başlıca duruş nedenleri"])
-        self.o_tablo.verticalHeader().setVisible(False)
-        self.o_tablo.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.o_tablo.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.o_tablo.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
-        for i, g in enumerate((90, 220, 175)):
-            self.o_tablo.setColumnWidth(i, g)
-        self.o_tablo.setMinimumHeight(160)
-        self.o_tablo.setMaximumHeight(320)
-        ko.layout().addWidget(self.o_tablo)
-        self.k_op = ko
-        self._op_makine: set = set()
-        kok.addWidget(ko)
 
         # ---------------------------------------------------------------- Cormind rapor sistemi
         kc, _b, self.c_alt, _s = _kart_baslikli("Cormind rapor sistemi")
@@ -240,7 +222,7 @@ class PerformansSayfasi(QWidget):
     def _makine_ciz(self, p, rect, bolgeler):
         if self.ana.sonuc:
             cizim.genel_performans_grafigi(p, rect, self.ana.sonuc, self.ana.ayar.get("makineler", []), self._mola_pay, None,
-                                           bolgeler=bolgeler, secili=self._secili, isaretli=self._op_makine)
+                                           bolgeler=bolgeler, secili=self._secili)
 
     def _degerler(self, m: str):
         """(çalışma, mola, eşik altı mı) ya da None."""
@@ -318,42 +300,6 @@ class PerformansSayfasi(QWidget):
             self.g_zaman.update()
             self._sc.ensureWidgetVisible(self.k_cormind, 0, 60)
 
-    def _operatorlu_durus(self, gunler):
-        """Üzerinde operatör kayıtlıyken duruşta (mola hariç) geçen süre: makine + operatör bazında, seçili günlerle sınırlı."""
-        from PySide6.QtWidgets import QTableWidgetItem
-        from . import veritabani as vt
-        from .hesap import DURUS, bol, durus_adi, statu_bul
-        satirlar = []
-        if gunler:
-            haric, gset = vt.haric_personel(self.ana.con), set(gunler)
-            toplam: Dict[tuple, Dict[str, float]] = {}
-            for op, m, tip, bas, bit in vt.kayitlari_getir_operatorlu(self.ana.con, min(gunler), max(gunler)):
-                from .operator import operator_adi
-                op = operator_adi(op)
-                if not op or op in haric or statu_bul(tip) != DURUS:
-                    continue
-                sa = sum(sn for g, _v, sn in bol(bas, bit, True) if g in gset) / 3600.0
-                if sa > 0:
-                    d = toplam.setdefault((m, op), {})
-                    ad = durus_adi(tip, bas, bit)
-                    d[ad] = d.get(ad, 0.0) + sa
-            for (m, op), d in toplam.items():
-                top = sum(d.values())
-                if top >= 0.5:                                  # yarım saatten kısa olanlar listeyi kalabalıklaştırmasın
-                    satirlar.append((top, m, op, d))
-            satirlar.sort(key=lambda x: -x[0])
-        self._op_makine = {m for _t, m, _o, _d in satirlar}
-        self.o_tablo.setRowCount(len(satirlar))
-        for i, (top, m, op, d) in enumerate(satirlar):
-            nedenler = ", ".join(f"{ad} {cizim._saat_dk(sa)}" for ad, sa in sorted(d.items(), key=lambda x: -x[1])[:4])
-            for j, metin in enumerate((m, op, f"{cizim._saat_dk(top)} saat", nedenler)):
-                it = QTableWidgetItem(metin)
-                if j == 2:
-                    it.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-                self.o_tablo.setItem(i, j, it)
-        self.o_alt.setText(f"{len(satirlar)} makine-operatör · grafikte 👤 ile işaretli" if satirlar
-                           else "seçili günlerde operatör kayıtlıyken duruşta bekleyen makine yok")
-
     def yenile(self):
         s, ayar = self.ana.sonuc, self.ana.hesap_ayar()
         self._mola_pay = 100.0 * ayar.mola_saat / ayar.net_saat
@@ -362,7 +308,6 @@ class PerformansSayfasi(QWidget):
         kayit = getattr(self.ana, "kayit", []) or []
         self._dokum = durus_dokumu(kayit, gunler) if s else {}
         self._cormind = cormind_hesabi(kayit, gunler, self.ana.ayar.get("makineler", []), ayar) if s else {}
-        self._operatorlu_durus(gunler if s else [])
         if self._secili and (not s or self._degerler(self._secili) is None):
             self._secili = None
         if not self._secili:

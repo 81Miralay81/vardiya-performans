@@ -82,6 +82,11 @@ class KayitlarSayfasi(QWidget):
         self.b_sil.setToolTip("Tabloda seçili satırları veri tabanından siler (onay sorulur)")
         self.b_sil.clicked.connect(self.secilenleri_sil)
         f.layout().addWidget(self.b_sil)
+        self.b_tek = QPushButton("Çakışanları teke indir")
+        self.b_tek.setToolTip("Seçili tarihlerde aynı makinede aynı türden üst üste binen (tekrar çekimden kalmış) kayıtlardan\n"
+                              "en uzun süreli olanı bırakır, diğerlerini siler. Önce sayıyı gösterip onay sorar.")
+        self.b_tek.clicked.connect(self.cakisanlari_teke_indir)
+        f.layout().addWidget(self.b_tek)
         kok.addWidget(f)
         self.bilgi = etiket("", "AltBaslik")
         kok.addWidget(self.bilgi)
@@ -201,6 +206,53 @@ class KayitlarSayfasi(QWidget):
         if toplam_uygun > EN_FAZLA:
             metin += f" · ilk {EN_FAZLA:,} kayıt gösteriliyor, aralığı daraltın".replace(",", ".")
         self.bilgi.setText(metin)
+
+    def cakisanlari_teke_indir(self):
+        """Aynı makinede aynı türden çakışan kayıtlar: en uzunu kalır, diğerleri silinir (tekrar çekimden kalan çift kayıtlar)."""
+        from PySide6.QtWidgets import QMessageBox
+        ilk, son = self._tarih(self.bas), self._tarih(self.bit)
+        if son < ilk:
+            ilk, son = son, ilk
+        satirlar = self.ana.con.execute(
+            "SELECT rowid, makine, tip, baslangic, bitis FROM kayit WHERE baslangic < ? AND bitis >= ?",
+            ((son + timedelta(days=1)).strftime("%Y-%m-%d 00:00:00"), ilk.strftime("%Y-%m-%d 00:00:00"))).fetchall()
+        gruplar = {}
+        for no, m, tip, b, e in satirlar:
+            gruplar.setdefault((m, tip or ""), []).append((datetime.strptime(b, vt.BICIM), datetime.strptime(e, vt.BICIM), no))
+        silinecek, ornek = [], []
+        for (m, tip), liste in gruplar.items():
+            liste.sort()
+            kume = []
+            kume_bit = None
+            for b, e, no in liste + [(None, None, None)]:
+                if b is not None and kume and b < kume_bit:                 # öncekilerle çakışıyor: aynı kümeye
+                    kume.append((b, e, no))
+                    kume_bit = max(kume_bit, e)
+                    continue
+                if len(kume) > 1:
+                    en_uzun = max(kume, key=lambda x: x[1] - x[0])
+                    for x in kume:
+                        if x[2] != en_uzun[2]:
+                            silinecek.append(x[2])
+                    if len(ornek) < 8:
+                        ornek.append(f"{m} · {tip} · {len(kume)} kayıt → {en_uzun[0]:%d.%m %H:%M}–{en_uzun[1]:%d.%m %H:%M} kalır")
+                kume = [(b, e, no)] if b is not None else []
+                kume_bit = e
+        if not silinecek:
+            QMessageBox.information(self, "Çakışanları teke indir", f"{ilk:%d.%m.%Y} – {son:%d.%m.%Y} arasında aynı türden çakışan kayıt yok.")
+            return
+        if QMessageBox.question(self, "Çakışanları teke indir",
+                                f"{ilk:%d.%m.%Y} – {son:%d.%m.%Y} arasında aynı makinede aynı türden çakışan kayıtlar var.\n"
+                                f"Her grupta en uzun süreli kayıt kalacak, {len(silinecek)} kayıt silinecek. Bu geri alınamaz.\n\n"
+                                + "\n".join(ornek) + ("\n…" if len(silinecek) > len(ornek) else "") + "\n\nDevam edilsin mi?",
+                                QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
+            return
+        self.ana.con.executemany("DELETE FROM kayit WHERE rowid = ?", [(n,) for n in silinecek])
+        self.ana.con.commit()
+        self.listele()
+        if hasattr(self.ana, "yenile"):
+            self.ana.yenile()
+        QMessageBox.information(self, "Çakışanları teke indir", f"{len(silinecek)} çift kayıt silindi.")
 
     def secilenleri_sil(self):
         from PySide6.QtWidgets import QMessageBox

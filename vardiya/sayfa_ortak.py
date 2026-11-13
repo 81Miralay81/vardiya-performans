@@ -72,7 +72,17 @@ class CizimWidget(QWidget):
         self._web_aktif = False
         self._web_planli = False
         self._web_bos = False                   # son denemede web karşılığı yoktu (ör. sabit tablo)
+        self._buyuk = None
         resim_menusu(self, kopya_resim or self.resim)
+        from PySide6.QtWidgets import QToolButton
+        self.b_buyut = QToolButton(self)        # büyüteç: grafiği tam ekran açar, tekrar basınca küçülür
+        self.b_buyut.setText("🔍")
+        self.b_buyut.setToolTip("Büyüt (tam ekran)")
+        self.b_buyut.setCursor(Qt.PointingHandCursor)
+        self.b_buyut.setFixedSize(30, 28)
+        self.b_buyut.setStyleSheet("QToolButton { background: rgba(255,255,255,0.92); border: 1px solid #c9cedb; border-radius: 6px;"
+                                   " font-size: 14px; } QToolButton:hover { border-color: #150958; background: #eef1fa; }")
+        self.b_buyut.clicked.connect(self.buyut)
 
     def resim(self, olcek: float = 2.0) -> QImage:
         """Bileşenin içeriğini yüksek çözünürlükte resim olarak çizer."""
@@ -102,6 +112,33 @@ class CizimWidget(QWidget):
         super().resizeEvent(e)
         if self._web is not None:
             self._web.setGeometry(self.rect())
+        self.b_buyut.move(self.width() - self.b_buyut.width() - 6, 6)
+        self.b_buyut.raise_()
+
+    def buyut(self):
+        """Grafiği tam ekran pencerede açar; pencerenin düğmesine ya da Esc'e basınca kapanır."""
+        if self._buyuk is not None:                  # büyük penceredeki düğme: küçült
+            self._buyuk.close()
+            return
+        from PySide6.QtWidgets import QDialog, QHBoxLayout, QPushButton, QVBoxLayout
+        d = QDialog(self.window())
+        d.setWindowTitle("Grafik")
+        l = QVBoxLayout(d)
+        l.setContentsMargins(10, 8, 10, 10)
+        ust = QHBoxLayout()
+        ust.addStretch(1)
+        b = QPushButton("🔍  Küçült")
+        b.setObjectName("Ana")
+        b.clicked.connect(d.close)
+        ust.addWidget(b)
+        l.addLayout(ust)
+        buyuk = CizimWidget(self.cizici, 300, 300)
+        buyuk._buyuk = d                             # büyük kopyadaki büyüteç düğmesi pencereyi kapatır
+        buyuk.b_buyut.setToolTip("Küçült")
+        l.addWidget(buyuk, 1)
+        d.showMaximized()
+        buyuk.update()
+        d.exec()
 
     def _web_planla(self):
         from . import web
@@ -145,6 +182,7 @@ class CizimWidget(QWidget):
                 self._web.tiklandi.connect(lambda a, k: self.tiklandi.emit(a, k))
         self._web.setGeometry(self.rect())
         self._web.show()
+        self.b_buyut.raise_()                       # büyüteç web görünümünün üstünde kalsın
         self._web_aktif = True
         self._web.goster(secenek)
 

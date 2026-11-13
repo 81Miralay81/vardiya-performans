@@ -175,12 +175,36 @@ class AyarSayfasi(QWidget):
         self.grafik.setCurrentIndex(0 if str(ayarlar.value("grafik/web", "1")) != "0" else 1)
 
         def _grafik(_i):
-            QSettings("Teknorot", "VardiyaPerformans").setValue("grafik/web", self.grafik.currentData())
-            self.grafik_not.setText("Program yeniden açılınca geçerli olur. Raporlar ve hesaplar iki görünümde de aynıdır.")
+            s = QSettings("Teknorot", "VardiyaPerformans")
+            s.setValue("grafik/web", self.grafik.currentData())
+            s.sync()
+            from . import web
+            simdi = web.WEB_VAR
+            istenen = self.grafik.currentData() != "0"
+            self.b_yeniden.setVisible(simdi != istenen)
+            self.grafik_not.setText("Değişiklik için programı yeniden başlatın." if simdi != istenen
+                                    else "Raporlar ve hesaplar iki görünümde de aynıdır.")
+
+        def _yeniden_baslat():
+            import sys
+            from PySide6.QtCore import QProcess
+            from PySide6.QtWidgets import QApplication as _App
+            if getattr(sys, "frozen", False):
+                QProcess.startDetached(sys.executable, sys.argv[1:])
+            else:
+                QProcess.startDetached(sys.executable, sys.argv)
+            _App.quit()
 
         self.grafik.activated.connect(_grafik)
         gs.addWidget(self.grafik)
-        self.grafik_not = QLabel("Raporlar ve hesaplar iki görünümde de aynıdır; yalnızca grafiklerin görünüşü değişir.")
+        self.b_yeniden = QPushButton("Programı yeniden başlat")
+        self.b_yeniden.setObjectName("Ana")
+        self.b_yeniden.clicked.connect(_yeniden_baslat)
+        self.b_yeniden.hide()
+        gs.addWidget(self.b_yeniden)
+        from . import web as _web
+        self.grafik_not = QLabel(("Şu an: 3B web grafik açık. " if _web.WEB_VAR else "Şu an: sade grafik açık. ")
+                                 + "Raporlar ve hesaplar iki görünümde de aynıdır.")
         self.grafik_not.setObjectName("AltBaslik")
         gs.addWidget(self.grafik_not, 1)
         kd.layout().addLayout(gs)
@@ -200,6 +224,14 @@ class AyarSayfasi(QWidget):
         self.personel_bilgi = etiket("", "AltBaslik")
         kp.layout().addWidget(self.personel_bilgi)
         self._QListWidgetItem = QListWidgetItem
+        kp.layout().addWidget(etiket("OPERATÖR VARKEN DURAN MAKİNELER: GÖSTERİLECEK DURUŞ TÜRLERİ", "KartBaslik"))
+        kp.layout().addWidget(etiket("Operatör sekmesindeki bu listede yalnızca işaretli duruş türleri sayılır ve gösterilir.",
+                                     "AltBaslik"))
+        self.op_turler = QListWidget()
+        self.op_turler.setMinimumHeight(200)
+        self.op_turler.setStyleSheet("QListWidget::item { padding: 3px; }")
+        self.op_turler.itemChanged.connect(self._op_tur_degisti)
+        kp.layout().addWidget(self.op_turler)
         ic.addWidget(kp)
         ic.addWidget(kd)
 
@@ -326,6 +358,24 @@ class AyarSayfasi(QWidget):
         self.personel.blockSignals(False)
         self.personel_bilgi.setText(f"{len(adlar)} kişi · {len(haric & set(adlar))} kişi hariç tutuluyor")
 
+    def _op_tur_doldur(self):
+        from .operatorlu_durus import durus_turleri
+        haric = set(self.ana.ayar.get("op_durus_haric") or [])
+        self.op_turler.blockSignals(True)
+        self.op_turler.clear()
+        for ad in durus_turleri(self.ana.con):
+            it = self._QListWidgetItem(ad)
+            it.setFlags(it.flags() | Qt.ItemIsUserCheckable)
+            it.setCheckState(Qt.Unchecked if ad in haric else Qt.Checked)
+            self.op_turler.addItem(it)
+        self.op_turler.blockSignals(False)
+
+    def _op_tur_degisti(self, _it):
+        haric = sorted(self.op_turler.item(i).text() for i in range(self.op_turler.count())
+                       if self.op_turler.item(i).checkState() == Qt.Unchecked)
+        vt.ayar_yaz(self.ana.con, "op_durus_haric", haric)
+        self.ana.ayar = vt.ayar_oku(self.ana.con)
+
     def _personel_degisti(self, _it):
         from . import veritabani as vt
         haric = sorted(self.personel.item(i).text() for i in range(self.personel.count())
@@ -336,6 +386,7 @@ class AyarSayfasi(QWidget):
 
     def yenile(self):
         self._personel_doldur()
+        self._op_tur_doldur()
         a = self.ana.ayar
         self.esik.setValue(round(a["esik"] * 100))
         self.kural.setCurrentIndex(max(0, self.kural.findData(a.get("hesap_kurali", "gunluk"))))
