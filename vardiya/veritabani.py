@@ -342,3 +342,15 @@ def metin_yaz(con, anahtar: str, icerik: Optional[str]) -> None:
     else:
         con.execute("INSERT INTO metin(anahtar, icerik) VALUES(?,?) ON CONFLICT(anahtar) DO UPDATE SET icerik=excluded.icerik", (anahtar, icerik))
     con.commit()
+
+
+def personel_listesi(con: sqlite3.Connection) -> List[str]:
+    """Kayıtlarda geçen tüm personel (operatör) adları, alfabetik."""
+    from .operator import operator_adi                 # '-' gibi harfsiz değerler personel sayılmaz
+    return sorted({ad for r in con.execute("SELECT DISTINCT operator FROM kayit") if (ad := operator_adi(r[0]))},
+                  key=lambda s: s.casefold())
+
+
+def haric_personel(con: sqlite3.Connection) -> set:
+    """Ayarlar'da hariç tutulan personel (Operatör sekmesine ve 'operatör varken duran makine' uyarısına girmez)."""
+    return set(ayar_oku(con).get("haric_personel") or [])

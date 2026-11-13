@@ -385,6 +385,9 @@ class OperatorSayfasi(QWidget):
             self.orta_kutu.setVisible(gorunum not in (4, 5))
             if gunler:
                 kayit = vt.kayitlari_getir_operatorlu(self.ana.con, min(gunler), max(gunler))
+                haric = vt.haric_personel(self.ana.con)       # Ayarlar'da hariç tutulan personel listeye girmez
+                if haric:
+                    kayit = [k for k in kayit if operator_adi(k[0]) not in haric]
                 self._kayit, self._gunler = kayit, gunler
                 ayar = self.ana.hesap_ayar()
                 operatorsuz = sum(1 for k in kayit if not operator_adi(k[0]))

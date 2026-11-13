@@ -442,7 +442,7 @@ def durus_adi(tip: str, bas: datetime, bit: datetime) -> str:
     """Gösterilecek duruş adı. Uzun bir kayıt hiçbir zaman 'Kısa Duruş' adıyla gösterilmez."""
     ad = tip or "Belirtilmemiş"
     if tr_kucuk(ad) == tr_kucuk(KISA_DURUS) and (bit - bas).total_seconds() / 60.0 > KISA_DURUS_AZAMI_DK:
-        return KAYIT_YOK
+        return CALISMIYOR                  # nedeni bilinmeyen uzun duruş "Çalışmıyor" sayılır
     return ad
 
 

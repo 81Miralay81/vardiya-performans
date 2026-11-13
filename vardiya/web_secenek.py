@@ -163,7 +163,8 @@ def genel_performans_grafigi(a: dict) -> dict:
     return {"title": _baslik(baslik), "tooltip": _ipucu(),
             "legend": {"bottom": 0, "itemWidth": 14, "itemHeight": 10, "textStyle": {"color": SOLUK}},
             "grid": {"left": 50, "right": 30, "top": 46 if baslik else 16, "bottom": 70},
-            "xAxis": _eksen_x([v[0] for v in veri], axisLine={"onZero": True, "lineStyle": {"color": "#9AA3B8"}}, position="bottom"),
+            "xAxis": _eksen_x([v[0] + ("\n👤" if v[0] in (a.get("isaretli") or set()) else "") for v in veri],
+                              axisLine={"onZero": True, "lineStyle": {"color": "#9AA3B8"}}, position="bottom"),
             "yAxis": _eksen_y(min=alt, max=110, interval=10,
                               axisLabel={"color": SOLUK, "formatter": "{value}%"}),
             "series": seri}

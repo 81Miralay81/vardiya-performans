@@ -174,7 +174,7 @@ class Istemci:
             sonuc[int(x["id"])] = ad
         return sonuc
 
-    GERIYE_GUN = 90        # dönemden önce başlayan kayıtlar için en fazla ne kadar geriye bakılır
+    GERIYE_GUN = 365       # dönemden önce başlayan kayıtlar için en fazla ne kadar geriye bakılır
     AZAMI_KAYIT = 400000   # tek sorguda en fazla kayıt (bir ayda 80.000'i aşan aylar oldu); aşılırsa durulur
     SAYFA_ARASI_SN = 0.3
     # Uyarlamalı sayfa boyutu. Amaç tek isteği kısaltmak değil, TOPLAM çekme süresini en aza indirmek:

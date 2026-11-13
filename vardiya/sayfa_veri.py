@@ -144,7 +144,7 @@ class CormindKarti(QFrame):
         s2.addWidget(self.b_dokum)
         l.addLayout(s2)
         from PySide6.QtWidgets import QCheckBox
-        self.uzanan = QCheckBox("Önceden başlayıp seçilen günlere uzanan duruşları da getir (en çok 90 gün geriye bakar)")
+        self.uzanan = QCheckBox("Önceden başlayıp seçilen günlere uzanan duruşları da getir (en çok 1 yıl geriye bakar)")
         self.uzanan.setToolTip("Günlerce süren 'İŞ EMRİ PLAN YOK' gibi duruşlar seçilen günlerden önce başlamış olabilir.\n"
                                "İşaretliyken Cormind'e ikinci, sınırlı bir sorgu daha gönderilir. Çekim yavaşlarsa işareti kaldırın.")
         self.uzanan.setChecked(str(self._ayar.value("cormind/uzanan", "1")) != "0")

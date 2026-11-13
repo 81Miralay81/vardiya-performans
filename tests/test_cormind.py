@@ -137,7 +137,7 @@ def test_iki_sinirli_sorgu():
     i.hareketler(date(2026, 11, 2), date(2026, 11, 7), [5])
     assert len(gorulen) == 2 and "ended_at" not in gorulen[0] and '"started_at" >= \'2026-11-02T00:00:00+03:00\'' in gorulen[0]
     w = gorulen[1]
-    assert '"started_at" >= \'2026-08-04T00:00:00+03:00\'' in w and '"started_at" < \'2026-11-02T00:00:00+03:00\'' in w and "IS NULL" in w
+    assert '"started_at" >= \'2025-11-02T00:00:00+03:00\'' in w and '"started_at" < \'2026-11-02T00:00:00+03:00\'' in w and "IS NULL" in w
     assert not i.dar_sorgu and not i.kesildi
 
     class D(cormind.Istemci):                      # ikinci sorgu reddedilirse birincinin sonucu kalır

@@ -580,7 +580,7 @@ def cormind_oee_grafigi(p: QPainter, rect: QRectF, cm: Dict[str, dict], baslik: 
 
 def genel_performans_grafigi(p: QPainter, rect: QRectF, sonuc: DonemSonuc, makineler: List[str], mola_pay: float,
                              baslik: Optional[str] = "Genel Performans: Çalışma, Duruş ve Mola",
-                             bolgeler: Optional[list] = None, secili: Optional[str] = None):
+                             bolgeler: Optional[list] = None, secili: Optional[str] = None, isaretli: Optional[set] = None):
     # bolgeler verilirse her sütunun tıklanabilir alanları eklenir: (QRectF, makine, "durus" | "mola")
     """Bizim hesabımız: her sütun %100 (yeşil çalışma + kırmızı duruş); sıfırın altında mola hakkı
     (turuncu: mola yapılan, mor: molada çalışılan). Eşik altı makineler soluk çizilir ve hesaba girmez."""

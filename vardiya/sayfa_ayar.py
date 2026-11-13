@@ -184,6 +184,23 @@ class AyarSayfasi(QWidget):
         self.grafik_not.setObjectName("AltBaslik")
         gs.addWidget(self.grafik_not, 1)
         kd.layout().addLayout(gs)
+
+        # ------------------------------------------------ personel listesi
+        from PySide6.QtWidgets import QListWidget, QListWidgetItem
+        kp = kart()
+        kp.layout().addWidget(etiket("PERSONEL LİSTESİ", "KartBaslik"))
+        kp.layout().addWidget(etiket("Kayıtlarda geçen tüm personel. İşaretini kaldırdığın kişiler Operatör sekmesine ve "
+                                     "Performans'taki 'operatör varken duran makineler' listesine girmez (ör. grup lideri, ayarcı).",
+                                     "AltBaslik"))
+        self.personel = QListWidget()
+        self.personel.setMinimumHeight(220)
+        self.personel.setStyleSheet("QListWidget::item { padding: 3px; }")
+        self.personel.itemChanged.connect(self._personel_degisti)
+        kp.layout().addWidget(self.personel)
+        self.personel_bilgi = etiket("", "AltBaslik")
+        kp.layout().addWidget(self.personel_bilgi)
+        self._QListWidgetItem = QListWidgetItem
+        ic.addWidget(kp)
         ic.addWidget(kd)
 
         # ------------------------------------------------ Outlook ve yapay zekâ (idari rapor)
@@ -295,7 +312,30 @@ class AyarSayfasi(QWidget):
         self.net.setText(f"{tema.sayi(a.net_saat, 2)} saat   ·   mola kapasitesi {self.yemek_dk.value() + self.cay_dk.value()} dk")
 
     # ------------------------------------------------ oku / yaz
+    def _personel_doldur(self):
+        from . import veritabani as vt
+        haric = vt.haric_personel(self.ana.con)
+        self.personel.blockSignals(True)
+        self.personel.clear()
+        adlar = vt.personel_listesi(self.ana.con)
+        for ad in adlar:
+            it = self._QListWidgetItem(ad)
+            it.setFlags(it.flags() | Qt.ItemIsUserCheckable)
+            it.setCheckState(Qt.Unchecked if ad in haric else Qt.Checked)
+            self.personel.addItem(it)
+        self.personel.blockSignals(False)
+        self.personel_bilgi.setText(f"{len(adlar)} kişi · {len(haric & set(adlar))} kişi hariç tutuluyor")
+
+    def _personel_degisti(self, _it):
+        from . import veritabani as vt
+        haric = sorted(self.personel.item(i).text() for i in range(self.personel.count())
+                       if self.personel.item(i).checkState() == Qt.Unchecked)
+        vt.ayar_yaz(self.ana.con, "haric_personel", haric)
+        self.ana.ayar = vt.ayar_oku(self.ana.con)
+        self.personel_bilgi.setText(f"{self.personel.count()} kişi · {len(haric)} kişi hariç tutuluyor")
+
     def yenile(self):
+        self._personel_doldur()
         a = self.ana.ayar
         self.esik.setValue(round(a["esik"] * 100))
         self.kural.setCurrentIndex(max(0, self.kural.findData(a.get("hesap_kurali", "gunluk"))))
