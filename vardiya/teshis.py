@@ -320,6 +320,25 @@ def sunucu_olcumu(klasor: str, ilerleme: Optional[Callable[[str], None]] = None,
                     d, n, hata = _olc(lambda t=tablo: con.execute(f'SELECT COUNT(*) FROM "{t}"').fetchone()[0])
                     if hata or d >= 0.5 or (n or 0) >= 1000:
                         yaz(f"     '{tablo}' satır sayımı: {d:.2f} sn" + (f"   HATA: {hata}" if hata else f"  ({n} satır)"))
+                if "kayit" in (v or []):                 # kayıt sürelerinin dağılımı: çok uzun kayıtlar hesabı yavaşlatır
+                    try:
+                        sure = "(julianday(bitis) - julianday(baslangic))"
+                        d, r, hata = _olc(lambda: con.execute(
+                            f"SELECT COUNT(*), SUM({sure} > 1), SUM({sure} > 7), SUM({sure} > 30), SUM({sure} > 90), MAX({sure}), "
+                            "MIN(baslangic), MAX(bitis) FROM kayit").fetchone())
+                        if not hata and r and r[0]:
+                            yaz(f"     KAYIT SÜRELERİ ({d:.2f} sn): toplam {r[0]} kayıt, {r[6]} – {r[7]}")
+                            yaz(f"       1 günden uzun: {r[1] or 0}   1 haftadan uzun: {r[2] or 0}   30 günden uzun: {r[3] or 0}   "
+                                f"90 günden uzun: {r[4] or 0}   en uzun: {r[5] or 0:.1f} gün")
+                            if (r[2] or 0) > 200:
+                                yaz("       DEĞERLENDİRME: bir haftadan uzun süren çok sayıda kayıt var. 1.0.46 ve öncesinde hesabı dakikalarca "
+                                    "kilitleyen buydu (1.0.47 bunları yalnızca seçili günler kadar işler).")
+                            for x in con.execute(f"SELECT makine, tip, baslangic, bitis, {sure} FROM kayit ORDER BY {sure} DESC LIMIT 10"):
+                                yaz(f"       {x[0]:8} {x[2]} – {x[3]}  {x[4]:7.1f} gün  {x[1]}")
+                            for x in con.execute(f"SELECT tip, COUNT(*), SUM({sure}) FROM kayit WHERE {sure} > 7 GROUP BY tip ORDER BY 2 DESC LIMIT 8"):
+                                yaz(f"       1 haftadan uzun, tür '{x[0]}': {x[1]} kayıt, toplam {x[2]:.0f} gün")
+                    except Exception as ex:  # noqa: BLE001
+                        yaz(f"     kayıt süreleri okunamadı: {ex}")
                 d, _, hata = _olc(lambda: (con.execute("BEGIN IMMEDIATE"), con.execute("ROLLBACK")))
                 yaz(f"     yazma kilidi al + bırak: {d:.2f} sn" + (f"   HATA: {hata}" if hata else ""))
                 if hata and "locked" in str(hata).lower():

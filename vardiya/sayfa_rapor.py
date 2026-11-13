@@ -472,9 +472,49 @@ class RaporSayfasi(QWidget):
         l.addWidget(kapat)
         d.exec()
 
+    def _outlook_hazir(self, baslik: str) -> bool:
+        """Outlook açıksa True. Kapalıysa görünür şekilde açar, hazır olmasını bekler (pencere donmaz, Vazgeç'e basılabilir).
+        Kapalı Outlook'a doğrudan bağlanmak programı kilitliyordu; artık önce açılması beklenir."""
+        import sys
+        import time
+        from PySide6.QtWidgets import QProgressDialog
+        from . import outlook
+        if sys.platform != "win32" or outlook.acik_mi():
+            return True
+        try:
+            outlook.baslat()
+        except RuntimeError as ex:
+            QMessageBox.warning(self, baslik, str(ex))
+            return False
+        d = QProgressDialog("Outlook kapalıydı, açılıyor…\nHazır olunca işlem kendiliğinden devam edecek.", "Vazgeç", 0, 0, self)
+        d.setWindowTitle(baslik)
+        d.setWindowModality(Qt.WindowModal)
+        d.setMinimumDuration(0)
+        d.show()
+        t0, gorulme = time.monotonic(), None
+        while not d.wasCanceled():
+            for _ in range(10):                       # 1 saniye: pencere yanıt vermeye devam eder
+                QApplication.processEvents()
+                time.sleep(0.1)
+            gecen = time.monotonic() - t0
+            if gorulme is None and outlook.acik_mi():
+                gorulme = time.monotonic()
+                d.setLabelText("Outlook açıldı, posta kutusunun yüklenmesi bekleniyor…")
+            if gorulme is not None and time.monotonic() - gorulme >= 12:     # profilin yüklenmesi için kısa pay
+                d.close()
+                return True
+            if gorulme is None and gecen > 90:
+                d.close()
+                QMessageBox.warning(self, baslik, "Outlook 90 saniyede açılmadı. Outlook'u elle açıp posta kutusu yüklendikten sonra yeniden deneyin.")
+                return False
+        d.close()
+        return False
+
     def outlooktan_al(self):
         """Seçili dönemin maillerini Outlook'tan okur; yapay zekâ (anahtar varsa) ya da program algoritmasıyla KOT'a çevirir."""
         from . import outlook, yapay
+        if not self._outlook_hazir("Outlook'tan al"):
+            return
         ilk, son = self._donem()
         ya = yapay.ayar_oku()
         QApplication.setOverrideCursor(Qt.WaitCursor)
@@ -556,6 +596,8 @@ class RaporSayfasi(QWidget):
                        f"<td style='padding:4px 10px'>Tezgâh</td><td style='padding:4px 10px'>OEE (Cormind)</td><td style='padding:4px 10px'>Başlıca kayıp</td>"
                        f"<td style='padding:4px 10px'>Durum</td></tr>{satirlar}</table>" if satirlar else "")
                     + "<p>Ayrıntılar ekteki raporda.</p></div>")
+            if not self._outlook_hazir("Mail hazırla"):
+                return
             outlook.mail_hazirla(alicilar, r["baslik"], html, [yol])
         except RuntimeError as ex:
             QApplication.restoreOverrideCursor()

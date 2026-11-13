@@ -164,6 +164,13 @@ class PerformansSayfasi(QWidget):
         self.g_detay = CizimWidget(self._detay_ciz, 340, 300, kopya_resim=lambda: self.g_detay.resim(2.0))
         kd.layout().addWidget(self.g_detay)
         self.k_detay = kd
+        b_kapat = QPushButton("✕")
+        b_kapat.setToolTip("Ayrıntıyı kapat")
+        b_kapat.setFixedSize(28, 26)
+        b_kapat.setCursor(Qt.PointingHandCursor)
+        b_kapat.clicked.connect(self._detay_kapat)
+        _s.addWidget(b_kapat)
+        kd.hide()                               # bir makineye tıklanana kadar gizli
         kok.addWidget(kd)
 
         # ---------------------------------------------------------------- Cormind rapor sistemi
@@ -171,7 +178,7 @@ class PerformansSayfasi(QWidget):
         kc.layout().addWidget(etiket(
             "Bu bölüm Cormind'in kendi hesabıdır ve yukarıdaki hesaptan bağımsızdır: eşik ve hesap yöntemi uygulanmaz. Cormind çalışma süresini "
             "toplamaz; duruşları net süreye (her 480 dakikanın 440'ı) böler, mola hakkını düşer ve OEE = 100 − toplam der. Kaydı olmayan süre "
-            "çalışılmış sayılır. Dönemde hiç kaydı olmayan makine çalışmamış sayılır: OEE %0, duruş %100 ('Kayıt Yok').", "AltBaslik"))
+            "çalışılmış sayılır. Dönemde hiç kaydı olmayan makine çalışmamış sayılır: OEE %0, duruş %100 ('Çalışmıyor'). Uzun bir kayıt 'Kısa Duruş' adıyla gösterilmez.", "AltBaslik"))
         self.kilavuz = False                    # makineleri ayıran ince dikey çizgiler (onaylanınca açılacak)
 
         def _s(r):                              # iki grafik aynı ölçekte çizilir: makineler alt alta aynı hizada
@@ -252,8 +259,17 @@ class PerformansSayfasi(QWidget):
             cizim.durus_dokum_grafigi(p, rect, liste)
 
     # ------------------------------------------------------------------ davranış
+    def _detay_kapat(self):
+        self._secili = None
+        self.k_detay.hide()
+        self.g_makine.update()
+
     def _sec(self, makine, kisim):
+        if self._secili == makine and getattr(self, "_mod", None) == kisim and self.k_detay.isVisible():
+            self._detay_kapat()                 # aynı yere ikinci tıklama kapatır
+            return
         self._secili, self._mod = makine, kisim
+        self.k_detay.show()
         self._detay_yaz()
         for w in (self.g_makine, self.g_detay):
             w.update()
@@ -293,6 +309,8 @@ class PerformansSayfasi(QWidget):
         self._cormind = cormind_hesabi(kayit, gunler, self.ana.ayar.get("makineler", []), ayar) if s else {}
         if self._secili and (not s or self._degerler(self._secili) is None):
             self._secili = None
+        if not self._secili:
+            self.k_detay.hide()
         if not s:
             self.k_genel.d.setText("-")
             self.k_genel.a.setText("Önce Veri Aktar sayfasından veri yükleyin" if not self.ana.kapsam() else "Gün seçilmedi")

@@ -288,6 +288,9 @@ class CormindKarti(QFrame):
         if b["asama"] == "cekiliyor":
             ayrinti = (f"{say(b['kayit'])} / {say(b['toplam'])} kayıt alındı" if b["toplam"] else "Cormind'den yanıt bekleniyor…")
             metin = f"{ad} çekiliyor: {ayrinti}"
+            sf = b.get("sayfa")
+            if sf:
+                metin += f"  ·  sayfa başına {sf['boyut']} kayıt · {sf['sn']:.1f} sn · saniyede {sf['hiz']:.0f} kayıt".replace(".", ",")
         else:
             metin = f"{ad} kaydedildi: {say(b['kayit'])} kayıt"
         if n > 1:
@@ -304,6 +307,10 @@ class CormindKarti(QFrame):
                  + ("\nUYARI: Cormind geniş sorguyu kabul etmedi; yalnızca seçilen günlerde BAŞLAYAN kayıtlar alındı. "
                     "Daha önce başlayıp bu günlere uzanan uzun duruşlar eksik olabilir." if r.get("dar_sorgu") else "")
                  + ("\nUYARI: Beklenenden çok kayıt geldiği için çekim sınırda durduruldu; daha kısa bir tarih aralığı seçin." if r.get("kesildi") else ""))
+        if r.get("hizlar"):
+            en = max(r["hizlar"].items(), key=lambda x: x[1])
+            metin += (f"\nEn verimli sayfa boyutu: {en[0]} kayıt (saniyede {en[1]:.0f} kayıt). Denenenler: "
+                      + ", ".join(f"{k}: {v:.0f}/sn" for k, v in r["hizlar"].items()))
         if r["yeni_makineler"]:
             metin += "\nMakine listesine eklendi: " + ", ".join(r["yeni_makineler"])
         self._son(metin)

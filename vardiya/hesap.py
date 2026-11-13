@@ -384,12 +384,23 @@ def durus_dokumu(kayitlar: Iterable[Tuple[str, str, datetime, datetime]], gunler
         for gun, _v, sn in bol(bas, bit, True):
             if gun in gset and sn > 0:
                 m = sonuc.setdefault(makine, {})
-                ad = tip or "Belirtilmemiş"
+                ad = durus_adi(tip, bas, bit)
                 m[ad] = m.get(ad, 0.0) + sn / 3600.0
     return sonuc
 
 
-KAYIT_YOK = "Kayıt Yok"
+KAYIT_YOK = "Kayıt Yok"            # uzun olduğu halde "Kısa Duruş" adıyla gelmiş, gerçek adı bilinmeyen kayıt
+CALISMIYOR = "Çalışmıyor"          # dönemde hiç kaydı olmayan makine
+KISA_DURUS = "Kısa Duruş"
+KISA_DURUS_AZAMI_DK = 30.0         # bundan uzun bir kayıt "Kısa Duruş" olamaz (kısa duruş birkaç dakikalık duruştur)
+
+
+def durus_adi(tip: str, bas: datetime, bit: datetime) -> str:
+    """Gösterilecek duruş adı. Uzun bir kayıt hiçbir zaman 'Kısa Duruş' adıyla gösterilmez."""
+    ad = tip or "Belirtilmemiş"
+    if tr_kucuk(ad) == tr_kucuk(KISA_DURUS) and (bit - bas).total_seconds() / 60.0 > KISA_DURUS_AZAMI_DK:
+        return KAYIT_YOK
+    return ad
 
 
 def cormind_hesabi(kayitlar: Iterable[Tuple[str, str, datetime, datetime]], gunler: Iterable[date], makineler: Iterable[str],
@@ -400,7 +411,7 @@ def cormind_hesabi(kayitlar: Iterable[Tuple[str, str, datetime, datetime]], gunl
     'Mola Süresi' = (kaydedilen mola - mola hakkı) / temel süre (mola girilmediyse eksi çıkar).
     Toplam = duruşlar + mola süresi;  OEE = 100 - toplam (0 ile 100 arasında).
     Çalışma kayıtları hiç toplanmaz: kaydı olmayan süre çalışılmış sayılır.
-    Dönemde HİÇ kaydı olmayan makine çalışmamış sayılır: tamamı 'Kayıt Yok' duruşu, OEE 0.
+    Dönemde HİÇ kaydı olmayan makine çalışmamış sayılır: tamamı 'Çalışmıyor' duruşu, OEE 0.
     Dönen değerler yüzde (0-100 ölçeğinde)."""
     ayar = ayar or HesapAyar()
     gset = set(gunler)
@@ -422,7 +433,7 @@ def cormind_hesabi(kayitlar: Iterable[Tuple[str, str, datetime, datetime]], gunl
             mola[makine] = mola.get(makine, 0.0) + dk
         else:
             d = durus.setdefault(makine, {})
-            ad = tip or "Belirtilmemiş"
+            ad = durus_adi(tip, bas, bit)
             d[ad] = d.get(ad, 0.0) + dk
     sirali = list(makineler) + sorted(m for m in set(durus) | set(mola) if m not in set(makineler))
     sonuc: Dict[str, dict] = {}
@@ -432,7 +443,7 @@ def cormind_hesabi(kayitlar: Iterable[Tuple[str, str, datetime, datetime]], gunl
         d = {t: 100.0 * dk / net_dk for t, dk in durus.get(m, {}).items()}
         mo = 100.0 * (mola.get(m, 0.0) - hak_dk) / net_dk
         if m not in gorulen:                   # hiç kaydı yok: çalışmadı (Cormind'deki %109 duruş + eksi %9 mola görünümü)
-            d = {KAYIT_YOK: 100.0 * sure_dk / net_dk}
+            d = {CALISMIYOR: 100.0 * sure_dk / net_dk}
         toplam = sum(d.values()) + mo
         sonuc[m] = {"durus": d, "mola": mo, "toplam": toplam, "oee": max(0.0, min(100.0, 100.0 - toplam))}
     return sonuc

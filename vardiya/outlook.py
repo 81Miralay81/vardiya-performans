@@ -123,3 +123,27 @@ def mail_hazirla(alicilar: str, konu: str, html: str, ekler: List[str]) -> None:
         m.Display()
     except Exception as ex:  # noqa: BLE001
         raise RuntimeError(f"Outlook'ta mail hazırlanamadı.\n({ex})") from ex
+
+
+# ---------------------------------------------------------------- Outlook açık mı / aç
+def acik_mi() -> bool:
+    """Outlook şu an çalışıyor mu (bağlanmadan, yalnızca çalışan programlar listesine bakarak)."""
+    import subprocess
+    import sys
+    if sys.platform != "win32":
+        return False
+    try:
+        c = subprocess.run(["tasklist", "/FI", "IMAGENAME eq OUTLOOK.EXE", "/NH", "/FO", "CSV"], capture_output=True,
+                           timeout=8, creationflags=0x08000000)          # pencere açmadan
+        return b"outlook.exe" in c.stdout.lower()
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def baslat() -> None:
+    """Outlook'u görünür şekilde başlatır (bulunamazsa RuntimeError)."""
+    import os
+    try:
+        os.startfile("outlook.exe")  # type: ignore[attr-defined]
+    except Exception as ex:  # noqa: BLE001
+        raise RuntimeError(f"Outlook başlatılamadı. Klasik masaüstü Outlook kurulu olmalı.\n({ex})") from ex

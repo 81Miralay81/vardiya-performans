@@ -175,25 +175,66 @@ class Istemci:
         return sonuc
 
     GERIYE_GUN = 90        # dönemden önce başlayan kayıtlar için en fazla ne kadar geriye bakılır
-    AZAMI_SAYFA = 40       # tek sorguda en fazla sayfa (40 x 2000 kayıt); aşılırsa durulur
+    AZAMI_KAYIT = 80000    # tek sorguda en fazla kayıt; aşılırsa durulur (sunucuyu yormamak için)
     SAYFA_ARASI_SN = 0.3
+    # Uyarlamalı sayfa boyutu: hızlı gelirse büyür, yavaşlarsa ya da hata olursa küçülür.
+    BASAMAKLAR = (250, 500, 1000, 2000, 3000, 5000)
+    HIZLI_SN, YAVAS_SN = 2.0, 6.0
+    sayfa_bilgi: Optional[dict] = None      # son sayfa: {"boyut", "sn", "hiz"}; ilerleme satırında gösterilir
+    _basamak = 2                            # 1000 ile başlar; çekim boyunca öğrenilen değer korunur
 
     def _sayfala(self, where: str, ilerleme, onceki: int = 0) -> List[dict]:
         sonuc: List[dict] = []
-        offset, toplam = 0, 0
-        for _ in range(self.AZAMI_SAYFA):
-            d = self._graphql("MachineAction", {"where": where, "relations": ["goods", "operator", "operator.user", "machine"],
-                                                "order": {"start": "ASC"}, "limit": SAYFA, "offset": offset})
+        toplam = 0
+        yasak = getattr(self, "_yasak", None)
+        if yasak is None:
+            yasak = self._yasak = set()          # verimi düşüren (denenip vazgeçilen) basamaklar
+        hiz_kaydi = getattr(self, "_hiz", None)
+        if hiz_kaydi is None:
+            hiz_kaydi = self._hiz = {}           # basamak -> ölçülen en iyi hız (kayıt/sn)
+        ust_uste_hata = 0
+        while len(sonuc) < self.AZAMI_KAYIT:
+            b = self._basamak
+            boyut = self.BASAMAKLAR[b]
+            t0 = time.perf_counter()
+            try:
+                d = self._graphql("MachineAction", {"where": where, "relations": ["goods", "operator", "operator.user", "machine"],
+                                                    "order": {"start": "ASC"}, "limit": boyut, "offset": len(sonuc)})
+            except CormindHata:
+                ust_uste_hata += 1
+                if b == 0 or ust_uste_hata > 4:
+                    raise                                   # en küçük boyutta da olmuyor: Cormind cevap vermiyor
+                yasak.add(b)
+                self._basamak = max(0, b - 2)               # iki basamak in, AYNI sayfayı yeniden iste (veri kaybolmaz)
+                time.sleep(1.5)
+                continue
+            ust_uste_hata = 0
+            sn = max(0.001, time.perf_counter() - t0)
             parca = d.get("entities") or []
             toplam = int(d.get("count") or toplam or 0)
             sonuc += parca
-            offset += SAYFA
+            hiz = len(parca) / sn
+            self.sayfa_bilgi = {"boyut": boyut, "sn": sn, "hiz": hiz}
             if ilerleme:
                 ilerleme(onceki + len(sonuc), onceki + toplam)
-            if len(parca) < SAYFA or (toplam and len(sonuc) >= toplam):
+            # bitti mi: sunucunun bildirdiği toplam esas alınır (sunucu sayfayı kendi sınırıyla kısaltsa bile eksik kalmaz)
+            if not parca or (toplam and len(sonuc) >= toplam) or (not toplam and len(parca) < boyut):
                 return sonuc
-            time.sleep(self.SAYFA_ARASI_SN)     # sunucuyu yormamak için sayfalar arasında kısa bekleme
-        self.kesildi = True                      # beklenenden çok kayıt: sunucuyu yormamak için duruldu
+            if len(parca) == boyut:                         # tam sayfa: hız ölçüsü anlamlı
+                hiz_kaydi[b] = max(hiz_kaydi.get(b, 0.0), hiz)
+                alt_hiz = hiz_kaydi.get(b - 1)
+                if sn > self.YAVAS_SN and b > 0:
+                    self._basamak = b - 1
+                elif alt_hiz and hiz < alt_hiz * 0.9 and b > 0:
+                    yasak.add(b)                            # büyütmek verimi düşürdü: geri in, bu çekimde bir daha deneme
+                    self._basamak = b - 1
+                elif sn < self.HIZLI_SN and b + 1 < len(self.BASAMAKLAR) and (b + 1) not in yasak:
+                    self._basamak = b + 1
+            elif len(parca) < boyut:                        # sunucu sayfayı kısalttı: bu boyut sunucunun sınırını aşıyor
+                yasak.add(b)
+                self._basamak = max(0, b - 1)
+            time.sleep(self.SAYFA_ARASI_SN + min(2.0, sn * 0.15))    # sunucu yavaşladıkça bekleme de uzar
+        self.kesildi = True
         return sonuc
 
     def hareketler(self, ilk: date, son: date, makine_idleri: List[int],
@@ -330,7 +371,8 @@ def cek(con, adres: str, kullanici: str, sifre: str, ilk: date, son: date, makin
         def sayfa_ilerleme(kayit, toplam, _i=i, _a=p_ilk, _b=p_son):
             if ilerleme:
                 ilerleme(kayit, toplam)
-            bildir(parca=_i + 1, parca_sayisi=n, ilk=_a, son=_b, asama="cekiliyor", kayit=kayit, toplam=toplam, kaydedilen=t["toplam"])
+            bildir(parca=_i + 1, parca_sayisi=n, ilk=_a, son=_b, asama="cekiliyor", kayit=kayit, toplam=toplam, kaydedilen=t["toplam"],
+                   sayfa=ist.sayfa_bilgi)
 
         bildir(parca=i + 1, parca_sayisi=n, ilk=p_ilk, son=p_son, asama="cekiliyor", kayit=0, toplam=0, kaydedilen=t["toplam"])
         r = _parca_cek(con, ist, ariza, p_ilk, p_son, makine_idleri, sayfa_ilerleme, uzanan=(uzanan and i == 0))
@@ -357,7 +399,8 @@ def cek(con, adres: str, kullanici: str, sifre: str, ilk: date, son: date, makin
     if eklenen:
         vt.ayar_yaz(con, "makineler", sorted(bilinen | set(eklenen)))
     return dict(t, tipler=dict(sorted(tipler.items(), key=lambda x: -x[1])), yeni_makineler=eklenen, dar_sorgu=dar, kesildi=kesildi,
-                parca_sayisi=n, biten_parca=biten, durduruldu=durduruldu)
+                parca_sayisi=n, biten_parca=biten, durduruldu=durduruldu,
+                hizlar={ist.BASAMAKLAR[b]: h for b, h in sorted(getattr(ist, "_hiz", {}).items())})
 
 
 # ============================================================ ham döküm (teşhis)

@@ -148,7 +148,8 @@ def test_iki_sinirli_sorgu():
     assert d.hareketler(date(2026, 11, 2), date(2026, 11, 7), [5]) == [{"id": 1}] and d.dar_sorgu
 
     class Cok(cormind.Istemci):                    # hep dolu sayfa dönen sunucu: sınırda durulur
-        AZAMI_SAYFA = 3
+        AZAMI_KAYIT = 6000
+        SAYFA_ARASI_SN = 0
         n = 0
         def _graphql(self, model, kosul):
             Cok.n += 1
@@ -156,7 +157,7 @@ def test_iki_sinirli_sorgu():
 
     c = Cok("http://x")
     c.hareketler(date(2026, 11, 2), date(2026, 11, 7), [5])
-    assert c.kesildi and Cok.n == 6
+    assert c.kesildi and 2 <= Cok.n <= 16      # iki sorgu da kayıt sınırında durur
 
 
 def test_kapatilmamis_eski_kayit_sonraki_kayitla_biter():

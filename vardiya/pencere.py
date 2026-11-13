@@ -286,8 +286,11 @@ class AnaPencere(QMainWindow):
                 self.alt_bilgi.setText("Henüz veri yok")
         finally:
             QApplication.restoreOverrideCursor()
+        # Yalnızca o an açık olan sayfa yenilenir; diğerleri açıldıklarında (sayfa_ac) kendileri yenilenir.
+        acik = self.yigin.currentWidget()
         for a in ("performans", "calisma", "durus", "mola", "operator"):
-            self.sayfalar[a].yenile()
+            if self.sayfalar[a] is acik:
+                self.sayfalar[a].yenile()
         self.sayfalar["veri"].yenile()
         if hasattr(self, "sayfalar") and self.yigin.currentWidget() is self.sayfalar["rapor"]:
             self.sayfalar["rapor"].yenile()
