@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="tr"><head><meta charset="utf-8">
 <script src="echarts.min.js"></script>
+<script src="uc_boyut.js"></script>
 <style>
 html,body{margin:0;height:100%;background:#fff;overflow:hidden;user-select:none}
 #g{position:absolute;inset:0}
@@ -35,7 +36,7 @@ window.goster = function(opt){
     });
     window.addEventListener('resize', function(){ ekran.resize(); });
   }
-  son = hazirla(opt);
+  son = window.ucBoyut ? ucBoyut(hazirla(opt)) : hazirla(opt);
   ekran.setOption(son, true);
   return true;
 };
@@ -45,7 +46,7 @@ window.resim = function(opt, w, h, oran){
   d.style.width = w + 'px'; d.style.height = h + 'px';
   if (cizer) cizer.dispose();
   cizer = echarts.init(d, null, {renderer: 'canvas', width: w, height: h, devicePixelRatio: oran});
-  var o = hazirla(opt);
+  var o = window.ucBoyut ? ucBoyut(hazirla(opt)) : hazirla(opt);
   o.animation = false;
   cizer.setOption(o, true);
   return cizer.getDataURL({type: 'png', pixelRatio: oran, backgroundColor: '#ffffff'});

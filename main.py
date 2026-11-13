@@ -3,20 +3,24 @@ import os
 import sys
 
 from vardiya import teshis                     # her şeyden önce: açılış süreleri buradan ölçülür
+from vardiya.acilis import baslatici_yazisi
 from vardiya.surum import SURUM
 
 _KAYITLI = "--kendini-sina" not in sys.argv
 if _KAYITLI:
     teshis.baslat(SURUM)
 
+baslatici_yazisi("Ekran kütüphanesi yükleniyor…")
 from PySide6.QtGui import QIcon  # noqa: E402
 from PySide6.QtWidgets import QApplication, QMessageBox  # noqa: E402
 
 if _KAYITLI:
     teshis.adim("ekran kütüphanesi (Qt) yüklendi")
 
+baslatici_yazisi("Grafik motoru yükleniyor…")
 from vardiya import web  # noqa: E402  (web'li exe'de web motoru uygulama nesnesinden önce yüklenmeli)
 from vardiya import tema  # noqa: E402
+baslatici_yazisi("Program modülleri yükleniyor…")
 from vardiya.pencere import AnaPencere  # noqa: E402
 
 if _KAYITLI:
@@ -33,6 +37,8 @@ def kendini_sina() -> int:
     """Derlenen exe'nin sağlam olup olmadığını denetler (ekran açmadan): tüm sayfalar, içe aktarma, PDF."""
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     os.environ["VARDIYA_GUNCELLEME_YOK"] = "1"
+    from vardiya.acilis import baslatici_kapat
+    baslatici_kapat()
     import tempfile
     import time
     from datetime import datetime, timedelta
@@ -127,27 +133,38 @@ def main() -> int:
     if "--kendini-sina" in sys.argv:
         return kendini_sina()
     if "--teshis" in sys.argv:                       # yalnızca teşhis penceresi (ana pencere ve veri tabanı açılmaz)
+        from vardiya.acilis import baslatici_kapat
+        baslatici_kapat()
         app = QApplication(sys.argv)
         app.setStyleSheet(tema.STIL)
         from vardiya.teshis_pencere import TeshisPenceresi
         TeshisPenceresi().exec()
         return 0
     app = QApplication(sys.argv)
+    from vardiya.acilis import AcilisPenceresi, baslatici_kapat
+    acilis = AcilisPenceresi()
+    acilis.show()
+    baslatici_kapat()
+    acilis.adim(35, "Grafik motoru hazırlanıyor")
     web.kur()
     teshis.adim("uygulama nesnesi kuruldu" + (" (web grafikli)" if web.WEB_VAR else ""))
     app.setApplicationName("Vardiya Performans")
     app.setStyleSheet(tema.STIL)
     app.setWindowIcon(QIcon(tema.kaynak_yolu("assets", "uygulama.ico")))
+    acilis.adim(50, "Veri tabanı açılıyor")
     # veri tabanı programın yanında durur (birden çok kişi aynı klasörden açabilir)
     yol = os.environ.get("VARDIYA_DB") or os.path.join(uygulama_klasoru(), "VardiyaPerformans.db")
     try:
         pencere = AnaPencere(yol)
     except Exception as ex:  # noqa: BLE001
         teshis.adim(f"HATA: veri tabanı açılamadı: {ex}")
+        acilis.close()
         QMessageBox.critical(None, "Vardiya Performans", f"Veri tabanı açılamadı:\n{yol}\n\n{ex}")
         return 1
     teshis.adim("ana pencere kuruldu")
+    acilis.adim(100, "Hazır")
     pencere.show()
+    acilis.close()
     from PySide6.QtCore import QTimer
     nabiz = QTimer()
     nabiz.setInterval(500)

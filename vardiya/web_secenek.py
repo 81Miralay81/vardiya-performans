@@ -159,7 +159,7 @@ def genel_performans_grafigi(a: dict) -> dict:
              "itemStyle": _golge(), "label": {"position": "inside", "color": "#fff", "fontWeight": 700, "fontSize": 10},
              "emphasis": {"focus": "none", "itemStyle": {"shadowBlur": 12, "shadowColor": "rgba(21,9,88,0.35)"}}} for ad, d in seriler.items()]
     import math
-    alt = -10 * max(1, math.ceil((mola_pay + 1) / 10))     # eksen 0'dan onar onar: ..., 10%, 0%, -10%
+    alt = -10 * max(1, math.ceil((mola_pay + 0.5) / 10))     # eksen 0'dan onar onar: ..., 10%, 0%, -10%
     return {"title": _baslik(baslik), "tooltip": _ipucu(),
             "legend": {"bottom": 0, "itemWidth": 14, "itemHeight": 10, "textStyle": {"color": SOLUK}},
             "grid": {"left": 50, "right": 30, "top": 46 if baslik else 16, "bottom": 70},

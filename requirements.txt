@@ -1,4 +1,6 @@
 PySide6-Essentials>=6.6
+PySide6-Addons>=6.6
+PySide6-WebEngine
 openpyxl>=3.1
 xlrd>=2.0.1
 pywin32; sys_platform == 'win32'
