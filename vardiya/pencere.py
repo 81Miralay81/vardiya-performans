@@ -10,7 +10,7 @@ from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import (QApplication, QButtonGroup, QFrame, QHBoxLayout, QLabel, QMainWindow, QPushButton,
                                QStackedWidget, QVBoxLayout, QWidget)
 
-from . import tema, veritabani as vt
+from . import tema, teshis, veritabani as vt
 from .donem import DonemCubugu
 from .hesap import HesapAyar, hesapla
 from .sayfa_analiz import AnalizSayfasi
@@ -33,8 +33,11 @@ class AnaPencere(QMainWindow):
     def __init__(self, db_yolu: str):
         super().__init__()
         self.db_yolu = db_yolu
+        teshis.adim(f"veri tabanı açılıyor: {db_yolu}")
         self.con = vt.ac(db_yolu)
+        teshis.adim("veri tabanı açıldı")
         self.ayar = vt.ayar_oku(self.con)
+        teshis.adim("ayarlar okundu")
         self.sonuc = None
         self.kayit = []
         self.seflar = {}
@@ -205,7 +208,11 @@ class AnaPencere(QMainWindow):
         self.donem.setVisible(anahtar in DONEMLI)
         s = self.sayfalar[anahtar]
         if hasattr(s, "yenile"):
+            import time as _t
+            t0 = _t.perf_counter()
             s.yenile()
+            if _t.perf_counter() - t0 >= 1.0:           # yavaş açılan sayfa teşhis kaydına düşer
+                teshis.adim(f"'{anahtar}' sayfası {_t.perf_counter() - t0:.1f} sn sürdü")
 
     def sef_ata(self, vardiya: int, ad: str, gunler: List[date]):
         if not gunler or not ad:

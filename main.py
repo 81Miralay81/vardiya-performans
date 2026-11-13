@@ -2,11 +2,24 @@
 import os
 import sys
 
-from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QApplication, QMessageBox
+from vardiya import teshis                     # her şeyden önce: açılış süreleri buradan ölçülür
+from vardiya.surum import SURUM
 
-from vardiya import tema
-from vardiya.pencere import AnaPencere
+_KAYITLI = "--kendini-sina" not in sys.argv
+if _KAYITLI:
+    teshis.baslat(SURUM)
+
+from PySide6.QtGui import QIcon  # noqa: E402
+from PySide6.QtWidgets import QApplication, QMessageBox  # noqa: E402
+
+if _KAYITLI:
+    teshis.adim("ekran kütüphanesi (Qt) yüklendi")
+
+from vardiya import tema  # noqa: E402
+from vardiya.pencere import AnaPencere  # noqa: E402
+
+if _KAYITLI:
+    teshis.adim("program modülleri yüklendi")
 
 
 def uygulama_klasoru() -> str:
@@ -103,7 +116,14 @@ def kendini_sina() -> int:
 def main() -> int:
     if "--kendini-sina" in sys.argv:
         return kendini_sina()
+    if "--teshis" in sys.argv:                       # yalnızca teşhis penceresi (ana pencere ve veri tabanı açılmaz)
+        app = QApplication(sys.argv)
+        app.setStyleSheet(tema.STIL)
+        from vardiya.teshis_pencere import TeshisPenceresi
+        TeshisPenceresi().exec()
+        return 0
     app = QApplication(sys.argv)
+    teshis.adim("uygulama nesnesi kuruldu")
     app.setApplicationName("Vardiya Performans")
     app.setStyleSheet(tema.STIL)
     app.setWindowIcon(QIcon(tema.kaynak_yolu("assets", "uygulama.ico")))
@@ -112,10 +132,21 @@ def main() -> int:
     try:
         pencere = AnaPencere(yol)
     except Exception as ex:  # noqa: BLE001
+        teshis.adim(f"HATA: veri tabanı açılamadı: {ex}")
         QMessageBox.critical(None, "Vardiya Performans", f"Veri tabanı açılamadı:\n{yol}\n\n{ex}")
         return 1
+    teshis.adim("ana pencere kuruldu")
     pencere.show()
-    return app.exec()
+    from PySide6.QtCore import QTimer
+    nabiz = QTimer()
+    nabiz.setInterval(500)
+    nabiz.timeout.connect(teshis.nabiz)
+    nabiz.start()
+    teshis.bekci_baslat()
+    QTimer.singleShot(0, lambda: teshis.adim("pencere ekranda, program kullanıma hazır"))
+    kod = app.exec()
+    teshis.adim("program kapatıldı")
+    return kod
 
 
 if __name__ == "__main__":

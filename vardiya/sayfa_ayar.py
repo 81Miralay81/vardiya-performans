@@ -152,7 +152,19 @@ class AyarSayfasi(QWidget):
         kd.layout().addWidget(self.db_yolu)
         b = QPushButton("Klasörü Aç")
         b.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.dirname(self.ana.db_yolu))))
-        kd.layout().addWidget(b, 0, Qt.AlignLeft)
+        bt = QPushButton("Teşhis (açılış kaydı, sunucu ölçümü)…")
+        bt.setToolTip("Program geç açılıyor ya da donuyorsa: açılışın hangi adımda beklediğini ve sunucudan okuma hızını gösterir.")
+
+        def _teshis():
+            from .teshis_pencere import TeshisPenceresi
+            TeshisPenceresi(self).exec()
+
+        bt.clicked.connect(_teshis)
+        bs = QHBoxLayout()
+        bs.addWidget(b)
+        bs.addWidget(bt)
+        bs.addStretch(1)
+        kd.layout().addLayout(bs)
         ic.addWidget(kd)
 
         # ------------------------------------------------ Outlook ve yapay zekâ (idari rapor)
