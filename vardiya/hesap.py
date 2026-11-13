@@ -376,6 +376,14 @@ BOZUK_CAKISMA_DK = 30.0    # ...aynı makinenin başka kayıtlarıyla bundan faz
 
 
 def bozuk_kayitlari_ayikla(kayitlar) -> Tuple[list, int]:
+    kayitlar = list(kayitlar)
+    bozuk = bozuk_indeksler(kayitlar)
+    if not bozuk:
+        return kayitlar, 0
+    return [k for i, k in enumerate(kayitlar) if i not in bozuk], len(bozuk)
+
+
+def bozuk_indeksler(kayitlar) -> set:
     """Bozuk (çakışan) uzun çalışma kayıtlarını ayıklar.
     Cormind'de bir makine aynı anda tek durumdadır. Saatlerce süren bir çalışma kaydı aynı makinenin duruş, mola ya da
     başka çalışma kayıtlarıyla yarım saatten fazla çakışıyorsa (ör. bitişi boş gelip günlerce uzatılmış kayıt) o kayıt
@@ -403,9 +411,7 @@ def bozuk_kayitlari_ayikla(kayitlar) -> Tuple[list, int]:
                     if cak > BOZUK_CAKISMA_DK * 60:
                         bozuk.add(i)
                         break
-    if not bozuk:
-        return kayitlar, 0
-    return [k for i, k in enumerate(kayitlar) if i not in bozuk], len(bozuk)
+    return bozuk
 
 
 def hesapla(kayitlar, gunler: List[date], ayar: Optional[HesapAyar] = None, veri_gunleri: Optional[set] = None) -> DonemSonuc:
