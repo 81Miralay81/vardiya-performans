@@ -156,3 +156,10 @@ def rapor_resmi_ciz(ad: str, parametre: dict, w: float, h: float) -> Optional[QI
     if secenek is None:
         return None
     return Ressam.tek().resim(secenek, cw, ch, min(4.0, w / cw))
+
+
+def kur() -> None:
+    """Uygulama nesnesi kurulduktan sonra çağrılır: web varsa rapor ve PDF grafikleri web ile çizilir."""
+    if WEB_VAR:
+        from . import cizim
+        cizim._WEB_CIZICI = rapor_resmi_ciz

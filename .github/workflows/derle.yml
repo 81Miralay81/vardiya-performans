@@ -64,11 +64,37 @@ jobs:
         with:
           name: VardiyaPerformans
           path: dist/VardiyaPerformans.exe
+      # İkinci exe: web grafikli (ECharts). Aynı kod; web motoru eklenince grafikler web görünümüyle çizilir.
+      - name: Web'li exe derle
+        id: web
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          pip install PySide6-Addons PySide6-WebEngine
+          (Get-Content surum_bilgisi.txt) -replace "VardiyaPerformans.exe", "VardiyaPerformans_Web.exe" -replace "'Vardiya Performans'", "'Vardiya Performans (web grafikli)'" | Set-Content surum_bilgisi_web.txt -Encoding utf8
+          pyinstaller --noconfirm --onefile --windowed --name VardiyaPerformans_Web `
+            --icon assets/uygulama.ico --version-file surum_bilgisi_web.txt --add-data "assets;assets" `
+            --hidden-import win32timezone --hidden-import win32com.client `
+            --hidden-import PySide6.QtWebEngineWidgets --hidden-import PySide6.QtWebEngineCore main.py
+          $env:QT_QPA_PLATFORM = "offscreen"
+          $env:QTWEBENGINE_CHROMIUM_FLAGS = "--disable-gpu"
+          $p = Start-Process -FilePath dist\VardiyaPerformans_Web.exe -ArgumentList "--kendini-sina" -Wait -PassThru -RedirectStandardOutput wout.txt -RedirectStandardError werr.txt
+          Get-Content wout.txt, werr.txt
+          if ($p.ExitCode -ne 0) { throw "Web'li exe kendini sınama başarısız: $($p.ExitCode)" }
+          if (-not (Select-String -Path wout.txt -Pattern "WEB TAMAM" -Quiet)) { throw "Web motoru exe'de çalışmadı" }
+      - uses: actions/upload-artifact@v4
+        if: steps.web.outcome == 'success'
+        with:
+          name: VardiyaPerformans_Web
+          path: dist/VardiyaPerformans_Web.exe
       - name: Son sürümü yayınla
         uses: softprops/action-gh-release@v2
         with:
           tag_name: guncel
           name: Son sürüm 1.0.${{ github.run_number }}
           body: "SURUM=1.0.${{ github.run_number }}"
-          files: dist/VardiyaPerformans.exe
+          files: |
+            dist/VardiyaPerformans.exe
+            dist/VardiyaPerformans_Web.exe
+          fail_on_unmatched_files: false
           prerelease: false

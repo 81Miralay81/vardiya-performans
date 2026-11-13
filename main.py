@@ -15,6 +15,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox  # noqa: E402
 if _KAYITLI:
     teshis.adim("ekran kütüphanesi (Qt) yüklendi")
 
+from vardiya import web  # noqa: E402  (web'li exe'de web motoru uygulama nesnesinden önce yüklenmeli)
 from vardiya import tema  # noqa: E402
 from vardiya.pencere import AnaPencere  # noqa: E402
 
@@ -37,6 +38,7 @@ def kendini_sina() -> int:
     from datetime import datetime, timedelta
     from openpyxl import Workbook
     app = QApplication(sys.argv)
+    web.kur()
     app.setStyleSheet(tema.STIL)
     klasor = tempfile.mkdtemp()
     w = AnaPencere(os.path.join(klasor, "deneme.db"))
@@ -69,12 +71,13 @@ def kendini_sina() -> int:
         app.processEvents()
     perf.g_makine.grab()
     perf.tablo.grab()
-    if len(perf.g_makine.bolgeler) < 4:
+    if not web.WEB_VAR and len(perf.g_makine.bolgeler) < 4:
         print("HATA: Performans grafiğinde tıklama bölgeleri oluşmadı:", len(perf.g_makine.bolgeler))
         return 4
-    perf._sec(perf.g_makine.bolgeler[0][1], "durus")
+    ilk = perf.g_makine.bolgeler[0][1] if perf.g_makine.bolgeler else next(iter(w.sonuc.makine_ort))
+    perf._sec(ilk, "durus")
     perf.g_detay.grab()
-    perf._sec(perf.g_makine.bolgeler[0][1], "mola")
+    perf._sec(ilk, "mola")
     perf.g_detay.grab()
     perf.b_cormind.setChecked(True)
     app.processEvents()
@@ -101,6 +104,13 @@ def kendini_sina() -> int:
         print("HATA: idari rapor üretilemedi")
         return 6
     print("IDARI TAMAM", len(ipdf), "bayt")
+    if web.WEB_VAR:                                    # web'li exe: web motoru grafik çizebiliyor mu
+        img = web.rapor_resmi_ciz("genel_performans_grafigi", dict(sonuc=w.sonuc, makineler=w.ayar.get("makineler", []),
+                                                                   mola_pay=9.0, baslik="Deneme"), 1800, 800)
+        if img is None or img.isNull():
+            print("HATA: web grafiği çizilemedi")
+            return 8
+        print("WEB TAMAM", img.width(), "x", img.height())
     if sys.platform == "win32":                       # Outlook bağlantı kütüphanesi exe'ye girmiş mi (Outlook'un kendisi açılmaz)
         try:
             import win32com.client  # noqa: F401
@@ -123,7 +133,8 @@ def main() -> int:
         TeshisPenceresi().exec()
         return 0
     app = QApplication(sys.argv)
-    teshis.adim("uygulama nesnesi kuruldu")
+    web.kur()
+    teshis.adim("uygulama nesnesi kuruldu" + (" (web grafikli)" if web.WEB_VAR else ""))
     app.setApplicationName("Vardiya Performans")
     app.setStyleSheet(tema.STIL)
     app.setWindowIcon(QIcon(tema.kaynak_yolu("assets", "uygulama.ico")))

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Callable, List, Optional
 
-from PySide6.QtCore import QRectF, QSize, Qt
+from PySide6.QtCore import QRectF, QSize, Qt, QTimer
 from PySide6.QtGui import QColor, QGuiApplication, QImage, QPainter
 from PySide6.QtWidgets import (QComboBox, QFileDialog, QFrame, QHBoxLayout, QLabel, QMenu, QSizePolicy, QTableWidget,
                                QVBoxLayout, QWidget)
@@ -58,7 +58,9 @@ def tablo_menusu(t: QTableWidget):
 
 
 class CizimWidget(QWidget):
-    """cizici(p, rect) çağrılabilirini boyar; ekran, pano ve PDF aynı kodu kullanır."""
+    """cizici(p, rect) çağrılabilirini boyar; ekran, pano ve PDF aynı kodu kullanır.
+    Web'li exe'de: çizilen grafik web görünümüyle (canlı, üzerine gelince bilgi, tıklama) gösterilir;
+    web karşılığı olmayan içerik (ör. sabit tablo) programın kendi çizimiyle kalır."""
 
     def __init__(self, cizici: Optional[Callable] = None, min_h: int = 200, min_w: int = 200,
                  kopya_resim: Optional[Callable[[], Optional[QImage]]] = None):
@@ -66,27 +68,95 @@ class CizimWidget(QWidget):
         self.cizici = cizici
         self.setMinimumSize(min_w, min_h)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self._web = None
+        self._web_aktif = False
+        self._web_planli = False
+        self._web_bos = False                   # son denemede web karşılığı yoktu (ör. sabit tablo)
         resim_menusu(self, kopya_resim or self.resim)
 
     def resim(self, olcek: float = 2.0) -> QImage:
         """Bileşenin içeriğini yüksek çözünürlükte resim olarak çizer."""
+        from . import cizim
         w, h = max(1, int(self.width() * olcek)), max(1, int(self.height() * olcek))
         img = QImage(w, h, QImage.Format_ARGB32)
         img.fill(QColor("white"))
         p = QPainter(img)
         p.setRenderHint(QPainter.Antialiasing, True)
+        p.setRenderHint(QPainter.SmoothPixmapTransform, True)
         if self.cizici:
-            self.cizici(p, QRectF(0, 0, w, h))
+            with cizim.rapor_kipi():
+                self.cizici(p, QRectF(0, 0, w, h))
         p.end()
         return img
+
+    # ---------------------------------------------------------------- web
+    def update(self, *a):  # noqa: D401  (sayfalar veri değişince update() çağırır)
+        super().update(*a)
+        self._web_planla()
+
+    def showEvent(self, e):
+        super().showEvent(e)
+        self._web_planla()
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        if self._web is not None:
+            self._web.setGeometry(self.rect())
+
+    def _web_planla(self):
+        from . import web
+        if web.WEB_VAR and not self._web_planli:
+            self._web_planli = True
+            QTimer.singleShot(0, self._web_yenile)
+
+    def _web_yenile(self):
+        from . import cizim, web, web_secenek
+        self._web_planli = False
+        if not self.isVisible() or not self.cizici:
+            return
+        kayit: list = []
+        img = QImage(4, 4, QImage.Format_ARGB32)
+        p = QPainter(img)
+        cizim._KAYIT = kayit
+        try:
+            self.cizici(p, QRectF(self.rect()))
+        except Exception:  # noqa: BLE001
+            kayit = []
+        finally:
+            cizim._KAYIT = None
+            p.end()
+        secenek = None
+        if kayit:
+            ad, prm, _alan = kayit[0]
+            try:
+                secenek = web_secenek.YAPICILAR[ad](prm)
+            except Exception:  # noqa: BLE001  (web karşılığı çizilemezse kendi çizim)
+                secenek = None
+        self._web_bos = secenek is None
+        if secenek is None:
+            if self._web_aktif:
+                self._web.hide()
+                self._web_aktif = False
+                super().update()
+            return
+        if self._web is None:
+            self._web = web.WebGorunum(self)
+            if hasattr(self, "tiklandi"):
+                self._web.tiklandi.connect(lambda a, k: self.tiklandi.emit(a, k))
+        self._web.setGeometry(self.rect())
+        self._web.show()
+        self._web_aktif = True
+        self._web.goster(secenek)
 
     def paintEvent(self, _):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing, True)
         p.fillRect(self.rect(), QColor("white"))
-        if self.cizici:
+        if self.cizici and not self._web_aktif:
             self.cizici(p, QRectF(self.rect()))
         p.end()
+        if not self._web_bos:
+            self._web_planla()
 
 
 def kart(layout_cls=QVBoxLayout, kenar: int = 14) -> QFrame:

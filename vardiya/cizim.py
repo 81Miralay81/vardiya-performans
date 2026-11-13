@@ -16,6 +16,35 @@ ORTA = Qt.AlignCenter
 SAG = Qt.AlignRight | Qt.AlignVCenter
 
 
+# ---------------------------------------------------------------- web köprüsü (yalnızca web'li exe'de etkin)
+_KAYIT: Optional[list] = None      # liste ise grafik çizilmez, (ad, parametreler, alan) kaydedilir (ekran web görünümü için)
+_RAPOR = 0                         # >0 iken (rapor, PDF, yazdırma, resim kopyalama) grafikler web ile resme çevrilir
+_WEB_CIZICI = None                 # web.rapor_resmi_ciz; web'siz exe'de None
+
+
+def _web(p, rect, ad: str, prm: dict) -> bool:
+    if _KAYIT is not None:
+        _KAYIT.append((ad, {k: v for k, v in prm.items() if k not in ("p", "rect")}, QRectF(rect)))
+        return True
+    if _RAPOR and _WEB_CIZICI is not None:
+        img = _WEB_CIZICI(ad, {k: v for k, v in prm.items() if k not in ("p", "rect")}, rect.width(), rect.height())
+        if img is not None:
+            p.drawImage(rect, img)
+            return True
+    return False
+
+
+class rapor_kipi:
+    """with rapor_kipi(): içinde çizilen grafikler (web varsa) web görünümüyle resme çevrilir."""
+    def __enter__(self):
+        global _RAPOR
+        _RAPOR += 1
+
+    def __exit__(self, *a):
+        global _RAPOR
+        _RAPOR -= 1
+
+
 def olcek(rect: QRectF, ref_w: float = 900.0, ref_h: float = 420.0) -> float:
     return max(0.85, min(3.5, min(rect.width() / ref_w, rect.height() / ref_h * 1.5)))
 
@@ -63,6 +92,8 @@ def _deger_listesi(sonuc: DonemSonuc, secim: int, makineler: List[str], bos_gost
 # ============================================================ makine bazlı grafik
 def makine_grafigi(p: QPainter, rect: QRectF, sonuc: DonemSonuc, makineler: List[str], secim: int = 0,
                    baslik: Optional[str] = None, bos_goster: bool = False, arka: bool = True):
+    if _web(p, rect, "makine_grafigi", locals()):
+        return
     s = olcek(rect)
     p.save()
     p.setRenderHint(QPainter.Antialiasing, True)
@@ -135,6 +166,8 @@ def makine_grafigi(p: QPainter, rect: QRectF, sonuc: DonemSonuc, makineler: List
 # ============================================================ vardiya bazlı grafik
 def vardiya_grafigi(p: QPainter, rect: QRectF, sonuc: DonemSonuc, seflar: Dict[int, str], secim: int = 0,
                     baslik: Optional[str] = None, arka: bool = True):
+    if _web(p, rect, "vardiya_grafigi", locals()):
+        return
     s = olcek(rect, 600, 420)
     p.save()
     p.setRenderHint(QPainter.Antialiasing, True)
@@ -278,6 +311,8 @@ def cormind_durus_grafigi(p: QPainter, rect: QRectF, cm: Dict[str, dict], baslik
                           limit: float = 15.0, s: Optional[float] = None, kilavuz: bool = False):
     """cm: hesap.cormind_hesabi çıktısı. Her makinede duruş türleri üst üste, mola süresi (eksi ise) sıfırın altında.
     s verilirse ölçek odur (OEE grafiğiyle aynı ölçek verilince makineler alt alta aynı hizaya gelir)."""
+    if _web(p, rect, "cormind_durus_grafigi", locals()):
+        return
     s = s or olcek(rect)
     p.save()
     p.setRenderHint(QPainter.Antialiasing, True)
@@ -486,6 +521,8 @@ def rapor_ciz(p: QPainter, rect: QRectF, r: dict):
 # ============================================================ idari rapor
 def cormind_oee_grafigi(p: QPainter, rect: QRectF, cm: Dict[str, dict], baslik: Optional[str] = "OEE Grafiği (Cormind)", limit: float = 85.0,
                         s: Optional[float] = None, kilavuz: bool = False):
+    if _web(p, rect, "cormind_oee_grafigi", locals()):
+        return
     s = s or olcek(rect)
     p.save()
     p.setRenderHint(QPainter.Antialiasing, True)
@@ -547,6 +584,8 @@ def genel_performans_grafigi(p: QPainter, rect: QRectF, sonuc: DonemSonuc, makin
     # bolgeler verilirse her sütunun tıklanabilir alanları eklenir: (QRectF, makine, "durus" | "mola")
     """Bizim hesabımız: her sütun %100 (yeşil çalışma + kırmızı duruş); sıfırın altında mola hakkı
     (turuncu: mola yapılan, mor: molada çalışılan). Eşik altı makineler soluk çizilir ve hesaba girmez."""
+    if _web(p, rect, "genel_performans_grafigi", locals()):
+        return
     s = olcek(rect)
     p.save()
     p.setRenderHint(QPainter.Antialiasing, True)
@@ -664,6 +703,8 @@ def _saat_dk(saat: float) -> str:
 
 def durus_dokum_grafigi(p: QPainter, rect: QRectF, liste: List[tuple], baslik: Optional[str] = None):
     """liste: [(duruş türü, saat)] büyükten küçüğe. Her tür kendi renginde; üstünde süre ve duruş içindeki payı."""
+    if _web(p, rect, "durus_dokum_grafigi", locals()):
+        return
     s = olcek(rect)
     p.save()
     p.setRenderHint(QPainter.Antialiasing, True)
@@ -717,6 +758,8 @@ def durus_dokum_grafigi(p: QPainter, rect: QRectF, liste: List[tuple], baslik: O
 def mola_pasta_grafigi(p: QPainter, rect: QRectF, vardiyalar: List[tuple], mola_dk: float):
     """vardiyalar: [(başlık, grup lideri, mola oranı 0-1)]. Pastanın tamamı mola hakkıdır:
     turuncu mola yapılan, mor molada çalışılan süre."""
+    if _web(p, rect, "mola_pasta_grafigi", locals()):
+        return
     s = olcek(rect)
     p.save()
     p.setRenderHint(QPainter.Antialiasing, True)
@@ -884,11 +927,16 @@ def sayfa_sayisi(r: dict) -> int:
     return IDARI_SAYFA if r.get("duzen") == "idari" else 1
 
 
-def sayfa_ciz(p: QPainter, rect: QRectF, r: dict, sayfa: int = 0):
+def _sayfa_ciz(p: QPainter, rect: QRectF, r: dict, sayfa: int = 0):
     if r.get("duzen") == "idari":
         idari_ciz(p, rect, r, sayfa)
     else:
         rapor_ciz(p, rect, r)
+
+
+def sayfa_ciz(p: QPainter, rect: QRectF, r: dict, sayfa: int = 0):
+    with rapor_kipi():
+        _sayfa_ciz(p, rect, r, sayfa)
 
 
 def rapor_resmi(r: dict, genislik: int = 1400) -> QImage:

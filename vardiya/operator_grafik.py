@@ -12,7 +12,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QBrush, QColor, QLinearGradient, QPainter, QPen
 
-from . import tema
+from . import cizim, tema
 from .cizim import AL, ORTA, SAG, _nice_max, _yaz
 from .operator import OperatorSonuc
 
@@ -80,6 +80,8 @@ def _biçim(yuzde: bool, deger: float, ymax: float = 10.0) -> str:
 def grafik_ciz(p: QPainter, rect: QRectF, baslik: str, secili: List[Metrik], sonuclar: Dict[str, OperatorSonuc],
                operator: Optional[str]):
     """Seçili her ölçü için alt alta bir sütun grafiği çizer."""
+    if cizim._web(p, rect, "operator_grafik", locals()):
+        return
     s = max(0.85, min(3.0, rect.width() / 900.0))
     p.save()
     p.setRenderHint(QPainter.Antialiasing, True)

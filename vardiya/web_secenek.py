@@ -158,13 +158,14 @@ def genel_performans_grafigi(a: dict) -> dict:
     seri = [{"type": "bar", "name": ad, "stack": "s", "data": d, "barMaxWidth": 46, "color": renkler[ad],
              "itemStyle": _golge(), "label": {"position": "inside", "color": "#fff", "fontWeight": 700, "fontSize": 10},
              "emphasis": {"focus": "none", "itemStyle": {"shadowBlur": 12, "shadowColor": "rgba(21,9,88,0.35)"}}} for ad, d in seriler.items()]
-    alt = -int(round(mola_pay + 2))
+    import math
+    alt = -10 * max(1, math.ceil((mola_pay + 1) / 10))     # eksen 0'dan onar onar: ..., 10%, 0%, -10%
     return {"title": _baslik(baslik), "tooltip": _ipucu(),
             "legend": {"bottom": 0, "itemWidth": 14, "itemHeight": 10, "textStyle": {"color": SOLUK}},
             "grid": {"left": 50, "right": 30, "top": 46 if baslik else 16, "bottom": 70},
             "xAxis": _eksen_x([v[0] for v in veri], axisLine={"onZero": True, "lineStyle": {"color": "#9AA3B8"}}, position="bottom"),
             "yAxis": _eksen_y(min=alt, max=110, interval=10,
-                              axisLabel={"color": SOLUK, "formatter": "{value}%", "showMinLabel": False}),
+                              axisLabel={"color": SOLUK, "formatter": "{value}%"}),
             "series": seri}
 
 
@@ -202,17 +203,17 @@ def cormind_durus_grafigi(a: dict) -> dict:
             x = cm[m]["durus"].get(t, 0.0)
             d.append({"value": round(x, 2) if x else None, "anahtar": m,
                       "tip": f"<b>{m}</b><br>{t}: <b>{x:.1f}%</b><br>Toplam: {cm[m]['toplam']:.0f}% · OEE {cm[m]['oee']:.0f}%".replace(".", ","),
-                      "label": {"show": x >= 4, "formatter": f"{x:.0f}%"}})
+                      "label": {"show": (6 if len(makineler) > 20 else 4) <= x < 95, "formatter": f"{x:.0f}%"}})
         seri.append({"type": "bar", "name": t, "stack": "s", "data": d, "barMaxWidth": 46, "color": tema.durus_rengi(t),
                      "itemStyle": {"borderColor": "rgba(255,255,255,0.6)", "borderWidth": 0.5},
-                     "label": {"position": "inside", "color": "#fff", "fontWeight": 700, "fontSize": 10}})
+                     "label": {"position": "inside", "color": "#fff", "fontWeight": 700, "fontSize": 9 if len(makineler) > 20 else 10}})
     seri.append({"type": "bar", "name": "Mola Süresi", "stack": "s", "color": MOR_, "barMaxWidth": 46,
                  "data": [{"value": round(cm[m]["mola"], 2), "anahtar": m, "tip": f"<b>{m}</b><br>Mola süresi: <b>{cm[m]['mola']:.1f}%</b>".replace(".", ","),
                            "label": {"show": cm[m]["mola"] <= -3, "formatter": f"{cm[m]['mola']:.0f}%"}} for m in makineler],
                  "label": {"position": "inside", "color": "#fff", "fontWeight": 700, "fontSize": 10}})
-    seri.append({"type": "bar", "name": "_toplam", "stack": "s", "silent": True, "legendHoverLink": False, "tooltip": {"show": False},
-                 "data": [{"value": 0, "label": {"show": True, "formatter": f"{cm[m]['toplam']:.0f}%"}} for m in makineler],
-                 "label": {"position": "top", "color": YAZI, "fontWeight": 700, "fontSize": 11}, "itemStyle": {"color": "transparent"}})
+    seri.append({"type": "scatter", "name": "_toplam", "silent": True, "symbolSize": 0, "tooltip": {"show": False}, "z": 5,
+                 "data": [{"value": [m, round(sum(cm[m]["durus"].values()), 2)], "label": {"formatter": f"{cm[m]['toplam']:.0f}%"}} for m in makineler],
+                 "label": {"show": True, "position": "top", "distance": 4, "color": YAZI, "fontWeight": 700, "fontSize": 11}})
     seri[0]["markLine"] = _ort_cizgisi(limit, f"Limit\n%{limit:.0f}", "#3e9b2a")
     tavan = max(110.0, max(v["toplam"] for v in cm.values()) + 8)
     return {"title": _baslik(baslik), "tooltip": _ipucu(),
