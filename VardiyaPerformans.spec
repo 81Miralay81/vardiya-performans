@@ -32,7 +32,7 @@ def gerekli(yol: str) -> bool:
 once = sum(1 for _ in a.datas)
 a.datas = [d for d in a.datas if gerekli(d[0])]
 a.binaries = [b for b in a.binaries if gerekli(b[0])]
-print(f'VARDIYA: {once - len(a.datas)} gereksiz dosya çıkarıldı')
+print(f'VARDIYA: {once - len(a.datas)} gereksiz dosya cikarildi')
 
 pyz = PYZ(a.pure)
 splash = Splash('assets/acilis.png', binaries=a.binaries, datas=a.datas, text_pos=(26, 196), text_size=9,
