@@ -177,65 +177,105 @@ class Istemci:
     GERIYE_GUN = 90        # dönemden önce başlayan kayıtlar için en fazla ne kadar geriye bakılır
     AZAMI_KAYIT = 80000    # tek sorguda en fazla kayıt; aşılırsa durulur (sunucuyu yormamak için)
     SAYFA_ARASI_SN = 0.3
-    # Uyarlamalı sayfa boyutu: hızlı gelirse büyür, yavaşlarsa ya da hata olursa küçülür.
+    # Uyarlamalı sayfa boyutu. Amaç tek isteği kısaltmak değil, TOPLAM çekme süresini en aza indirmek:
+    # 2000 ile başlar ve orada kalır; büyük sayfa ancak ölçülen aktarım hızı (kayıt/sn) gerçekten daha iyiyse seçilir.
+    # Küçülme yalnızca art arda yavaş istek, hata ya da sunucunun sayfayı kısaltmasıyla olur.
     BASAMAKLAR = (250, 500, 1000, 2000, 3000, 5000)
-    HIZLI_SN, YAVAS_SN = 2.0, 6.0
-    sayfa_bilgi: Optional[dict] = None      # son sayfa: {"boyut", "sn", "hiz"}; ilerleme satırında gösterilir
-    _basamak = 2                            # 1000 ile başlar; çekim boyunca öğrenilen değer korunur
+    BASLANGIC = 3                  # 2000
+    YAVAS_SN = 8.0                 # bir tam sayfa bundan uzun sürerse "yavaş" sayılır
+    YAVAS_ART_ARDA = 2             # küçülmek için art arda kaç yavaş sayfa gerekir
+    DENEME_ONCESI = 3              # büyük sayfayı denemeden önce bulunulan basamakta kaç tam sayfa ölçülür
+    DENEME_SAYFA = 2               # büyük sayfa kaç tam sayfa denenir
+    DAHA_IYI = 1.15                # büyük sayfa en az %15 daha fazla kayıt/sn vermezse vazgeçilir
+    HATA_BEKLEME_SN = 1.5
+    AZAMI_HATA = 5                 # aynı sayfada art arda en fazla hata (en küçük boyutta)
+    sayfa_bilgi: Optional[dict] = None      # son sayfa: boyut, sn, adet, hiz, sonraki (ilerleme satırında gösterilir)
 
     def _sayfala(self, where: str, ilerleme, onceki: int = 0) -> List[dict]:
         sonuc: List[dict] = []
         toplam = 0
-        yasak = getattr(self, "_yasak", None)
-        if yasak is None:
-            yasak = self._yasak = set()          # verimi düşüren (denenip vazgeçilen) basamaklar
-        hiz_kaydi = getattr(self, "_hiz", None)
-        if hiz_kaydi is None:
-            hiz_kaydi = self._hiz = {}           # basamak -> ölçülen en iyi hız (kayıt/sn)
-        ust_uste_hata = 0
+        # çekim boyunca (aylar arası) öğrenilen durum korunur
+        if getattr(self, "_basamak", None) is None:
+            self._basamak = self.BASLANGIC
+            self._yasak = set()            # denenip verimsiz bulunan ya da sunucunun kabul etmediği basamaklar
+            self._olcum = {}               # basamak -> son tam sayfaların hızları (kayıt/sn)
+            self._hiz = {}                 # basamak -> ortalama hız (özet için)
+            self._yavas = 0                # art arda yavaş tam sayfa sayısı
+            self._deneme = None            # (deneyen basamak, geri dönülecek basamak) ya da None
+            self.sayfa_gecmisi = []        # her sayfa: boyut, sn, adet, hiz, sonraki
+        hata = 0
         while len(sonuc) < self.AZAMI_KAYIT:
             b = self._basamak
-            boyut = self.BASAMAKLAR[b]
+            boyut = min(self.BASAMAKLAR[b], self.AZAMI_KAYIT - len(sonuc))
             t0 = time.perf_counter()
             try:
                 d = self._graphql("MachineAction", {"where": where, "relations": ["goods", "operator", "operator.user", "machine"],
                                                     "order": {"start": "ASC"}, "limit": boyut, "offset": len(sonuc)})
             except CormindHata:
-                ust_uste_hata += 1
-                if b == 0 or ust_uste_hata > 4:
+                hata += 1
+                if b == 0 and hata >= self.AZAMI_HATA:
                     raise                                   # en küçük boyutta da olmuyor: Cormind cevap vermiyor
-                yasak.add(b)
-                self._basamak = max(0, b - 2)               # iki basamak in, AYNI sayfayı yeniden iste (veri kaybolmaz)
-                time.sleep(1.5)
-                continue
-            ust_uste_hata = 0
+                if self._deneme and self._deneme[0] == b:   # büyük sayfa denemesi hata verdi: vazgeç
+                    self._yasak.add(b)
+                    self._basamak, self._deneme = self._deneme[1], None
+                elif hata >= 2 and b > 0:                   # aynı sayfada ikinci hata: küçül
+                    self._basamak = b - 1
+                time.sleep(self.HATA_BEKLEME_SN * hata)
+                continue                                    # aynı offset ile yeniden (başarısız istek sayılmaz)
+            hata = 0
             sn = max(0.001, time.perf_counter() - t0)
             parca = d.get("entities") or []
             toplam = int(d.get("count") or toplam or 0)
             sonuc += parca
             hiz = len(parca) / sn
-            self.sayfa_bilgi = {"boyut": boyut, "sn": sn, "hiz": hiz}
+            son_sayfa = (not parca) or (toplam and len(sonuc) >= toplam) or (not toplam and len(parca) < boyut)
+            if not son_sayfa:
+                self._karar(b, boyut, len(parca), sn, hiz)
+            bilgi = {"boyut": boyut, "sn": sn, "adet": len(parca), "hiz": hiz, "sonraki": self.BASAMAKLAR[self._basamak]}
+            self.sayfa_bilgi = bilgi
+            self.sayfa_gecmisi.append(bilgi)
             if ilerleme:
                 ilerleme(onceki + len(sonuc), onceki + toplam)
-            # bitti mi: sunucunun bildirdiği toplam esas alınır (sunucu sayfayı kendi sınırıyla kısaltsa bile eksik kalmaz)
-            if not parca or (toplam and len(sonuc) >= toplam) or (not toplam and len(parca) < boyut):
+            if son_sayfa:
                 return sonuc
-            if len(parca) == boyut:                         # tam sayfa: hız ölçüsü anlamlı
-                hiz_kaydi[b] = max(hiz_kaydi.get(b, 0.0), hiz)
-                alt_hiz = hiz_kaydi.get(b - 1)
-                if sn > self.YAVAS_SN and b > 0:
-                    self._basamak = b - 1
-                elif alt_hiz and hiz < alt_hiz * 0.9 and b > 0:
-                    yasak.add(b)                            # büyütmek verimi düşürdü: geri in, bu çekimde bir daha deneme
-                    self._basamak = b - 1
-                elif sn < self.HIZLI_SN and b + 1 < len(self.BASAMAKLAR) and (b + 1) not in yasak:
-                    self._basamak = b + 1
-            elif len(parca) < boyut:                        # sunucu sayfayı kısalttı: bu boyut sunucunun sınırını aşıyor
-                yasak.add(b)
-                self._basamak = max(0, b - 1)
-            time.sleep(self.SAYFA_ARASI_SN + min(2.0, sn * 0.15))    # sunucu yavaşladıkça bekleme de uzar
+            time.sleep(self.SAYFA_ARASI_SN)
         self.kesildi = True
         return sonuc
+
+    def _karar(self, b: int, boyut: int, adet: int, sn: float, hiz: float):
+        """Bir sonraki sayfanın boyutu (yalnızca son olmayan, başarılı sayfalardan sonra)."""
+        if adet < boyut:                                    # sunucu sayfayı kendi sınırıyla kısalttı
+            for k in range(b, len(self.BASAMAKLAR)):
+                self._yasak.add(k)
+            uygun = [k for k, v in enumerate(self.BASAMAKLAR) if v <= adet]
+            self._basamak = uygun[-1] if uygun else 0
+            self._deneme = None
+            return
+        olc = self._olcum.setdefault(b, [])
+        olc.append(hiz)
+        del olc[:-4]
+        self._hiz[self.BASAMAKLAR[b]] = sum(olc) / len(olc)
+        self._yavas = self._yavas + 1 if sn > self.YAVAS_SN else 0
+        if self._deneme and self._deneme[0] == b:           # büyük sayfa deneniyor
+            if len(olc) < self.DENEME_SAYFA:
+                return
+            geri = self._deneme[1]
+            eski = self._olcum.get(geri) or [0.0]
+            if sum(olc) / len(olc) >= self.DAHA_IYI * (sum(eski) / len(eski)):
+                self._deneme = None                         # gerçekten daha hızlı: burada kal
+            else:
+                self._yasak.add(b)                          # daha iyi değil: geri dön, bu çekimde bir daha deneme
+                self._basamak, self._deneme = geri, None
+            return
+        if self._yavas >= self.YAVAS_ART_ARDA and b > 0:    # tek yavaş istek değil, art arda yavaşlık
+            self._basamak, self._yavas = b - 1, 0
+            self._olcum.pop(b - 1, None)
+            return
+        ust = b + 1
+        if (ust < len(self.BASAMAKLAR) and ust not in self._yasak and len(olc) >= self.DENEME_ONCESI
+                and self._yavas == 0):
+            self._olcum.pop(ust, None)
+            self._basamak, self._deneme = ust, (ust, b)
 
     def hareketler(self, ilk: date, son: date, makine_idleri: List[int],
                    ilerleme: Optional[Callable[[int, int], None]] = None, uzanan: bool = True) -> List[dict]:
@@ -400,7 +440,7 @@ def cek(con, adres: str, kullanici: str, sifre: str, ilk: date, son: date, makin
         vt.ayar_yaz(con, "makineler", sorted(bilinen | set(eklenen)))
     return dict(t, tipler=dict(sorted(tipler.items(), key=lambda x: -x[1])), yeni_makineler=eklenen, dar_sorgu=dar, kesildi=kesildi,
                 parca_sayisi=n, biten_parca=biten, durduruldu=durduruldu,
-                hizlar={ist.BASAMAKLAR[b]: h for b, h in sorted(getattr(ist, "_hiz", {}).items())})
+                hizlar=dict(sorted((getattr(ist, "_hiz", None) or {}).items())))
 
 
 # ============================================================ ham döküm (teşhis)

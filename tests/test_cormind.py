@@ -1,4 +1,6 @@
+import pytest
 import json
+import pytest
 import threading
 from datetime import date
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -211,3 +213,125 @@ def test_ay_ay_cekim_ilerleme_ve_suren_kayit(tmp_path, monkeypatch):
     istekler.clear()
     r2 = cormind.cek(con, "http://x", "u", "p", date(2026, 9, 1), date(2026, 11, 5), [5], iptal=lambda: len(istekler) >= 1, parca_arasi_sn=0)
     assert r2["durduruldu"] and r2["biten_parca"] == 1 and len(istekler) == 1
+
+
+# ------------------------------------------------------------ uyarlamalı sayfalama
+class _Saat:
+    """Sahte zaman: istek süreleri gerçekten beklenmeden ölçülür."""
+    def __init__(self):
+        self.t = 0.0
+
+    def perf_counter(self):
+        return self.t
+
+    def sleep(self, sn):
+        self.t += sn
+
+    def monotonic(self):
+        return self.t
+
+
+def _sahte(N, sure, tavan=None, hata=None, sayac=None):
+    """N kayıtlık sahte Cormind. sure(limit, offset) -> sn; tavan: sunucunun sayfa sınırı;
+    hata(limit, offset, deneme) -> True ise o istek hata verir."""
+    saat = _Saat()
+
+    class S(cormind.Istemci):
+        def _graphql(self, model, c):
+            lim, off = c["limit"], c["offset"]
+            self.istekler.append((lim, off))
+            if hata and hata(lim, off, len(self.istekler)):
+                saat.t += 1.0
+                raise cormind.CormindHata("zaman aşımı")
+            ger = min(lim, tavan) if tavan else lim
+            saat.t += sure(ger, off)
+            return {"entities": [{"id": i} for i in range(off, min(N, off + ger))], "count": N}
+
+    s = S("http://x")
+    s.istekler, s.kesildi = [], False
+    return s, saat
+
+
+def _cek(s, saat, monkeypatch):
+    monkeypatch.setattr(cormind.time, "perf_counter", saat.perf_counter)
+    monkeypatch.setattr(cormind.time, "sleep", saat.sleep)
+    return s._sayfala("w", None)
+
+
+def _tam(r, N):
+    return [x["id"] for x in r] == list(range(N))          # eksiksiz ve tekrarsız, sırayla
+
+
+def test_baslangic_2000(monkeypatch):
+    s, saat = _sahte(5000, lambda n, o: 1.0)
+    r = _cek(s, saat, monkeypatch)
+    assert s.istekler[0] == (2000, 0) and _tam(r, 5000)
+
+
+def test_hizli_2000_kucukmez_ve_buyuk_sayfa_daha_iyi_degilse_2000de_kalir(monkeypatch):
+    # büyük sayfa aynı kayıt/sn veriyor (süre kayıtla orantılı): 3000 denenir, vazgeçilir, 2000'de kalınır
+    s, saat = _sahte(40000, lambda n, o: n / 2000.0)
+    r = _cek(s, saat, monkeypatch)
+    boy = [x["boyut"] for x in s.sayfa_gecmisi]
+    assert _tam(r, 40000) and min(boy) == 2000 and boy.count(3000) <= 2 and 5000 not in boy
+    assert boy[-3:-1] == [2000, 2000] and 4 in s._yasak
+
+
+def test_buyuk_sayfa_yalnizca_gercekten_hizliysa_secilir(monkeypatch):
+    # sabit istek gideri baskın: büyük sayfa kayıt/sn olarak çok daha iyi -> 3000, sonra 5000
+    s, saat = _sahte(60000, lambda n, o: 2.0 + n / 20000.0)
+    r = _cek(s, saat, monkeypatch)
+    boy = [x["boyut"] for x in s.sayfa_gecmisi]
+    assert _tam(r, 60000) and 5000 in boy and boy[-2] == 5000
+
+
+def test_tek_yavas_istek_kuculmeye_neden_olmaz(monkeypatch):
+    yavas = {4000}                                          # yalnızca bu offset'teki istek çok yavaş
+    s, saat = _sahte(16000, lambda n, o: 30.0 if o in yavas else 0.5)
+    s.DENEME_ONCESI = 99                                    # büyümeyi kapat: yalnızca küçülme davranışı sınanır
+    r = _cek(s, saat, monkeypatch)
+    assert _tam(r, 16000) and all(x["boyut"] == 2000 for x in s.sayfa_gecmisi)
+
+
+def test_art_arda_yavas_isteklerde_kuculur(monkeypatch):
+    s, saat = _sahte(16000, lambda n, o: 20.0 if n >= 2000 else 1.0)
+    s.DENEME_ONCESI = 99
+    r = _cek(s, saat, monkeypatch)
+    assert _tam(r, 16000) and any(x["boyut"] == 1000 for x in s.sayfa_gecmisi)
+
+
+def test_hatada_ayni_offset_yeniden_denenir(monkeypatch):
+    s, saat = _sahte(6000, lambda n, o: 0.5, hata=lambda lim, off, k: k == 2)   # ikinci istek bir kez hata verir
+    r = _cek(s, saat, monkeypatch)
+    assert s.istekler[1][1] == s.istekler[2][1] == 2000 and _tam(r, 6000)
+    assert len(s.sayfa_gecmisi) == 3                        # başarısız istek sayfa sayılmaz
+
+
+def test_tekrarlanan_hatada_kuculur_ve_kayip_olmaz(monkeypatch):
+    s, saat = _sahte(7000, lambda n, o: 0.5, hata=lambda lim, off, k: lim >= 2000 and off == 2000)
+    r = _cek(s, saat, monkeypatch)
+    assert _tam(r, 7000) and any(lim == 1000 and off == 2000 for lim, off in s.istekler)
+
+
+def test_en_kucuk_boyutta_da_hata_verirse_durur(monkeypatch):
+    s, saat = _sahte(3000, lambda n, o: 0.5, hata=lambda lim, off, k: True)
+    with pytest.raises(cormind.CormindHata):
+        _cek(s, saat, monkeypatch)
+
+
+def test_sunucu_sayfayi_kisaltirsa_kayip_olmaz(monkeypatch):
+    s, saat = _sahte(12345, lambda n, o: 0.5, tavan=1000)
+    r = _cek(s, saat, monkeypatch)
+    assert _tam(r, 12345) and s.sayfa_gecmisi[1]["boyut"] == 1000
+
+
+def test_son_sayfa_eksik_ve_toplam_dogru(monkeypatch):
+    s, saat = _sahte(4567, lambda n, o: 0.5)
+    r = _cek(s, saat, monkeypatch)
+    assert _tam(r, 4567) and [x["adet"] for x in s.sayfa_gecmisi] == [2000, 2000, 567]
+
+
+def test_80000_siniri(monkeypatch):
+    s, saat = _sahte(10 ** 6, lambda n, o: 0.5)
+    r = _cek(s, saat, monkeypatch)
+    assert len(r) == cormind.Istemci.AZAMI_KAYIT and s.kesildi and _tam(r, cormind.Istemci.AZAMI_KAYIT)
