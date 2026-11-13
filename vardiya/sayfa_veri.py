@@ -339,12 +339,13 @@ class VeriSayfasi(QWidget):
         kok.setContentsMargins(26, 22, 26, 22)
         kok.setSpacing(14)
         kok.addWidget(etiket("Veri Aktar", "Baslik"))
-        kok.addWidget(etiket("Veriyi Cormind'den doğrudan çekin ya da Excel listesini yükleyin. Aynı gün ve aynı kayıt tekrar gelirse çoğalmaz; "
+        kok.addWidget(etiket("Veriyi Cormind'den doğrudan çekin. Aynı gün ve aynı kayıt tekrar gelirse çoğalmaz; "
                              "formül hatası olan satırlar atlanır.", "AltBaslik"))
         self.cormind = CormindKarti(ana)
         kok.addWidget(self.cormind)
         self.alan = BirakAlani(self.dosya_sec, self.yukle)
         kok.addWidget(self.alan)
+        self.alan.hide()                        # veri artık Cormind'den doğrudan çekiliyor; Excel ile yükleme gizli
         self.sonuc = QLabel("")
         self.sonuc.setWordWrap(True)
         self.sonuc.hide()

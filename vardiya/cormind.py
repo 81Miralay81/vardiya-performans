@@ -175,7 +175,7 @@ class Istemci:
         return sonuc
 
     GERIYE_GUN = 90        # dönemden önce başlayan kayıtlar için en fazla ne kadar geriye bakılır
-    AZAMI_KAYIT = 80000    # tek sorguda en fazla kayıt; aşılırsa durulur (sunucuyu yormamak için)
+    AZAMI_KAYIT = 400000   # tek sorguda en fazla kayıt (bir ayda 80.000'i aşan aylar oldu); aşılırsa durulur
     SAYFA_ARASI_SN = 0.3
     # Uyarlamalı sayfa boyutu. Amaç tek isteği kısaltmak değil, TOPLAM çekme süresini en aza indirmek:
     # 2000 ile başlar ve orada kalır; büyük sayfa ancak ölçülen aktarım hızı (kayıt/sn) gerçekten daha iyiyse seçilir.

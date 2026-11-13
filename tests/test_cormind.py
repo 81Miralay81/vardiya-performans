@@ -331,7 +331,7 @@ def test_son_sayfa_eksik_ve_toplam_dogru(monkeypatch):
     assert _tam(r, 4567) and [x["adet"] for x in s.sayfa_gecmisi] == [2000, 2000, 567]
 
 
-def test_80000_siniri(monkeypatch):
+def test_kayit_siniri(monkeypatch):
     s, saat = _sahte(10 ** 6, lambda n, o: 0.5)
     r = _cek(s, saat, monkeypatch)
     assert len(r) == cormind.Istemci.AZAMI_KAYIT and s.kesildi and _tam(r, cormind.Istemci.AZAMI_KAYIT)

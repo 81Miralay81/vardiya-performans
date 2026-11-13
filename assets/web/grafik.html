@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="tr"><head><meta charset="utf-8">
+<script src="echarts.min.js"></script>
+<style>
+html,body{margin:0;height:100%;background:#fff;overflow:hidden;user-select:none}
+#g{position:absolute;inset:0}
+#r{position:absolute;left:-20000px;top:0}
+</style></head><body>
+<div id="g"></div><div id="r"></div>
+<script>
+// Python tarafı: goster(opt) ekranda canlı grafik; resim(opt, w, h, oran) PDF/rapor için PNG (data URL).
+var FONT = '"Segoe UI", system-ui, sans-serif';
+function hazirla(o){
+  o = JSON.parse(JSON.stringify(o));
+  o.textStyle = Object.assign({fontFamily: FONT}, o.textStyle || {});
+  if (o.tooltip && o.tooltip.ozel) {
+    delete o.tooltip.ozel;
+    o.tooltip.formatter = function(p){
+      var a = Array.isArray(p) ? p : [p];
+      var parcalar = [];
+      a.forEach(function(x){ if (x.data && x.data.tip) parcalar.push(x.data.tip); });
+      if (parcalar.length) return parcalar.join('<br>');
+      return a.map(function(x){ return x.marker + x.seriesName + ': <b>' + x.value + '</b>'; }).join('<br>');
+    };
+  }
+  return o;
+}
+var ekran = null, son = null;
+window.goster = function(opt){
+  if (!ekran) {
+    ekran = echarts.init(document.getElementById('g'), null, {renderer: 'canvas'});
+    ekran.on('click', function(p){
+      var d = p.data || {};
+      console.log('TIK|' + JSON.stringify({anahtar: d.anahtar || p.name || null, kisim: d.kisim || null}));
+    });
+    window.addEventListener('resize', function(){ ekran.resize(); });
+  }
+  son = hazirla(opt);
+  ekran.setOption(son, true);
+  return true;
+};
+var cizer = null;
+window.resim = function(opt, w, h, oran){
+  var d = document.getElementById('r');
+  d.style.width = w + 'px'; d.style.height = h + 'px';
+  if (cizer) cizer.dispose();
+  cizer = echarts.init(d, null, {renderer: 'canvas', width: w, height: h, devicePixelRatio: oran});
+  var o = hazirla(opt);
+  o.animation = false;
+  cizer.setOption(o, true);
+  return cizer.getDataURL({type: 'png', pixelRatio: oran, backgroundColor: '#ffffff'});
+};
+console.log('HAZIR|');
+</script></body></html>
