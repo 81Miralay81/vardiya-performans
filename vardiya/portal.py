@@ -582,11 +582,20 @@ def yerel_adresler() -> list:
     return ipler
 
 
+class _Sunucu(ThreadingHTTPServer):
+    daemon_threads = True
+
+    def handle_error(self, request, client_address):
+        if isinstance(sys.exc_info()[1], (ConnectionError, TimeoutError)):    # tarayıcı bağlantıyı kapattı: sorun değil
+            return
+        super().handle_error(request, client_address)
+
+
 def sunucu_kur(db_yolu: str, port: int = 8443, ev: str = "0.0.0.0") -> ThreadingHTTPServer:
     vt.ac(db_yolu).close()                                # dosya/şema hazır olsun
     P = Portal(db_yolu)
     sinif = type("PortalIsleyici", (Isleyici,), {"portal": P})
-    srv = ThreadingHTTPServer((ev, port), sinif)
+    srv = _Sunucu((ev, port), sinif)
     srv.daemon_threads = True
     srv.portal = P  # type: ignore[attr-defined]
     return srv
