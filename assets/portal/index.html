@@ -1,0 +1,573 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Vardiya Performans</title>
+<link rel="icon" href="/static/logo.png">
+<style>
+:root{--lacivert:#150958;--yesil:#5E9B2A;--zemin:#F2F4F8;--cizgi:#D9DEE8;--yazi:#1B1E2B;--soluk:#6B7285;--turuncu:#F28C28;--kirmizi:#C0392B;--mor:#7A5AA6}
+*{box-sizing:border-box}
+body{margin:0;font:14px/1.45 "Segoe UI","DejaVu Sans",Arial,sans-serif;color:var(--yazi);background:var(--zemin)}
+#kok{display:flex;min-height:100vh}
+#yan{width:224px;flex:none;background:#fff;border-right:1px solid var(--cizgi);padding:14px;position:sticky;top:0;height:100vh;overflow:auto;display:flex;flex-direction:column;gap:4px}
+#yan img{width:100%;max-width:190px;margin:0 auto 4px;display:block}
+#yan h1{font-size:14px;color:var(--lacivert);text-align:center;margin:0 0 12px}
+.menu{border:0;background:none;text-align:left;padding:9px 12px;border-radius:8px;font:inherit;color:var(--lacivert);cursor:pointer}
+.menu:hover{background:#eceffa}.menu.aktif{background:var(--lacivert);color:#fff}
+#altbilgi{margin-top:auto;font-size:12px;color:var(--soluk);padding-top:12px;white-space:pre-line}
+main{flex:1;min-width:0;padding:18px 26px}
+.kart{background:#fff;border:1px solid var(--cizgi);border-radius:10px;padding:14px 16px;margin-bottom:12px}
+.kart h2{margin:0 0 8px;font-size:15px;color:var(--lacivert)}
+.satir{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:4px 0}
+button,.dugme{font:inherit;border:1px solid var(--lacivert);background:var(--lacivert);color:#fff;border-radius:7px;padding:6px 12px;cursor:pointer}
+button:hover{filter:brightness(1.15)}button:disabled{opacity:.5;cursor:default}
+button.ikincil,button.hizli{background:#fff;color:var(--lacivert)}button.hizli{padding:4px 10px;border-color:var(--cizgi)}button.hizli:hover{background:#eceffa}
+button.tehlike{background:var(--kirmizi);border-color:var(--kirmizi)}
+input,select,textarea{font:inherit;border:1px solid var(--cizgi);border-radius:6px;padding:5px 8px;background:#fff;color:var(--yazi)}
+textarea{width:100%;min-height:120px}
+label{display:inline-flex;gap:6px;align-items:center}
+.soluk{color:var(--soluk)}.kirmizi{color:var(--kirmizi)}
+#mesaj{display:none;padding:9px 14px;border-radius:8px;margin-bottom:10px}
+#mesaj.tamam{background:#e6f4d8;border:1px solid #b9d98f}#mesaj.hata{background:#fbe3e0;border:1px solid #e3a49c}
+.uyari{padding:10px 14px;border-radius:8px;background:#fff6e0;border:1px solid #f0d58a;margin-bottom:10px}
+.uyari.kirmizi{background:#fbe3e0;border-color:#e3a49c;color:#7d1f15}
+.yukleniyor{padding:40px;text-align:center;color:var(--soluk)}
+table{border-collapse:collapse;width:100%}
+th,td{padding:5px 9px;border-bottom:1px solid var(--cizgi);text-align:left;white-space:nowrap}
+th{background:#f7f8fc;color:var(--lacivert);position:sticky;top:0}
+td.s,th.s{text-align:right;font-variant-numeric:tabular-nums}
+tr.t{cursor:pointer}tr.t:hover td{background:#f3f6ff}tr.bozuk td{background:#fdecea}
+.tablo{overflow:auto;max-height:560px;border:1px solid var(--cizgi);border-radius:8px}
+.kartlar{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-bottom:12px}
+.kartlar .kart{margin:0}.buyuk{font-size:26px;font-weight:700;color:var(--lacivert)}
+.grafik{width:100%;height:380px}
+.sol{border-left:4px solid var(--lacivert);padding-left:10px}
+.drop{border:2px dashed var(--cizgi);border-radius:10px;padding:26px;text-align:center;color:var(--soluk)}.drop.uzerinde{border-color:var(--lacivert);background:#eceffa}
+.kagit{background:#fff;border:1px solid var(--cizgi);padding:18px;border-radius:6px}
+.kagit h1{font-size:20px;color:var(--lacivert);margin:0 0 4px}
+.kagit img.cormind{max-width:100%;margin-top:8px}
+pre{white-space:pre-wrap;background:#f7f8fc;border:1px solid var(--cizgi);border-radius:8px;padding:12px}
+progress{width:260px}
+.iki{display:grid;grid-template-columns:1fr 1fr;gap:12px}@media(max-width:1100px){.iki{grid-template-columns:1fr}#yan{width:170px}}
+@page{size:A3 landscape;margin:10mm}
+@media print{body{background:#fff}#yan,#donem,#mesaj,.yazdirma{display:none!important}main{padding:0}.kagit{border:0;padding:0}#kok{display:block}}
+</style>
+</head>
+<body>
+<div id="kok">
+  <aside id="yan">
+    <img src="/static/logo.png" alt="">
+    <h1>Vardiya Performans</h1>
+    <div id="menu"></div>
+    <div id="altbilgi"></div>
+  </aside>
+  <main>
+    <div id="donem"></div>
+    <div id="mesaj"></div>
+    <div id="sayfa"></div>
+  </main>
+</div>
+<script src="/static/echarts.min.js"></script>
+<script>
+'use strict';
+/* ------------------------------------------------------------------ yardımcılar */
+const $ = (s, e = document) => e.querySelector(s);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+const pct = (x, b = 2) => x == null ? '' : (x * 100).toFixed(b).replace('.', ',') + '%';     // 0-1 oran
+const pct100 = (x, b = 1) => x == null ? '' : x.toFixed(b).replace('.', ',') + '%';          // 0-100
+const say = (x, b = 1) => x == null ? '' : x.toFixed(b).replace('.', ',');
+const saat = sn => say((sn || 0) / 3600, 1);
+const x100 = x => x == null ? null : Math.round(x * 10000) / 100;
+const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+const parse = s => { const [a, b, c] = s.split('-').map(Number); return new Date(a, b - 1, c); };
+const ekle = (s, n) => { const d = parse(s); d.setDate(d.getDate() + n); return iso(d); };
+const trT = s => { if (!s) return ''; const [a, b, c] = s.slice(0, 10).split('-'); return c + '.' + b + '.' + a; };
+const GUNAD = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
+const AYAD = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+const trSirala = (a, b) => String(a).localeCompare(String(b), 'tr');
+const RENK = {calisma: '#150958', durus: '#C0392B', mola: '#7A5AA6', esik: '#F28C28'};
+const METRIK = ['Çalışma', 'Duruş', 'Mola'];
+const METRIK_RENK = [RENK.calisma, RENK.durus, RENK.mola];
+
+async function api(yol, ayar) {
+  const r = await fetch(yol, ayar);
+  let j = null;
+  const tur = r.headers.get('Content-Type') || '';
+  if (tur.includes('application/json')) j = await r.json().catch(() => null);
+  if (!r.ok) throw new Error((j && j.hata) || ('İstek başarısız (' + r.status + ')'));
+  return j;
+}
+const post = (y, o) => api(y, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(o)});
+function mesaj(m, hata) {
+  const e = $('#mesaj'); e.textContent = m; e.className = hata ? 'hata' : 'tamam'; e.style.display = 'block';
+  clearTimeout(mesaj.z); mesaj.z = setTimeout(() => { e.style.display = 'none'; }, hata ? 9000 : 5000);
+}
+let GRAFIKLER = [];
+function grafik(el, opt, tikla) {
+  if (typeof el === 'string') el = $(el);
+  if (!el) return null;
+  const c = echarts.init(el); c.setOption(opt); GRAFIKLER.push(c);
+  if (tikla) c.on('click', tikla);
+  return c;
+}
+function grafikleriTemizle() { GRAFIKLER.forEach(c => c.dispose()); GRAFIKLER = []; }
+window.addEventListener('resize', () => GRAFIKLER.forEach(c => c.resize()));
+
+/* ------------------------------------------------------------------ durum */
+const S = {sayfa: 'performans', ilk: null, son: null, haric: new Set(), hesap: null, durum: null, tk: 0, cmz: null};
+const MENU = [['veri', 'Veri Aktar'], ['kayitlar', 'Kayıtlar'], ['performans', 'Performans'], ['calisma', 'Çalışma'], ['durus', 'Genel Duruş'],
+  ['mola', 'Mola'], ['operator', 'Operatör'], ['rapor', 'Raporlar'], ['gecmis', 'Geçmiş'], ['ayar', 'Ayarlar']];
+const DONEMLI = new Set(['performans', 'calisma', 'durus', 'mola', 'operator']);
+
+function donemKaydet() { try { localStorage.setItem('vp_donem', JSON.stringify({ilk: S.ilk, son: S.son, haric: [...S.haric]})); } catch (e) { /* yok say */ } }
+function donemOku() {
+  try { const d = JSON.parse(localStorage.getItem('vp_donem') || 'null'); if (d && d.ilk && d.son) { S.ilk = d.ilk; S.son = d.son; S.haric = new Set(d.haric || []); return true; } } catch (e) { /* yok say */ }
+  return false;
+}
+function sonVeriGunu() { const k = Object.keys((S.durum || {}).kapsam || {}).sort(); return k.length ? k[k.length - 1] : null; }
+const HIZLI = [
+  ['Dün', () => { const t = iso(new Date()); return [ekle(t, -1), ekle(t, -1)]; }],
+  ['Son 7 Gün', () => { const t = iso(new Date()); return [ekle(t, -7), ekle(t, -1)]; }],
+  ['Son 30 Gün', () => { const t = iso(new Date()); return [ekle(t, -30), ekle(t, -1)]; }],
+  ['Bu Hafta', () => { const t = new Date(); const g = (t.getDay() + 6) % 7; const b = iso(t); return [ekle(b, -g), b]; }],
+  ['Geçen Hafta', () => { const t = new Date(); const g = (t.getDay() + 6) % 7; const b = iso(t); return [ekle(b, -g - 7), ekle(b, -g - 1)]; }],
+  ['Bu Ay', () => { const t = new Date(); return [iso(new Date(t.getFullYear(), t.getMonth(), 1)), iso(t)]; }],
+  ['Geçen Ay', () => { const t = new Date(); return [iso(new Date(t.getFullYear(), t.getMonth() - 1, 1)), iso(new Date(t.getFullYear(), t.getMonth(), 0))]; }],
+  ['Son Veri Günü', () => { const s = sonVeriGunu() || iso(new Date()); return [s, s]; }],
+];
+
+async function durumYenile() {
+  S.durum = await api('/api/durum');
+  const k = Object.keys(S.durum.kapsam).sort();
+  $('#altbilgi').textContent = k.length ? 'Veri: ' + S.durum.toplam_kayit.toLocaleString('tr-TR') + ' kayıt\n' + trT(k[0]) + ' – ' + trT(k[k.length - 1]) + '\nSürüm ' + S.durum.surum : 'Henüz veri yok\nSürüm ' + S.durum.surum;
+}
+
+/* ------------------------------------------------------------------ dönem çubuğu */
+function donemCiz() {
+  const e = $('#donem');
+  e.innerHTML = '<div class="kart"><div class="satir">' + HIZLI.map(([a]) => '<button class="hizli" data-h="' + esc(a) + '">' + esc(a) + '</button>').join('') + '</div>' +
+    '<div class="satir"><label>Başlangıç <input type="date" id="d_ilk" value="' + S.ilk + '"></label><label>Bitiş <input type="date" id="d_son" value="' + S.son + '"></label>' +
+    '<button id="d_uygula">Uygula</button><button id="d_gunler" class="ikincil">Günleri işaretle…' + (S.haric.size ? ' (' + S.haric.size + ' gün çıkarıldı)' : '') + '</button>' +
+    '<span class="soluk">Eşik: ' + pct((S.durum.ayar || {}).esik, 0) + ' · ' + ((new Date(S.son) - new Date(S.ilk)) / 864e5 + 1) + ' gün</span></div></div>';
+  e.querySelectorAll('.hizli').forEach(b => b.onclick = () => { const h = HIZLI.find(x => x[0] === b.dataset.h); [S.ilk, S.son] = h[1](); S.haric = new Set(); donemDegisti(); });
+  $('#d_uygula').onclick = () => {
+    const a = $('#d_ilk').value, b = $('#d_son').value;
+    if (!a || !b || b < a) return mesaj('Tarih aralığı geçersiz', true);
+    S.ilk = a; S.son = b; S.haric = new Set([...S.haric].filter(g => g >= a && g <= b)); donemDegisti();
+  };
+  $('#d_gunler').onclick = gunlerPenceresi;
+}
+function donemDegisti() { S.hesap = null; donemKaydet(); donemCiz(); sayfaCiz(); }
+function gunlerPenceresi() {
+  const gunler = []; for (let g = S.ilk; g <= S.son; g = ekle(g, 1)) { gunler.push(g); if (gunler.length > 400) break; }
+  const kap = S.durum.kapsam;
+  const ar = document.createElement('div');
+  ar.style.cssText = 'position:fixed;inset:0;background:#0006;display:flex;align-items:center;justify-content:center;z-index:9';
+  ar.innerHTML = '<div class="kart" style="width:420px;max-height:80vh;overflow:auto"><h2>Hesaba girecek günler</h2><div class="satir"><button class="ikincil" id="g_hepsi">Hepsini seç / kaldır</button></div>' +
+    gunler.map(g => '<div><label><input type="checkbox" value="' + g + '"' + (S.haric.has(g) ? '' : ' checked') + '> ' + trT(g) + ' ' + GUNAD[parse(g).getDay()] +
+      (kap[g] ? ' <span class="soluk">(' + kap[g] + ' kayıt)</span>' : ' <span class="kirmizi">(veri yok)</span>') + '</label></div>').join('') +
+    '<div class="satir"><button id="g_tamam">Tamam</button><button class="ikincil" id="g_iptal">Vazgeç</button></div></div>';
+  document.body.appendChild(ar);
+  const kutular = () => [...ar.querySelectorAll('input[type=checkbox]')];
+  $('#g_hepsi', ar).onclick = () => { const hepsi = kutular().every(k => k.checked); kutular().forEach(k => { k.checked = !hepsi; }); };
+  $('#g_iptal', ar).onclick = () => ar.remove();
+  $('#g_tamam', ar).onclick = () => { S.haric = new Set(kutular().filter(k => !k.checked).map(k => k.value)); ar.remove(); donemDegisti(); };
+}
+
+/* ------------------------------------------------------------------ ortak hesap ve çizimler */
+async function hesapGetir(ilk, son, haric) {
+  const q = new URLSearchParams({ilk, son, haric: [...(haric || [])].join(',')});
+  return api('/api/hesap?' + q);
+}
+async function hesap() { if (!S.hesap) S.hesap = await hesapGetir(S.ilk, S.son, S.haric); return S.hesap; }
+function makineSirasi(h) {
+  const var_ = Object.keys(h.makine_ort), sira = (S.durum.ayar.makineler || []).filter(m => var_.includes(m));
+  return sira.concat(var_.filter(m => !sira.includes(m)).sort(trSirala));
+}
+function bosSayfa(k, h) {
+  k.innerHTML = '<div class="uyari">Seçili dönemde hesaba girecek gün yok. Dönem çubuğundan gün aralığı seçin ya da <b>Veri Aktar</b> sayfasından veri yükleyin.</div>';
+}
+function uyarilar(h) {
+  let s = '';
+  if (h.bozuk) s += '<div class="uyari">' + h.bozuk + ' bozuk (çakışan) uzun çalışma kaydı hesaba alınmadı. Ayrıntı: <b>Kayıtlar</b> sayfasında "Yalnız bozuk" süzgeci.</div>';
+  if (h.verisiz_gunler.length) s += '<div class="uyari">Kaydı olmayan gün (ortalamaya girmez): ' + h.verisiz_gunler.map(trT).join(', ') + '</div>';
+  return s;
+}
+function seflerSatiri(h) { return [1, 2, 3].map(v => v + '. vardiya: <b>' + esc((h.seflar || {})[v] || '—') + '</b>').join(' · '); }
+function ozetKartlari(h) {
+  const g = h.genel;
+  return '<div class="kartlar"><div class="kart sol"><div class="soluk">Genel çalışma</div><div class="buyuk">' + pct(g[0]) + '</div></div>' +
+    '<div class="kart sol"><div class="soluk">Genel duruş</div><div class="buyuk" style="color:' + RENK.durus + '">' + pct(g[1]) + '</div></div>' +
+    '<div class="kart sol"><div class="soluk">Genel mola</div><div class="buyuk" style="color:' + RENK.mola + '">' + pct(g[2]) + '</div></div>' +
+    [1, 2, 3].map(v => { const o = h.vardiyalar[v] || {}; return '<div class="kart"><div class="soluk">' + v + '. vardiya · ' + esc((h.seflar || {})[v] || '') + '</div><div class="buyuk">' + pct(o.calisma) +
+      '</div><div class="soluk">' + say(o.makine_sayisi, 1) + ' makine · duruş ' + pct(o.durus) + ' · mola ' + pct(o.mola) + ' · ' + (o.gun_sayisi || 0) + ' gün</div></div>'; }).join('') + '</div>';
+}
+function makineGrafigi(el, h, mak, tikla) {
+  const esik = x100(S.durum.ayar.esik), kes = v => (v == null ? null : x100(v));
+  return grafik(el, {
+    tooltip: {trigger: 'axis', valueFormatter: v => v == null ? '' : v.toFixed(2).replace('.', ',') + '%'},
+    legend: {top: 0}, grid: {left: 52, right: 16, top: 36, bottom: 62},
+    xAxis: {type: 'category', data: mak, axisLabel: {rotate: 60, interval: 0}},
+    yAxis: {type: 'value', axisLabel: {formatter: '{value}%'}},
+    series: METRIK.map((ad, i) => ({
+      name: ad, type: 'bar', itemStyle: {color: METRIK_RENK[i]}, data: mak.map(m => kes((h.makine_ort[m] || [])[i])),
+      ...(i === 0 ? {markLine: {symbol: 'none', silent: true, data: [{yAxis: esik, lineStyle: {color: RENK.esik, type: 'dashed'}, label: {formatter: 'Eşik %' + esik}}]}} : {}),
+    })),
+  }, tikla);
+}
+function makineTablosu(h, mak) {
+  const v = [1, 2, 3];
+  return '<div class="tablo"><table><thead><tr><th>Makine</th>' + v.map(x => '<th class="s">' + x + '. Vrd. Çalışma</th>').join('') +
+    '<th class="s">Çalışma</th><th class="s">Duruş</th><th class="s">Mola</th></tr></thead><tbody>' +
+    mak.map(m => { const o = h.makine_ort[m] || [], hc = h.hucreler[m] || {};
+      return '<tr class="t" data-m="' + esc(m) + '"><td><b>' + esc(m) + '</b></td>' + v.map(x => '<td class="s">' + (hc[x] ? pct(hc[x][0]) : '') + '</td>').join('') +
+        '<td class="s">' + pct(o[0]) + '</td><td class="s">' + pct(o[1]) + '</td><td class="s">' + pct(o[2]) + '</td></tr>'; }).join('') +
+    '</tbody><tfoot><tr><td><b>Ortalama</b></td>' + v.map(x => '<td class="s"><b>' + pct((h.vardiyalar[x] || {}).calisma) + '</b></td>').join('') +
+    '<td class="s"><b>' + pct(h.genel[0]) + '</b></td><td class="s"><b>' + pct(h.genel[1]) + '</b></td><td class="s"><b>' + pct(h.genel[2]) + '</b></td></tr></tfoot></table></div>';
+}
+function esikAltiNotu(h) {
+  const k = Object.keys(h.esik_alti || {});
+  if (!k.length) return '';
+  return '<div class="uyari">Kaydı olduğu halde hiçbir vardiyada eşiği geçemeyen makineler (hesaba girmez): ' +
+    k.sort(trSirala).map(m => esc(m) + ' (' + pct(h.esik_alti[m][0], 1) + ')').join(', ') + '</div>';
+}
+function durusDetay(h, m) {
+  const d = h.durus[m] || {}, k = Object.keys(d).sort((a, b) => d[b] - d[a]);
+  const e = $('#detay');
+  if (!k.length) { e.innerHTML = '<div class="kart"><h2>' + esc(m) + '</h2><span class="soluk">Seçili günlerde duruş kaydı yok.</span></div>'; return; }
+  e.innerHTML = '<div class="kart"><h2>' + esc(m) + ' · duruş dökümü (saat)</h2><div id="detay_g" class="grafik" style="height:' + (60 + k.length * 30) + 'px"></div></div>';
+  grafik('#detay_g', {
+    tooltip: {valueFormatter: v => say(v, 2) + ' saat'}, grid: {left: 150, right: 40, top: 10, bottom: 24},
+    xAxis: {type: 'value'}, yAxis: {type: 'category', data: k.slice().reverse(), axisLabel: {width: 140, overflow: 'truncate'}},
+    series: [{type: 'bar', data: k.slice().reverse().map(a => Math.round(d[a] * 100) / 100), itemStyle: {color: RENK.durus}, label: {show: true, position: 'right', formatter: p => say(p.value, 1)}}],
+  });
+  e.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+}
+function cormindBolumu(h) {
+  const c = h.cormind || {}, mak = Object.keys(c);
+  if (!mak.length) return '';
+  const sirali = (S.durum.ayar.makineler || []).filter(m => c[m]).concat(mak.filter(m => !(S.durum.ayar.makineler || []).includes(m)));
+  return '<div class="kart"><h2>Cormind hesabı (OEE) · eşik uygulanmaz</h2><div id="cm_g" class="grafik"></div><div class="tablo" style="margin-top:8px;max-height:300px"><table><thead><tr><th>Makine</th><th class="s">OEE</th><th class="s">Duruş</th><th class="s">Mola süresi</th><th class="s">Toplam kayıp</th></tr></thead><tbody>' +
+    sirali.map(m => { const o = c[m], dt = Object.values(o.durus).reduce((a, b) => a + b, 0);
+      return '<tr><td><b>' + esc(m) + '</b></td><td class="s">' + pct100(o.oee) + '</td><td class="s">' + pct100(dt) + '</td><td class="s">' + pct100(o.mola) + '</td><td class="s">' + pct100(o.toplam) + '</td></tr>'; }).join('') +
+    '</tbody></table></div></div>';
+}
+function cormindGrafigi(h) {
+  const c = h.cormind || {}, sirali = (S.durum.ayar.makineler || []).filter(m => c[m]);
+  const m = sirali.length ? sirali : Object.keys(c);
+  const tipler = {}; m.forEach(x => Object.entries(c[x].durus).forEach(([t, v]) => { tipler[t] = (tipler[t] || 0) + v; }));
+  const ilk = Object.keys(tipler).sort((a, b) => tipler[b] - tipler[a]).slice(0, 8);
+  grafik('#cm_g', {
+    tooltip: {trigger: 'axis', valueFormatter: v => v == null ? '' : v.toFixed(1).replace('.', ',') + '%'}, legend: {top: 0, type: 'scroll'}, grid: {left: 52, right: 16, top: 40, bottom: 62},
+    xAxis: {type: 'category', data: m, axisLabel: {rotate: 60, interval: 0}}, yAxis: {type: 'value', axisLabel: {formatter: '{value}%'}},
+    series: [{name: 'OEE', type: 'bar', data: m.map(x => Math.round(c[x].oee * 10) / 10), itemStyle: {color: '#5E9B2A'}}].concat(
+      ilk.map(t => ({name: t, type: 'bar', stack: 'k', data: m.map(x => Math.round((c[x].durus[t] || 0) * 10) / 10)}))),
+  });
+}
+
+/* ------------------------------------------------------------------ sayfalar */
+const SAYFALAR = {};
+
+SAYFALAR.performans = async (k, tk) => {
+  const h = await hesap(); if (tk !== S.tk) return;
+  if (h.bos) return bosSayfa(k, h);
+  const mak = makineSirasi(h);
+  k.innerHTML = uyarilar(h) + '<div class="soluk" style="margin-bottom:8px">' + seflerSatiri(h) + '</div>' + ozetKartlari(h) + esikAltiNotu(h) +
+    '<div class="kart"><h2>Makine performansı <span class="soluk" style="font-weight:400">(duruş dökümü için bir sütuna ya da tablo satırına tıklayın)</span></h2><div id="g_makine" class="grafik" style="height:430px"></div></div>' +
+    '<div id="detay"></div><div class="kart"><h2>Makine tablosu</h2>' + makineTablosu(h, mak) + '</div>' + cormindBolumu(h);
+  makineGrafigi('#g_makine', h, mak, p => { if (p.name && h.makine_ort[p.name]) durusDetay(h, p.name); });
+  k.querySelectorAll('tr.t').forEach(tr => { tr.onclick = () => durusDetay(h, tr.dataset.m); });
+  if (h.cormind && Object.keys(h.cormind).length) cormindGrafigi(h);
+};
+
+function analizSayfasi(idx) {
+  return async (k, tk) => {
+    const h = await hesap(); if (tk !== S.tk) return;
+    if (h.bos) return bosSayfa(k, h);
+    const mak = makineSirasi(h), ad = METRIK[idx], v = [1, 2, 3];
+    const vr = ['#150958', '#5E9B2A', '#F28C28'];
+    k.innerHTML = uyarilar(h) + '<div class="soluk" style="margin-bottom:8px">' + seflerSatiri(h) + '</div>' +
+      '<div class="kartlar">' + v.map(x => { const o = h.vardiyalar[x] || {}; return '<div class="kart sol"><div class="soluk">' + x + '. vardiya ' + ad.toLowerCase() + '</div><div class="buyuk">' +
+        pct([o.calisma, o.durus, o.mola][idx]) + '</div><div class="soluk">' + say(o.makine_sayisi, 1) + ' makine · ' + (o.gun_sayisi || 0) + ' gün</div></div>'; }).join('') +
+      '<div class="kart sol"><div class="soluk">Genel ' + ad.toLowerCase() + '</div><div class="buyuk">' + pct(h.genel[idx]) + '</div></div></div>' +
+      '<div class="kart"><h2>' + ad + ' · makine ve vardiya</h2><div id="g_a" class="grafik" style="height:430px"></div></div>' +
+      '<div class="kart"><h2>' + ad + ' tablosu</h2><div class="tablo"><table><thead><tr><th>Makine</th>' + v.map(x => '<th class="s">' + x + '. Vardiya</th>').join('') + '<th class="s">Ortalama</th></tr></thead><tbody>' +
+      mak.map(m => '<tr><td><b>' + esc(m) + '</b></td>' + v.map(x => { const t = (h.hucreler[m] || {})[x]; return '<td class="s">' + (t ? pct(t[idx]) : '') + '</td>'; }).join('') +
+        '<td class="s"><b>' + pct((h.makine_ort[m] || [])[idx]) + '</b></td></tr>').join('') + '</tbody></table></div></div>';
+    grafik('#g_a', {
+      tooltip: {trigger: 'axis', valueFormatter: z => z == null ? '' : z.toFixed(2).replace('.', ',') + '%'}, legend: {top: 0}, grid: {left: 52, right: 16, top: 36, bottom: 62},
+      xAxis: {type: 'category', data: mak, axisLabel: {rotate: 60, interval: 0}}, yAxis: {type: 'value', axisLabel: {formatter: '{value}%'}},
+      series: v.map((x, i) => ({name: x + '. Vardiya', type: 'bar', itemStyle: {color: vr[i]}, data: mak.map(m => { const t = (h.hucreler[m] || {})[x]; return t ? x100(t[idx]) : null; })})).concat(
+        [{name: 'Ortalama', type: 'line', symbol: 'diamond', symbolSize: 8, lineStyle: {width: 0}, itemStyle: {color: METRIK_RENK[idx]}, data: mak.map(m => x100((h.makine_ort[m] || [])[idx]))}]),
+    });
+  };
+}
+SAYFALAR.calisma = analizSayfasi(0);
+SAYFALAR.durus = analizSayfasi(1);
+SAYFALAR.mola = analizSayfasi(2);
+
+SAYFALAR.operator = async (k, tk) => {
+  const q = new URLSearchParams({ilk: S.ilk, son: S.son, haric: [...S.haric].join(',')});
+  const d = await api('/api/operator?' + q); if (tk !== S.tk) return;
+  const ops = d.operatorler;
+  if (!ops.length) { k.innerHTML = '<div class="uyari">Seçili dönemde operatör bilgisi olan kayıt yok.</div>'; return; }
+  const haric = (S.durum.ayar.operator_haric_durus || []);
+  k.innerHTML = (haric.length ? '<div class="uyari">Hesap dışı bırakılan duruş türleri: ' + haric.map(esc).join(', ') + ' (Ayarlar\'dan değişir)</div>' : '') +
+    '<div class="kart"><h2>Operatör performansı <span class="soluk" style="font-weight:400">(ayrıntı için satıra tıklayın)</span></h2><div id="g_op" class="grafik" style="height:' + (120 + ops.length * 26) + 'px"></div></div>' +
+    '<div id="op_detay"></div><div class="kart"><h2>Operatör tablosu</h2><div class="tablo"><table><thead><tr><th>Operatör</th><th class="s">Makine</th><th class="s">Çalışma</th><th class="s">Duruş</th><th class="s">Mola</th>' +
+    '<th class="s">Boşta</th><th class="s">Setup (sa)</th><th class="s">İş emri yok (sa)</th><th class="s">Belgesiz (sa)</th><th class="s">En uzun duruş (sa)</th><th class="s">Duruş adedi</th></tr></thead><tbody>' +
+    ops.map((o, i) => '<tr class="t" data-i="' + i + '"><td><b>' + esc(o.ad) + '</b></td><td class="s">' + o.makine_sayisi + '</td><td class="s">' + pct(o.calisma) + '</td><td class="s">' + pct(o.durus) + '</td><td class="s">' + pct(o.mola) +
+      '</td><td class="s">' + pct(o.bosta_orani, 1) + '</td><td class="s">' + saat(o.setup_sn) + '</td><td class="s">' + saat(o.plansiz_sn) + '</td><td class="s">' + saat(o.belgesiz_sn) +
+      '</td><td class="s">' + saat(o.en_uzun_durus_sn) + '</td><td class="s">' + o.durus_adedi + '</td></tr>').join('') + '</tbody></table></div></div>';
+  const ad = ops.map(o => o.ad).reverse();
+  const detay = i => {
+    const o = ops[i], mk = Object.keys(o.makineler).sort(trSirala), tip = Object.keys(o.durus_tipleri).sort((a, b) => o.durus_tipleri[b] - o.durus_tipleri[a]).slice(0, 12);
+    $('#op_detay').innerHTML = '<div class="kart"><h2>' + esc(o.ad) + '</h2><div class="iki"><div><b>Makineler (saat)</b><div class="tablo" style="max-height:300px"><table><thead><tr><th>Makine</th><th class="s">Çalışma</th><th class="s">Duruş</th><th class="s">Mola</th></tr></thead><tbody>' +
+      mk.map(m => '<tr><td>' + esc(m) + '</td><td class="s">' + saat(o.makineler[m].calisma) + '</td><td class="s">' + saat(o.makineler[m].durus) + '</td><td class="s">' + saat(o.makineler[m].mola) + '</td></tr>').join('') +
+      '</tbody></table></div></div><div><b>Duruş türleri (saat)</b><div id="op_dt" class="grafik" style="height:' + (40 + tip.length * 28) + 'px"></div></div></div></div>';
+    grafik('#op_dt', {tooltip: {valueFormatter: v => say(v, 2) + ' saat'}, grid: {left: 140, right: 40, top: 6, bottom: 20}, xAxis: {type: 'value'},
+      yAxis: {type: 'category', data: tip.slice().reverse(), axisLabel: {width: 130, overflow: 'truncate'}},
+      series: [{type: 'bar', itemStyle: {color: RENK.durus}, data: tip.slice().reverse().map(t => Math.round(o.durus_tipleri[t] / 36) / 100)}]});
+    $('#op_detay').scrollIntoView({behavior: 'smooth', block: 'nearest'});
+  };
+  grafik('#g_op', {
+    tooltip: {trigger: 'axis', axisPointer: {type: 'shadow'}, valueFormatter: v => v == null ? '' : v.toFixed(2).replace('.', ',') + '%'}, legend: {top: 0}, grid: {left: 130, right: 30, top: 34, bottom: 10},
+    xAxis: {type: 'value', axisLabel: {formatter: '{value}%'}}, yAxis: {type: 'category', data: ad},
+    series: ['calisma', 'durus', 'mola'].map((a, i) => ({name: METRIK[i], type: 'bar', itemStyle: {color: METRIK_RENK[i]}, data: ops.map(o => x100(o[a])).reverse()})),
+  }, p => { const i = ops.findIndex(o => o.ad === p.name); if (i >= 0) detay(i); });
+  k.querySelectorAll('tr.t').forEach(tr => { tr.onclick = () => detay(+tr.dataset.i); });
+};
+
+SAYFALAR.veri = async (k, tk) => {
+  const g = await api('/api/gecmis'); if (tk !== S.tk) return;
+  const bugun = iso(new Date());
+  k.innerHTML = '<div class="kart"><h2>Cormind Excel listesi yükle</h2><div class="drop" id="drop">Dosyaları buraya sürükleyin ya da <button id="sec" class="ikincil">Dosya seç</button>' +
+    '<input type="file" id="dosya" multiple accept=".xlsx,.xlsm,.xls,.html,.htm" style="display:none"><div class="soluk" style="margin-top:6px">Aynı kayıt tekrar gelirse çoğalmaz, hatalı satırlar atlanır.</div></div><div id="yuk_log"></div></div>' +
+    '<div class="kart"><h2>Cormind\'den doğrudan çek</h2><div class="soluk">Adres: ' + esc(S.durum.ayar.cormind_adres) + ' (Ayarlar\'dan değişir). Kullanıcı adı ve parola saklanmaz.</div><div class="satir">' +
+    '<label>Kullanıcı <input id="c_k" autocomplete="username"></label><label>Parola <input id="c_s" type="password" autocomplete="current-password"></label>' +
+    '<label>Başlangıç <input type="date" id="c_ilk" value="' + ekle(bugun, -1) + '"></label><label>Bitiş <input type="date" id="c_son" value="' + bugun + '"></label>' +
+    '<button id="c_basla">Çekmeye başla</button><button id="c_dur" class="ikincil" disabled>Durdur</button></div><div id="c_durum" class="soluk"></div></div>' +
+    '<div class="kart"><h2>Aktarım geçmişi</h2><div class="tablo"><table><thead><tr><th>Zaman</th><th>Dosya</th><th class="s">Toplam</th><th class="s">Yeni</th><th class="s">Güncel</th><th class="s">Aynı</th><th class="s">Atlanan</th><th>Aralık</th></tr></thead><tbody>' +
+    g.aktarim.map(a => '<tr><td>' + esc(a.zaman) + '</td><td>' + esc(a.dosya) + '</td><td class="s">' + a.toplam + '</td><td class="s">' + a.yeni + '</td><td class="s">' + a.guncellenen + '</td><td class="s">' + a.ayni + '</td><td class="s">' + a.atlanan +
+      '</td><td>' + (a.ilk_gun ? trT(a.ilk_gun) + ' – ' + trT(a.son_gun) : '') + '</td></tr>').join('') + '</tbody></table></div></div>';
+  const log = $('#yuk_log'), drop = $('#drop');
+  async function yukle(dosyalar) {
+    for (const f of dosyalar) {
+      const sat = document.createElement('div'); sat.className = 'soluk'; sat.textContent = f.name + ' yükleniyor…'; log.prepend(sat);
+      try {
+        const r = await api('/api/yukle?ad=' + encodeURIComponent(f.name), {method: 'POST', body: f});
+        sat.className = ''; sat.innerHTML = '<b>' + esc(f.name) + '</b>: ' + esc(r.ozet) + (r.ilk_gun ? ' (' + trT(r.ilk_gun) + ' – ' + trT(r.son_gun) + ')' : '') +
+          (r.yeni_makineler.length ? ' · yeni makineler: ' + r.yeni_makineler.map(esc).join(', ') : '') +
+          (r.atlanan_sayisi ? '<div class="kirmizi">Atlanan satırlar: ' + r.atlanan.map(a => 'satır ' + a[0] + ': ' + esc(a[1])).join('; ') + (r.atlanan_sayisi > r.atlanan.length ? ' …' : '') + '</div>' : '');
+      } catch (e) { sat.className = 'kirmizi'; sat.textContent = f.name + ': ' + e.message; }
+    }
+    S.hesap = null; await durumYenile();
+  }
+  $('#sec').onclick = () => $('#dosya').click();
+  $('#dosya').onchange = e => { yukle([...e.target.files]); e.target.value = ''; };
+  drop.ondragover = e => { e.preventDefault(); drop.classList.add('uzerinde'); };
+  drop.ondragleave = () => drop.classList.remove('uzerinde');
+  drop.ondrop = e => { e.preventDefault(); drop.classList.remove('uzerinde'); yukle([...e.dataTransfer.files]); };
+  const cmGoster = d => {
+    const b = d.bilgi || {}, el = $('#c_durum'); if (!el) return;
+    $('#c_basla').disabled = !!d.calisiyor; $('#c_dur').disabled = !d.calisiyor;
+    if (d.hata) el.innerHTML = '<span class="kirmizi">Hata: ' + esc(d.hata) + '</span>';
+    else if (d.bitti && d.sonuc) el.innerHTML = '<b>Çekim bitti.</b> ' + esc(JSON.stringify(d.sonuc).slice(0, 300));
+    else if (d.calisiyor) el.innerHTML = 'Çekiliyor: parça ' + (b.parca || 0) + '/' + (b.parca_sayisi || '?') + ' · ' + esc(b.asama || '') + ' · kayıt ' + (b.kayit || 0) + ' · kaydedilen ' + (b.kaydedilen || 0) +
+      '<br><progress max="' + (b.parca_sayisi || 1) + '" value="' + (b.parca || 0) + '"></progress>';
+    else el.textContent = '';
+  };
+  const izle = async () => {
+    try {
+      const d = await api('/api/cormind/durum'); cmGoster(d);
+      if (!d.calisiyor) { clearInterval(S.cmz); S.cmz = null; if (d.bitti) { S.hesap = null; durumYenile(); } }
+    } catch (e) { /* yok say */ }
+  };
+  $('#c_basla').onclick = async () => {
+    try {
+      await post('/api/cormind/baslat', {kullanici: $('#c_k').value, sifre: $('#c_s').value, ilk: $('#c_ilk').value, son: $('#c_son').value});
+      clearInterval(S.cmz); S.cmz = setInterval(izle, 1500); izle();
+    } catch (e) { mesaj(e.message, true); }
+  };
+  $('#c_dur').onclick = () => post('/api/cormind/durdur', {}).then(() => mesaj('Durdurma istendi; geçerli parça bitince durur.')).catch(e => mesaj(e.message, true));
+  izle().then(() => { if (!S.cmz) api('/api/cormind/durum').then(d => { if (d.calisiyor) S.cmz = setInterval(izle, 1500); }).catch(() => {}); });
+};
+
+SAYFALAR.kayitlar = async (k, tk) => {
+  const ilk = S.ilk, son = S.son, ay = S.durum.ayar;
+  k.innerHTML = '<div class="kart"><h2>Kayıtlar</h2><div class="satir"><label>Başlangıç <input type="date" id="k_ilk" value="' + ilk + '"></label><label>Bitiş <input type="date" id="k_son" value="' + son + '"></label>' +
+    '<label>Makine <select id="k_m"><option value="">Hepsi</option>' + S.durum.makineler_kayitta.map(m => '<option>' + esc(m) + '</option>').join('') + '</select></label>' +
+    '<label>Tür <select id="k_t"><option value="">Hepsi</option>' + S.durum.tipler.map(t => '<option>' + esc(t) + '</option>').join('') + '</select></label>' +
+    '<label><input type="checkbox" id="k_b"> Yalnız bozuk (çakışan)</label><button id="k_ara">Listele</button><button id="k_sil" class="tehlike" disabled>Seçilenleri sil</button></div><div id="k_bilgi" class="soluk"></div></div><div id="k_tablo"></div>';
+  const ara = async () => {
+    const q = new URLSearchParams({ilk: $('#k_ilk').value, son: $('#k_son').value, makine: $('#k_m').value, tip: $('#k_t').value, bozuk: $('#k_b').checked ? '1' : '0', limit: '1000'});
+    try {
+      const d = await api('/api/kayitlar?' + q);
+      $('#k_bilgi').textContent = d.toplam + ' kayıt (' + d.gosterilen + ' gösterilen) · bozuk: ' + d.bozuk_sayisi;
+      $('#k_tablo').innerHTML = '<div class="tablo"><table><thead><tr><th><input type="checkbox" id="k_hepsi"></th><th>Makine</th><th>Tür</th><th>Başlangıç</th><th>Bitiş</th><th>Operatör</th><th>İş emri</th><th>Ürün</th></tr></thead><tbody>' +
+        d.satirlar.map(r => '<tr class="' + (r.bozuk ? 'bozuk' : '') + '"><td><input type="checkbox" class="ks" value="' + r.no + '"></td><td>' + esc(r.makine) + '</td><td>' + esc(r.tip) + '</td><td>' + esc(r.baslangic) + '</td><td>' + esc(r.bitis) + '</td><td>' + esc(r.operator) + '</td><td>' + esc(r.is_emri) + '</td><td>' + esc(r.urun_adi) + '</td></tr>').join('') + '</tbody></table></div>';
+      const sec = () => { $('#k_sil').disabled = !document.querySelector('.ks:checked'); };
+      $('#k_hepsi').onchange = e => { document.querySelectorAll('.ks').forEach(c => { c.checked = e.target.checked; }); sec(); };
+      document.querySelectorAll('.ks').forEach(c => { c.onchange = sec; }); sec();
+    } catch (e) { mesaj(e.message, true); }
+  };
+  $('#k_ara').onclick = ara;
+  $('#k_sil').onclick = async () => {
+    const nolar = [...document.querySelectorAll('.ks:checked')].map(c => +c.value);
+    if (!nolar.length || !confirm(nolar.length + ' kayıt kalıcı olarak silinecek. Emin misiniz?')) return;
+    try { const r = await post('/api/kayit_sil', {nolar}); mesaj(r.silinen + ' kayıt silindi.'); S.hesap = null; await durumYenile(); ara(); } catch (e) { mesaj(e.message, true); }
+  };
+  ara();
+};
+
+/* ---- Raporlar */
+const R = {tur: 'gunluk', ref: null, ilk: null, son: null, ic: false};
+function raporAraligi() {
+  const ref = R.ref || sonVeriGunu() || iso(new Date());
+  if (R.tur === 'gunluk') return [ref, ref];
+  if (R.tur === 'haftalik') { const g = (parse(ref).getDay() + 6) % 7; return [ekle(ref, -g), ekle(ref, 6 - g)]; }
+  if (R.tur === 'aylik') { const d = parse(ref); return [iso(new Date(d.getFullYear(), d.getMonth(), 1)), iso(new Date(d.getFullYear(), d.getMonth() + 1, 0))]; }
+  return [R.ilk || S.ilk, R.son || S.son];
+}
+const RAPOR_AD = {gunluk: 'Günlük', haftalik: 'Haftalık', aylik: 'Aylık', donem: 'Dönem'};
+async function resmeCevir(url) {
+  const b = await (await fetch(url)).blob();
+  return new Promise(res => { const f = new FileReader(); f.onload = () => res(f.result); f.readAsDataURL(b); });
+}
+function yazdir() {
+  const geri = [];
+  GRAFIKLER.forEach(c => { const d = c.getDom(), im = new Image(); im.src = c.getDataURL({pixelRatio: 2, backgroundColor: '#fff'}); im.style.width = '100%'; d.style.display = 'none'; d.after(im); geri.push([d, im]); });
+  const son = () => { geri.forEach(([d, im]) => { im.remove(); d.style.display = ''; }); GRAFIKLER.forEach(c => c.resize()); window.removeEventListener('afterprint', son); };
+  window.addEventListener('afterprint', son);
+  window.print();
+}
+async function arsivHtml() {
+  const kopya = $('#kagit').cloneNode(true);
+  GRAFIKLER.forEach(c => { const d = c.getDom(), h = kopya.querySelector('#' + d.id); if (h) { const im = document.createElement('img'); im.src = c.getDataURL({pixelRatio: 2, backgroundColor: '#fff'}); im.style.width = '100%'; h.replaceWith(im); } });
+  for (const im of kopya.querySelectorAll('img.cormind')) im.src = await resmeCevir(im.getAttribute('src'));
+  return '<!doctype html><html lang="tr"><head><meta charset="utf-8"><title>Rapor</title><style>' + $('style').textContent + '</style></head><body style="background:#fff;padding:16px">' + kopya.outerHTML + '</body></html>';
+}
+function pngYap(blob) {
+  return new Promise((res, rej) => { const u = URL.createObjectURL(blob), im = new Image(); im.onload = () => { const c = document.createElement('canvas'); c.width = im.naturalWidth; c.height = im.naturalHeight; c.getContext('2d').drawImage(im, 0, 0); c.toBlob(b => { URL.revokeObjectURL(u); res(b); }, 'image/png'); }; im.onerror = rej; im.src = u; });
+}
+document.addEventListener('paste', async ev => {
+  if (S.sayfa !== 'rapor' || !R.gorselAnahtar) return;
+  const it = [...((ev.clipboardData || {}).items || [])].find(i => i.type.startsWith('image/'));
+  if (!it) return;
+  try { const png = await pngYap(it.getAsFile()); await api('/api/gorsel?anahtar=' + R.gorselAnahtar, {method: 'POST', body: png}); mesaj('Cormind grafiği yapıştırıldı.'); sayfaCiz(); } catch (e) { mesaj('Görsel yapıştırılamadı: ' + e.message, true); }
+});
+
+SAYFALAR.rapor = async (k, tk) => {
+  const [ilk, son] = raporAraligi();
+  const kontrol = '<div class="kart yazdirma"><div class="satir">' +
+    Object.entries(RAPOR_AD).map(([a, t]) => '<button class="' + (R.tur === a && !R.ic ? '' : 'ikincil') + '" data-t="' + a + '">' + t + '</button>').join('') +
+    '<button class="' + (R.ic ? '' : 'ikincil') + '" data-t="idari">İdari rapor (KOT)</button>' +
+    (R.tur === 'donem' ? '<label>Başlangıç <input type="date" id="r_ilk" value="' + ilk + '"></label><label>Bitiş <input type="date" id="r_son" value="' + son + '"></label>' :
+      '<label>' + (R.tur === 'aylik' ? 'Ay içinden bir gün' : 'Gün') + ' <input type="date" id="r_ref" value="' + (R.ref || sonVeriGunu() || iso(new Date())) + '"></label>') +
+    '<button id="r_yaz">Yazdır / PDF (A3)</button><button id="r_arsiv" class="ikincil">Arşive kaydet</button></div></div>';
+  k.innerHTML = kontrol + '<div class="yukleniyor" id="r_ic">Hazırlanıyor…</div>';
+  k.querySelectorAll('[data-t]').forEach(b => { b.onclick = () => { if (b.dataset.t === 'idari') R.ic = true; else { R.ic = false; R.tur = b.dataset.t; } sayfaCiz(); }; });
+  const rr = $('#r_ref'); if (rr) rr.onchange = () => { R.ref = rr.value; sayfaCiz(); };
+  const r1 = $('#r_ilk'), r2 = $('#r_son'); if (r1) { r1.onchange = r2.onchange = () => { R.ilk = r1.value; R.son = r2.value; sayfaCiz(); }; }
+  $('#r_yaz').onclick = yazdir;
+  const h = await hesapGetir(ilk, son, []); if (tk !== S.tk) return;
+  const ic = $('#r_ic');
+  if (h.bos) { ic.className = 'uyari'; ic.textContent = 'Bu dönemde hesaba girecek gün yok.'; return; }
+  const baslik = (R.ic ? 'İdari' : RAPOR_AD[R.tur]) + ' Performans Raporu';
+  const tarih = ilk === son ? trT(ilk) + ' ' + GUNAD[parse(ilk).getDay()] : trT(ilk) + ' – ' + trT(son);
+  const mak = makineSirasi({makine_ort: h.makine_ort});
+  R.gorselAnahtar = 'cormind_' + ilk + '_' + son;
+  const gorsel = await fetch('/api/gorsel?anahtar=' + R.gorselAnahtar).then(r => r.ok);
+  if (tk !== S.tk) return;
+  const sefForm = '<div class="satir yazdirma">' + [1, 2, 3].map(v => '<label>' + v + '. vardiya şefi <input id="sf' + v + '" value="' + esc((h.seflar || {})[v] || '') + '" size="14"></label>').join('') + '<button id="sf_ata" class="ikincil">Seçili günlere ata</button></div>';
+  let govde = '<div class="kagit" id="kagit"><h1>' + baslik + '</h1><div class="soluk">' + tarih + ' · eşik ' + pct(h.ayar.esik, 0) + ' · ' + h.hesap_gunu + ' gün hesaba girdi</div>' +
+    '<div style="margin:6px 0">' + seflerSatiri(h) + '</div>';
+  if (!R.ic) {
+    govde += ozetKartlari(h) + '<div id="r_g" class="grafik" style="height:400px"></div>' + makineTablosu(h, mak) + esikAltiNotu(h) + uyarilar(h);
+    if (gorsel) govde += '<h2 style="color:var(--lacivert)">Cormind grafiği</h2><img class="cormind" src="/api/gorsel?anahtar=' + R.gorselAnahtar + '&t=' + Date.now() + '" alt="">';
+    ic.outerHTML = sefForm + '<div class="kart yazdirma soluk">Cormind grafiğini Ctrl+V ile bu sayfaya yapıştırabilirsiniz.' + (gorsel ? ' <button id="g_sil" class="ikincil">Yapıştırılan grafiği kaldır</button>' : '') + '</div>' + govde + '</div>';
+    makineGrafigi('#r_g', h, mak);
+    const gs = $('#g_sil'); if (gs) gs.onclick = () => post('/api/gorsel_sil?anahtar=' + R.gorselAnahtar, {}).then(() => sayfaCiz());
+  } else {
+    let kot = [], idari = null, hata = '';
+    try { kot = (await api('/api/kot?ilk=' + ilk + '&son=' + son)).kotlar; idari = await api('/api/idari?ilk=' + ilk + '&son=' + son); } catch (e) { hata = e.message; }
+    if (tk !== S.tk) return;
+    govde += (hata ? '<div class="uyari">' + esc(hata) + '</div>' : '') + ozetKartlari(h) + '<h2 style="color:var(--lacivert)">KOT kayıtları (' + kot.length + ')</h2>' +
+      (kot.length ? '<div class="tablo" style="max-height:none"><table><thead><tr><th>KOT no</th><th>Tarih</th><th>Saat</th><th>Tezgah</th><th>Kategori</th><th>Neden</th><th>Açıklama</th><th>Aksiyon</th></tr></thead><tbody>' +
+        kot.flatMap(x => x.tezgahlar.map(t => '<tr><td>' + esc(x.no) + '</td><td>' + trT(x.tarih) + '</td><td>' + esc(x.saat) + '</td><td>' + esc(t.tezgah) + '</td><td>' + esc(t.kategori) + '</td><td>' + esc(t.neden) + '</td><td style="white-space:normal">' + esc(t.aciklama) + '</td><td style="white-space:normal">' + esc(t.aksiyon) + '</td></tr>')).join('') +
+        '</tbody></table></div>' : '<div class="soluk">Bu dönemde KOT yok.</div>') +
+      (idari ? '<h2 style="color:var(--lacivert)">İdari özet</h2><pre id="idari_metin">' + esc(idari.metin) + '</pre><div class="yazdirma"><button id="i_kopya" class="ikincil">Metni kopyala</button></div>' : '') + '</div>';
+    ic.outerHTML = '<div class="kart yazdirma"><h2>KOT yapıştır</h2><textarea id="kot_metin" placeholder="=== KOT === KOT NO: ... === SON === biçimindeki metni buraya yapıştırın"></textarea>' +
+      '<div class="satir"><button id="kot_kaydet">KOT\'ları kaydet</button><button id="kot_sil" class="tehlike">Bu dönemin KOT\'larını sil</button></div></div>' + sefForm + govde;
+    $('#kot_kaydet').onclick = async () => { try { const r = await post('/api/kot', {metin: $('#kot_metin').value}); mesaj(r.yeni + ' yeni, ' + r.guncellenen + ' güncellenen KOT kaydedildi.'); sayfaCiz(); } catch (e) { mesaj(e.message, true); } };
+    $('#kot_sil').onclick = async () => { if (confirm('Bu dönemdeki KOT kayıtları silinecek. Emin misiniz?')) { try { const r = await post('/api/kot_sil', {ilk, son}); mesaj(r.silinen + ' KOT silindi.'); sayfaCiz(); } catch (e) { mesaj(e.message, true); } } };
+    const kp = $('#i_kopya'); if (kp) kp.onclick = () => navigator.clipboard.writeText($('#idari_metin').textContent).then(() => mesaj('Kopyalandı.')).catch(() => mesaj('Kopyalanamadı; metni elle seçin.', true));
+  }
+  $('#sf_ata').onclick = async () => {
+    try { for (const v of [1, 2, 3]) { const s = $('#sf' + v).value.trim(); if (s) await post('/api/sef', {gunler: h.secili, vardiya: v, sef: s}); } mesaj('Şefler atandı.'); S.hesap = null; sayfaCiz(); } catch (e) { mesaj(e.message, true); }
+  };
+  $('#r_arsiv').onclick = async () => {
+    try { const html = await arsivHtml(); await post('/api/arsiv', {ad: baslik + ' ' + tarih, tur: R.ic ? 'idari' : R.tur, ilk, son, html}); mesaj('Rapor arşive kaydedildi (Geçmiş sayfası).'); } catch (e) { mesaj(e.message, true); }
+  };
+};
+
+SAYFALAR.gecmis = async (k, tk) => {
+  const g = await api('/api/gecmis'); if (tk !== S.tk) return;
+  k.innerHTML = '<div class="kart"><h2>Arşivlenen raporlar</h2>' + (g.arsiv.length ? '<div class="tablo"><table><thead><tr><th>Ad</th><th>Tür</th><th>Aralık</th><th>Oluşturma</th><th></th></tr></thead><tbody>' +
+    g.arsiv.map(a => '<tr><td>' + esc(a.ad) + '</td><td>' + esc(a.tur) + '</td><td>' + (a.ilk_gun ? trT(a.ilk_gun) + (a.son_gun && a.son_gun !== a.ilk_gun ? ' – ' + trT(a.son_gun) : '') : '') + '</td><td>' + esc(a.olusturma) + '</td><td>' +
+      ((a.tur || '').startsWith('web-') || a.pdf_var ? '<a href="/api/arsiv?id=' + a.id + '" target="_blank" rel="noopener">Aç</a> · ' : '<span class="soluk">masaüstü kaydı · </span>') + '<a href="#" data-sil="' + a.id + '">Sil</a></td></tr>').join('') +
+    '</tbody></table></div>' : '<span class="soluk">Henüz arşivlenmiş rapor yok. Raporlar sayfasından "Arşive kaydet" kullanın.</span>') + '</div>';
+  k.querySelectorAll('[data-sil]').forEach(a => { a.onclick = async e => { e.preventDefault(); if (!confirm('Arşiv kaydı silinsin mi?')) return; try { await post('/api/arsiv_sil', {id: +a.dataset.sil}); sayfaCiz(); } catch (x) { mesaj(x.message, true); } }; });
+};
+
+SAYFALAR.ayar = async (k, tk) => {
+  await durumYenile(); if (tk !== S.tk) return;
+  const a = S.durum.ayar, liste = v => (v || []).join('\n');
+  k.innerHTML = '<div class="kart"><h2>Hesap ayarları</h2><div class="satir"><label>Eşik (%) <input type="number" id="a_esik" min="5" max="100" step="1" value="' + Math.round(a.esik * 100) + '" style="width:80px"></label>' +
+    '<label>Vardiya (dk) <input type="number" id="a_v" value="' + a.vardiya_dk + '" style="width:80px"></label><label>Yemek (dk) <input type="number" id="a_y" value="' + a.yemek_dk + '" style="width:80px"></label><label>Çay (dk) <input type="number" id="a_c" value="' + a.cay_dk + '" style="width:80px"></label></div>' +
+    '<div class="satir"><label>Ortalama yöntemi <select id="a_yon"><option value="vardiya">Günlük, vardiya sırasıyla</option><option value="gun">Günlük, gün sırasıyla</option><option value="hucre">Günlük, ayrımsız (süre toplamı)</option></select></label></div>' +
+    '<div class="soluk">Net vardiya süresi = vardiya − yemek − çay. %60 kuralı her gün, her vardiya için ayrı uygulanır.</div></div>' +
+    '<div class="iki"><div class="kart"><h2>Makine listesi (her satıra bir makine)</h2><textarea id="a_mak" style="min-height:260px">' + esc(liste(a.makineler)) + '</textarea></div>' +
+    '<div class="kart"><h2>Grup liderleri (şefler)</h2><textarea id="a_sef">' + esc(liste(a.sefler)) + '</textarea><div class="satir">' + [1, 2, 3].map(v => '<label>' + v + '. vardiya <input id="a_vs' + v + '" value="' + esc((a.vardiya_sef || {})[v] || '') + '" size="12"></label>').join('') + '</div></div></div>' +
+    '<div class="kart"><h2>Operatör hesabından çıkarılacak duruş türleri</h2><div class="satir">' + (S.durum.tipler.length ? S.durum.tipler.map(t => '<label style="min-width:220px"><input type="checkbox" class="a_h" value="' + esc(t) + '"' + ((a.operator_haric_durus || []).includes(t) ? ' checked' : '') + '> ' + esc(t) + '</label>').join('') : '<span class="soluk">Henüz kayıt yok.</span>') + '</div></div>' +
+    '<div class="kart"><h2>Cormind</h2><div class="satir"><label>Adres <input id="a_ca" value="' + esc(a.cormind_adres) + '" size="30"></label><label>Makine kimlikleri <input id="a_ci" value="' + esc((a.cormind_makine_idleri || []).join(', ')) + '" size="60"></label></div></div>' +
+    '<div class="satir"><button id="a_kaydet">Kaydet</button><span class="soluk">Sürüm ' + esc(S.durum.surum) + (S.durum.parola ? ' · parola koruması açık' : '') + '</span></div>';
+  $('#a_yon').value = a.hesap_yontemi || 'vardiya';
+  $('#a_kaydet').onclick = async () => {
+    const satirlar = id => $(id).value.split('\n').map(s => s.trim()).filter(Boolean);
+    try {
+      const r = await post('/api/ayar', {
+        esik: +$('#a_esik').value / 100, vardiya_dk: +$('#a_v').value, yemek_dk: +$('#a_y').value, cay_dk: +$('#a_c').value, hesap_yontemi: $('#a_yon').value,
+        makineler: satirlar('#a_mak'), sefler: satirlar('#a_sef'), vardiya_sef: {1: $('#a_vs1').value, 2: $('#a_vs2').value, 3: $('#a_vs3').value},
+        operator_haric_durus: [...document.querySelectorAll('.a_h:checked')].map(c => c.value), cormind_adres: $('#a_ca').value,
+        cormind_makine_idleri: $('#a_ci').value.split(',').map(s => s.trim()).filter(Boolean).map(Number),
+      });
+      S.hesap = null; await durumYenile(); mesaj('Ayarlar kaydedildi (' + r.yazilan.length + ' alan).');
+    } catch (e) { mesaj(e.message, true); }
+  };
+};
+
+/* ------------------------------------------------------------------ yönlendirme */
+async function sayfaCiz() {
+  const tk = ++S.tk; grafikleriTemizle(); clearInterval(S.cmz); S.cmz = null;
+  document.querySelectorAll('.menu').forEach(b => b.classList.toggle('aktif', b.dataset.s === S.sayfa));
+  $('#donem').style.display = DONEMLI.has(S.sayfa) ? 'block' : 'none';
+  const k = $('#sayfa'); k.innerHTML = '<div class="yukleniyor">Yükleniyor…</div>';
+  try { await SAYFALAR[S.sayfa](k, tk); } catch (e) { if (tk === S.tk) k.innerHTML = '<div class="uyari kirmizi">' + esc(e.message) + '</div>'; }
+}
+function sayfaAc(a) { S.sayfa = a; try { history.replaceState(null, '', '#' + a); } catch (e) { /* yok say */ } sayfaCiz(); }
+
+(async function baslat() {
+  $('#menu').innerHTML = MENU.map(([a, t]) => '<button class="menu" data-s="' + a + '">' + t + '</button>').join('');
+  document.querySelectorAll('.menu').forEach(b => { b.onclick = () => sayfaAc(b.dataset.s); });
+  try { await durumYenile(); } catch (e) { $('#sayfa').innerHTML = '<div class="uyari kirmizi">Sunucuya ulaşılamadı: ' + esc(e.message) + '</div>'; return; }
+  if (!donemOku()) { const s = sonVeriGunu() || iso(new Date()); S.son = s; S.ilk = ekle(s, -6); }
+  donemCiz();
+  const h = location.hash.slice(1);
+  S.sayfa = SAYFALAR[h] ? h : (sonVeriGunu() ? 'performans' : 'veri');
+  sayfaCiz();
+})();
+</script>
+</body>
+</html>
