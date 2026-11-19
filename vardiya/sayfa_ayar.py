@@ -250,6 +250,29 @@ class AyarSayfasi(QWidget):
         kd.layout().addLayout(ws)
         _web_yaz()
 
+        # ------------------------------------------------ otomatik Cormind çekimi (bu bilgisayara özel)
+        from . import oto_cekim
+        os_ = QHBoxLayout()
+        self.oto_acik = QCheckBox("Cormind'den otomatik çek (bu bilgisayar)")
+        self.oto_acik.setToolTip("Program açılınca ve açık kaldıysa her gece 01:00'de, son tam çekilen günden düne kadar eksik "
+                                 "günler Cormind'den çekilir. Bugün hiçbir zaman otomatik çekilmez (tabloda yarım gün olmasın). "
+                                 "Yalnızca bu kutunun işaretli olduğu bilgisayar çeker.")
+        self.oto_acik.setChecked(oto_cekim.ayarda_acik())
+        self.oto_not = QLabel("Kapalı")
+        self.oto_not.setObjectName("AltBaslik")
+        self.oto_not.setWordWrap(True)
+
+        def _oto_degisti(acik):
+            s = QSettings("Teknorot", "VardiyaPerformans")
+            s.setValue("oto/acik", "1" if acik else "0")
+            s.sync()
+            if getattr(self, "_oto", None) is not None:
+                self._oto.ayarla()
+        self.oto_acik.toggled.connect(_oto_degisti)
+        os_.addWidget(self.oto_acik)
+        os_.addWidget(self.oto_not, 1)
+        kd.layout().addLayout(os_)
+
         # ------------------------------------------------ personel listesi
         from PySide6.QtWidgets import QListWidget, QListWidgetItem
         kp = kart()
@@ -438,6 +461,11 @@ class AyarSayfasi(QWidget):
             self._personel_doldur()
             self._op_tur_doldur()
             self._sozluk_bekle()
+
+    def oto_bagla(self, oto):
+        self._oto = oto
+        self.oto_not.setText(oto.durum)
+        oto.durum_degisti.connect(self.oto_not.setText)
 
     def _sozluk_bekle(self):
         """Ad sözlüğü arka planda hazırlanıyorsa listeleri birkaç saniyede bir tazeler (sayfa hiç donmaz)."""

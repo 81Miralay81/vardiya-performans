@@ -147,6 +147,9 @@ class AnaPencere(QMainWindow):
         self.yenile()
         acilis.ilerle(90, "Grafikler hazırlanıyor")
         self.sayfa_ac("performans" if self.kapsam() else "veri")
+        from .oto_cekim import OtoCekim                 # otomatik Cormind çekimi (yalnızca ayarda açık bilgisayarda)
+        self.oto = OtoCekim(self)
+        self.sayfalar["ayar"].oto_bagla(self.oto)
         self._guncelleme = None
         if guncelleme.calisan_exe() and not os.environ.get("VARDIYA_GUNCELLEME_YOK"):
             QTimer.singleShot(2500, lambda: self._guncelleme_baslat(elle=False))
