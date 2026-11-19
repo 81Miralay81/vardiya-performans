@@ -209,6 +209,47 @@ class AyarSayfasi(QWidget):
         gs.addWidget(self.grafik_not, 1)
         kd.layout().addLayout(gs)
 
+        # ------------------------------------------------ tarayıcıdan erişim (bu bilgisayara özel)
+
+        from . import web_sunucu
+        ws = QHBoxLayout()
+        self.web_acik = QCheckBox("Tarayıcıdan erişim (bu bilgisayar sunucu olur)")
+        self.web_acik.setChecked(web_sunucu.etkin() is not None or web_sunucu.ayarda_acik())
+        self.web_port = QSpinBox()
+        self.web_port.setRange(1024, 65535)
+        self.web_port.setValue(web_sunucu.ayar_port())
+        self.web_port.setPrefix("Port: ")
+        self.web_not = QLabel()
+        self.web_not.setObjectName("AltBaslik")
+        self.web_not.setTextInteractionFlags(Qt.TextSelectableByMouse)
+
+        def _web_yaz():
+            s = web_sunucu.etkin()
+            if s:
+                self.web_not.setText(f"Açık · diğer bilgisayarlar: {s.adres()}   ·   bu bilgisayar: http://localhost:{s.port}")
+            elif self.web_acik.isChecked():
+                self.web_not.setText(f"Port {self.web_port.value()} kullanımda, sunucu başlatılamadı. Başka bir port seçin.")
+            else:
+                self.web_not.setText("Kapalı. Açınca iç ağdaki bilgisayarlar programı tarayıcıdan açabilir.")
+
+        def _web_degisti(*_):
+            s = QSettings("Teknorot", "VardiyaPerformans")
+            s.setValue("web/acik", "1" if self.web_acik.isChecked() else "0")
+            s.setValue("web/port", self.web_port.value())
+            s.sync()
+            web_sunucu.durdur()
+            if self.web_acik.isChecked():
+                web_sunucu.baslat(self.ana.db_yolu, self.web_port.value(), self.ana.veri_yenilendi)
+            _web_yaz()
+
+        self.web_acik.toggled.connect(_web_degisti)
+        self.web_port.editingFinished.connect(lambda: self.web_acik.isChecked() and _web_degisti())
+        ws.addWidget(self.web_acik)
+        ws.addWidget(self.web_port)
+        ws.addWidget(self.web_not, 1)
+        kd.layout().addLayout(ws)
+        _web_yaz()
+
         # ------------------------------------------------ personel listesi
         from PySide6.QtWidgets import QListWidget, QListWidgetItem
         kp = kart()
@@ -384,9 +425,19 @@ class AyarSayfasi(QWidget):
         self.ana.ayar = vt.ayar_oku(self.ana.con)
         self.personel_bilgi.setText(f"{self.personel.count()} kişi · {len(haric)} kişi hariç tutuluyor")
 
+    def showEvent(self, e):
+        super().showEvent(e)
+        if getattr(self, "_listeler_kirli", True):     # personel ve duruş türü listeleri yalnızca sayfa açılınca okunur
+            self._listeler_kirli = False
+            self._personel_doldur()
+            self._op_tur_doldur()
+
     def yenile(self):
-        self._personel_doldur()
-        self._op_tur_doldur()
+        self._listeler_kirli = True
+        if self.isVisible():
+            self._listeler_kirli = False
+            self._personel_doldur()
+            self._op_tur_doldur()
         a = self.ana.ayar
         self.esik.setValue(round(a["esik"] * 100))
         self.kural.setCurrentIndex(max(0, self.kural.findData(a.get("hesap_kurali", "gunluk"))))

@@ -408,6 +408,7 @@ def _parca_cek(con, ist: "Istemci", ariza: Dict[int, str], ilk: date, son: date,
     con.executemany("UPDATE kayit SET bitis=? WHERE makine=? AND baslangic<? AND bitis>?",
                     [(b.strftime(BICIM), m, parca_basi, b.strftime(BICIM)) for m, b in ilk_bas.items()])
     con.commit()
+    vt.gun_ozet_yenile(con, ilk.strftime("%Y-%m-%d"), son.strftime("%Y-%m-%d"))     # silinip yeniden yazılan günler
     ilk_g = min((s[1] for s in satirlar), default=None)
     son_g = max((s[1] for s in satirlar), default=None)
     vt.aktarim_kaydet(con, f"Cormind ({ilk:%d.%m.%Y}–{son:%d.%m.%Y})", len(ham), yeni, guncel, ayni, atlanan,

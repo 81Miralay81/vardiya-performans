@@ -10,6 +10,7 @@ Excel'deki mantığın yeni kuralları:
 from __future__ import annotations
 
 import bisect
+import functools
 
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
@@ -22,8 +23,9 @@ CALISIYOR, DURUS, MOLA = "Çalışıyor", "Duruş", "Mola"
 
 
 # --------------------------------------------------------------------------- yardımcılar
+@functools.lru_cache(maxsize=4096)
 def tr_kucuk(s: str) -> str:
-    """Türkçe'ye uygun küçük harf (İ/I sorunu olmadan karşılaştırma için)."""
+    """Türkçe'ye uygun küçük harf (İ/I sorunu olmadan karşılaştırma için). Aynı türler tekrar ettiği için önbellekli."""
     return (s or "").replace("İ", "i").replace("I", "ı").lower().strip()
 
 
@@ -31,6 +33,7 @@ _MOLA_TIPLERI = {tr_kucuk("ÇAY MOLASI"), tr_kucuk("YEMEK MOLASI")}
 _CALISMA = tr_kucuk("Çalışma")
 
 
+@functools.lru_cache(maxsize=4096)
 def statu_bul(tip: str) -> str:
     """Excel K sütunu: Çalışma -> Çalışıyor, çay/yemek molası -> Mola, kalan her şey -> Duruş."""
     t = tr_kucuk(tip)
@@ -86,6 +89,7 @@ class HesapAyar:
     net_saat_zorla: Optional[float] = None   # yalnızca testlerde (örn. Excel'deki 7,33)
     kural: str = "gunluk"       # "gunluk": %60 her gün ayrı | "donem": Excel gibi, dönem ortalamasına göre
     yontem: str = "vardiya"     # ortalama yöntemi (günlük kuralda): "vardiya" | "gun" | "hucre"
+    haric: frozenset = frozenset()   # hariç tutulan duruş türleri (küçük harf): hesaba girmez, süreleri paydadan düşer
 
     @property
     def net_saat(self) -> float:
@@ -103,7 +107,7 @@ class HesapAyar:
 Toplam = Dict[Tuple[date, int], Dict[str, List[float]]]
 
 
-_ONCELIK = {0: 0, 2: 1, 1: 2}   # çalışma > mola > duruş
+_ONCELIK = {0: 0, 2: 1, 1: 2, 3: 3}   # çalışma > mola > duruş > hariç tutulan duruş
 
 
 def _supurge(satirlar):
@@ -128,6 +132,7 @@ def topla(kayitlar: Iterable[Tuple[str, str, datetime, datetime]], ayar: HesapAy
     """kayitlar: (makine, tip, başlangıç, bitiş)"""
     sonuc: Toplam = {}
     idx = {CALISIYOR: 0, DURUS: 1, MOLA: 2}
+    haric_saat: Dict[tuple, float] = {}
 
     def ekle(makine, i, bas, bit, bolme):
         for gun, v, sn in bol(bas, bit, bolme):
@@ -142,13 +147,33 @@ def topla(kayitlar: Iterable[Tuple[str, str, datetime, datetime]], ayar: HesapAy
     makineye = {}
     for makine, tip, bas, bit in kayitlar:
         i = idx[statu_bul(tip)]
+        if i == 1 and ayar.haric and (tr_kucuk(tip or "") in ayar.haric or tr_kucuk(durus_adi(tip, bas, bit)) in ayar.haric):
+            i = 3                                  # hariç tutulan duruş: ayrı sayılır, aşağıda paydadan düşülür
         if bit <= bas:                             # süresiz kayıt: yalnızca "bu vardiyada veri var" işareti
             sonuc.setdefault((bas.date(), vardiya_bul(bas.hour)), {}).setdefault(makine, [0.0, 0.0, 0.0])
         else:
             makineye.setdefault(makine, []).append((bas, bit, i))
     for makine, liste in makineye.items():
         for t0, t1, i in _supurge(liste):
-            ekle(makine, i, t0, t1, ayar.bolme)
+            if i == 3:
+                for gun, v, sn in bol(t0, t1, ayar.bolme):
+                    sonuc.setdefault((gun, v), {}).setdefault(makine, [0.0, 0.0, 0.0])
+                    haric_saat[(gun, v, makine)] = haric_saat.get((gun, v, makine), 0.0) + sn / 3600.0
+            else:
+                ekle(makine, i, t0, t1, ayar.bolme)
+    if haric_saat:
+        # Hariç tutulan süre vardiyanın kullanılabilir süresinden düşer (Operatör sekmesindeki kuralla aynı):
+        # oran = çalışma / (net - hariç). Neredeyse tamamı hariç olan vardiya hesaba girmez.
+        net, tam = ayar.net_saat, ayar.vardiya_dk / 60.0
+        for (gun, v, makine), h in haric_saat.items():
+            kalan = net - h * net / tam
+            m = sonuc[(gun, v)][makine]
+            if kalan <= net * 0.05:
+                del sonuc[(gun, v)][makine]
+            else:
+                k = net / kalan
+                m[0] *= k
+                m[1] *= k
     return sonuc
 
 
@@ -423,8 +448,9 @@ def hesapla(kayitlar, gunler: List[date], ayar: Optional[HesapAyar] = None, veri
     return sonuc
 
 
-def durus_dokumu(kayitlar: Iterable[Tuple[str, str, datetime, datetime]], gunler: Iterable[date]) -> Dict[str, Dict[str, float]]:
-    """makine -> duruş türü -> saat. Yalnızca seçili günlere düşen kısım sayılır; mola ve çalışma girmez."""
+def durus_dokumu(kayitlar: Iterable[Tuple[str, str, datetime, datetime]], gunler: Iterable[date],
+                 haric: frozenset = frozenset()) -> Dict[str, Dict[str, float]]:
+    """makine -> duruş türü -> saat. Yalnızca seçili günlere düşen kısım sayılır; mola, çalışma ve hariç tutulan duruşlar girmez."""
     gset = set(gunler)
     sonuc: Dict[str, Dict[str, float]] = {}
     for makine, tip, bas, bit in kayitlar:
@@ -432,10 +458,27 @@ def durus_dokumu(kayitlar: Iterable[Tuple[str, str, datetime, datetime]], gunler
             continue
         for gun, _v, sn in bol(bas, bit, True):
             if gun in gset and sn > 0:
-                m = sonuc.setdefault(makine, {})
                 ad = durus_adi(tip, bas, bit)
+                if haric and (tr_kucuk(ad) in haric or tr_kucuk(tip or "") in haric):
+                    continue
+                m = sonuc.setdefault(makine, {})
                 m[ad] = m.get(ad, 0.0) + sn / 3600.0
     return sonuc
+
+
+YATAN_TURLER = ("iş emri plan yok", "çalışmıyor", "makina arızası", "kayıt yok")
+
+
+def yatan_makineler(cm: Dict[str, dict], sonuc: Optional["DonemSonuc"] = None, oran: float = 90.0) -> set:
+    """Dönem boyunca çalışmayan (yatan) makineler: Cormind'e göre sürenin en az %90'ı İŞ EMRİ PLAN YOK, Çalışmıyor ya da
+    MAKİNA ARIZASI, ya da bizim hesabımızda hiç çalışma yok. İdari rapor yalnızca çalışan makinelerle hazırlanır."""
+    yatan = set()
+    for m, v in cm.items():
+        pay = sum(x for t, x in v.get("durus", {}).items() if tr_kucuk(t) in YATAN_TURLER)
+        calismadi = sonuc is not None and m not in sonuc.makine_ort and m not in sonuc.esik_alti
+        if pay >= oran or calismadi:
+            yatan.add(m)
+    return yatan
 
 
 KAYIT_YOK = "Kayıt Yok"            # uzun olduğu halde "Kısa Duruş" adıyla gelmiş, gerçek adı bilinmeyen kayıt

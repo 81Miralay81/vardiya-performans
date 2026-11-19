@@ -235,3 +235,33 @@ def test_bozuk_uzun_calisma_kaydi_ayiklanir():
     temiz = hesapla(k, [g])
     bozuk = hesapla(k + [("IM22", "Çalışma", dt(2026, 10, 1), dt(2026, 11, 12))], [g])
     assert bozuk.bozuk_kayit == 1 and bozuk.makine_ort == temiz.makine_ort and temiz.bozuk_kayit == 0
+
+
+def test_haric_durus_paydadan_duser():
+    """Hariç tutulan duruş hesaba girmez, süresi kullanılabilir süreden düşer (Operatör sekmesiyle aynı kural)."""
+    from datetime import datetime as dt
+    from vardiya.hesap import HesapAyar
+    g = date(2026, 11, 3)
+    k = [("IM21", "Çalışma", dt(2026, 11, 3, 8), dt(2026, 11, 3, 12)),
+         ("IM21", "PLANLI BAKIM(BAKIMHANE)", dt(2026, 11, 3, 12), dt(2026, 11, 3, 16))]
+    normal = hesapla(k, [g], HesapAyar(esik=0.0))
+    haric = hesapla(k, [g], HesapAyar(esik=0.0, haric=frozenset({"planli bakim(bakimhane)", "planlı bakım(bakımhane)"})))
+    assert normal.makine_ort["IM21"][0] < haric.makine_ort["IM21"][0]
+    assert abs(haric.makine_ort["IM21"][1]) < 1e-9          # hariç duruş duruşa yazılmaz
+
+
+def test_yatan_makineler():
+    from vardiya.hesap import yatan_makineler
+    cm = {"IM24": {"oee": 0.0, "durus": {"İŞ EMRİ PLAN YOK": 109.0}}, "IM21": {"oee": 80.0, "durus": {"Kurulum": 20.0}}}
+    assert yatan_makineler(cm) == {"IM24"}
+
+
+def test_operator_dogrula_eski_ad_tasinmaz():
+    from datetime import datetime as dt
+    from vardiya.operator import operator_dogrula
+    k = [("Serhat", "IM53", "İŞ EMRİ PLAN YOK", dt(2026, 6, 1, 9), dt(2026, 11, 20)),
+         ("Veli", "IM22", "Kurulum", dt(2026, 11, 12, 15), dt(2026, 11, 12, 17)),
+         ("Veli", "IM22", "Çalışma", dt(2026, 11, 12, 16, 30), dt(2026, 11, 12, 23))]
+    r = operator_dogrula(k, dt(2026, 11, 11), dt(2026, 11, 18))
+    assert not any(x[0] for x in r if x[1] == "IM53")       # aylar önce başlayan kayıttaki ad bu haftaya taşınmaz
+    assert all(x[0] == "Veli" for x in r if x[1] == "IM22")  # Veli 3. vardiyada da makinede iş başlatmış

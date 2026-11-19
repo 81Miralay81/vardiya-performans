@@ -135,21 +135,22 @@ class KayitlarSayfasi(QWidget):
         if son < ilk:
             ilk, son = son, ilk
         bozuk_kipi = self.durum.currentText() == BOZUK
-        if bozuk_kipi:                          # bozuk kayıt günlere dışarıdan uzanabilir: aralığa değen her kayıt
-            kosul = ["baslangic < ?", "bitis >= ?"]
-            arg = [(son + timedelta(days=1)).strftime("%Y-%m-%d 00:00:00"), ilk.strftime("%Y-%m-%d 00:00:00")]
-        else:
-            kosul = ["baslangic >= ?", "baslangic < ?"]
-            arg = [ilk.strftime("%Y-%m-%d 00:00:00"), (son + timedelta(days=1)).strftime("%Y-%m-%d 00:00:00")]
+        kosul, arg = [], []
         if self.makine.currentIndex() > 0:
             kosul.append("makine = ?")
             arg.append(self.makine.currentText())
         if self.tip.currentIndex() > 0:
             kosul.append("tip = ?")
             arg.append(self.tip.currentText())
-        rows = self.ana.con.execute(
-            "SELECT rowid AS no, makine, tip, baslangic, bitis, operator, is_emri, urun_kodu, urun_adi FROM kayit WHERE "
-            + " AND ".join(kosul) + " ORDER BY baslangic DESC, makine", arg).fetchall()
+        kolon = "rowid AS no, makine, tip, baslangic, bitis, operator, is_emri, urun_kodu, urun_adi"
+        if bozuk_kipi:                          # bozuk kayıt günlere dışarıdan uzanabilir: aralığa değen her kayıt
+            rows = vt.aralik_satirlari(self.ana.con, kolon, ilk, son, " AND ".join(kosul), tuple(arg)).fetchall()
+            rows.sort(key=lambda r: (r["baslangic"], r["makine"]), reverse=True)
+        else:
+            kosul = ["baslangic >= ?", "baslangic < ?"] + kosul
+            arg = [ilk.strftime("%Y-%m-%d 00:00:00"), (son + timedelta(days=1)).strftime("%Y-%m-%d 00:00:00")] + arg
+            rows = self.ana.con.execute(f"SELECT {kolon} FROM kayit WHERE " + " AND ".join(kosul)
+                                        + " ORDER BY baslangic DESC, makine", arg).fetchall()
         if bozuk_kipi:
             from .hesap import bozuk_indeksler
             liste = [(r["makine"], r["tip"], datetime.strptime(r["baslangic"], vt.BICIM), datetime.strptime(r["bitis"], vt.BICIM)) for r in rows]
@@ -213,9 +214,7 @@ class KayitlarSayfasi(QWidget):
         ilk, son = self._tarih(self.bas), self._tarih(self.bit)
         if son < ilk:
             ilk, son = son, ilk
-        satirlar = self.ana.con.execute(
-            "SELECT rowid, makine, tip, baslangic, bitis FROM kayit WHERE baslangic < ? AND bitis >= ?",
-            ((son + timedelta(days=1)).strftime("%Y-%m-%d 00:00:00"), ilk.strftime("%Y-%m-%d 00:00:00"))).fetchall()
+        satirlar = vt.aralik_satirlari(self.ana.con, "rowid, makine, tip, baslangic, bitis", ilk, son).fetchall()
         gruplar = {}
         for no, m, tip, b, e in satirlar:
             gruplar.setdefault((m, tip or ""), []).append((datetime.strptime(b, vt.BICIM), datetime.strptime(e, vt.BICIM), no))
@@ -249,6 +248,7 @@ class KayitlarSayfasi(QWidget):
             return
         self.ana.con.executemany("DELETE FROM kayit WHERE rowid = ?", [(n,) for n in silinecek])
         self.ana.con.commit()
+        vt.gun_ozet_yenile(self.ana.con)        # silinen günlerin sayıları güncellensin
         self.listele()
         if hasattr(self.ana, "yenile"):
             self.ana.yenile()
@@ -269,6 +269,7 @@ class KayitlarSayfasi(QWidget):
             return
         self.ana.con.executemany("DELETE FROM kayit WHERE rowid = ?", [(n,) for n in nolar])
         self.ana.con.commit()
+        vt.gun_ozet_yenile(self.ana.con)        # silinen günlerin sayıları güncellensin
         self.listele()
         if hasattr(self.ana, "yenile"):
             self.ana.yenile()

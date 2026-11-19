@@ -13,7 +13,7 @@ from PySide6.QtWidgets import QAbstractItemView, QFrame, QHeaderView, QTableWidg
 
 from . import veritabani as vt
 from .hesap import DURUS, durus_adi, statu_bul
-from .operator import operator_adi
+from .operator import operator_adi, operator_dogrula
 from .sayfa_ortak import etiket, kart, tablo_menusu
 
 
@@ -55,7 +55,9 @@ def hesapla(con, gunler: List[date]) -> List[tuple]:
     gset = set(gunler)
     aralik: Dict[tuple, List[tuple]] = {}
     tur_aralik: Dict[tuple, Dict[str, List[tuple]]] = {}
-    for op, m, tip, bas, bit in vt.kayitlari_getir_operatorlu(con, min(gunler), max(gunler)):
+    _a = datetime(min(gunler).year, min(gunler).month, min(gunler).day)
+    _u = datetime(max(gunler).year, max(gunler).month, max(gunler).day) + timedelta(days=1)
+    for op, m, tip, bas, bit in operator_dogrula(vt.kayitlari_getir_operatorlu(con, min(gunler), max(gunler), kirp=False), _a, _u):
         op = operator_adi(op)
         if not op or op in haric_kisi or statu_bul(tip) != DURUS:
             continue

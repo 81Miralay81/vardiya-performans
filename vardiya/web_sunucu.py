@@ -1,0 +1,515 @@
+"""Exe'nin içindeki web sunucusu: program açıkken iç ağdaki herkes tarayıcıdan aynı veriyi ve raporları görür.
+
+Kalıp Takip'teki gibi: sunucu exe'yi çalıştıran bilgisayarda (senin bilgisayarında) çalışır; Cormind çekimi ve Outlook
+okuması da o bilgisayarda yapılır. Hesaplar exe ile aynı ortak hizmetten (servis.py) gelir.
+
+Qt ile çizim (rapor sayfaları, PDF, sabit tablo) ve Outlook ana iş parçacığında yapılmalıdır; istekler bunları Gui.calistir
+ile ana iş parçacığına gönderip sonucu bekler. Veri tabanı okumaları her istekte ayrı bağlantıyla, istek iş parçacığında yapılır.
+"""
+from __future__ import annotations
+
+import json
+import mimetypes
+import os
+import socket
+import threading
+import time
+import traceback
+from datetime import date, timedelta
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import Callable, Optional
+from urllib.parse import parse_qs, urlparse
+
+from PySide6.QtCore import QBuffer, QByteArray, QIODevice, QObject, Qt, Signal, Slot
+
+from . import tema, veritabani as vt
+
+VARSAYILAN_PORT = 8090
+
+
+class Gui(QObject):
+    """Bir işlevi ana (arayüz) iş parçacığında çalıştırır ve sonucunu bekler."""
+    _istek = Signal(object)
+
+    def __init__(self):
+        super().__init__()
+        self._istek.connect(self._calis, Qt.QueuedConnection)
+
+    @Slot(object)
+    def _calis(self, is_):
+        fn, kutu, olay = is_
+        try:
+            kutu["sonuc"] = fn()
+        except Exception as ex:  # noqa: BLE001
+            kutu["hata"] = ex
+            kutu["iz"] = traceback.format_exc()
+        finally:
+            olay.set()
+
+    def calistir(self, fn: Callable, zaman_asimi: float = 300.0):
+        kutu, olay = {}, threading.Event()
+        self._istek.emit((fn, kutu, olay))
+        if not olay.wait(zaman_asimi):
+            raise TimeoutError("İşlem zaman aşımına uğradı")
+        if "hata" in kutu:
+            raise kutu["hata"]
+        return kutu.get("sonuc")
+
+
+def _png(img) -> bytes:
+    ba = QByteArray()
+    buf = QBuffer(ba)
+    buf.open(QIODevice.WriteOnly)
+    img.save(buf, "PNG")
+    buf.close()
+    return bytes(ba)
+
+
+def _tarih(q: dict, ad: str, varsayilan: date) -> date:
+    try:
+        return date.fromisoformat(q.get(ad, [""])[0])
+    except ValueError:
+        return varsayilan
+
+
+class Sunucu:
+    def __init__(self, db_yolu: str, port: int = VARSAYILAN_PORT, yenilendi: Optional[Callable[[], None]] = None):
+        self.db_yolu, self.port = db_yolu, port
+        self.gui = Gui()
+        self.yenilendi = yenilendi                      # Cormind çekimi bitince exe penceresini yenilemek için
+        self.httpd: Optional[ThreadingHTTPServer] = None
+        self.cekim = {"durum": "bos", "metin": "", "yuzde": 0, "dur": False}
+        self._kilit = threading.Lock()
+
+    # -------------------------------------------------------------- yaşam döngüsü
+    def baslat(self) -> str:
+        sunucu = self
+
+        class Isleyici(BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+
+            def log_message(self, *_a):                 # konsol yok; sessiz
+                pass
+
+            def do_GET(self):  # noqa: N802
+                sunucu._isle(self, "GET")
+
+            def do_POST(self):  # noqa: N802
+                sunucu._isle(self, "POST")
+
+        self.httpd = ThreadingHTTPServer(("0.0.0.0", self.port), Isleyici)
+        self.httpd.daemon_threads = True
+        threading.Thread(target=self.httpd.serve_forever, name="web-sunucu", daemon=True).start()
+        return self.adres()
+
+    def durdur(self):
+        if self.httpd:
+            self.httpd.shutdown()
+            self.httpd.server_close()
+            self.httpd = None
+
+    def adres(self) -> str:
+        return f"http://{socket.gethostname()}:{self.port}"
+
+    # -------------------------------------------------------------- yanıt yardımcıları
+    @staticmethod
+    def _gonder(h, govde: bytes, tur: str = "application/json; charset=utf-8", kod: int = 200, ek: Optional[dict] = None):
+        h.send_response(kod)
+        h.send_header("Content-Type", tur)
+        h.send_header("Content-Length", str(len(govde)))
+        h.send_header("Cache-Control", "no-store")
+        for k, v in (ek or {}).items():
+            h.send_header(k, v)
+        h.end_headers()
+        h.wfile.write(govde)
+
+    def _json(self, h, veri, kod: int = 200):
+        self._gonder(h, json.dumps(veri, ensure_ascii=False, default=lambda o: o.isoformat() if hasattr(o, "isoformat") else str(o)).encode("utf-8"),
+                     kod=kod)
+
+    def _con(self):
+        return vt.ac(self.db_yolu)
+
+    # -------------------------------------------------------------- yönlendirme
+    def _isle(self, h, yontem: str):
+        u = urlparse(h.path)
+        q = parse_qs(u.query)
+        yol = u.path.rstrip("/") or "/"
+        try:
+            if yol == "/":
+                return self._dosya(h, "uygulama.html")
+            if yol.startswith("/s/"):
+                return self._dosya(h, yol[3:])
+            if yol == "/logo.png":
+                return self._gonder(h, open(tema.kaynak_yolu("assets", "logo.png"), "rb").read(), "image/png")
+            f = {"/api/durum": self.api_durum, "/api/performans": self.api_performans, "/api/tablo.png": self.api_tablo,
+                 "/api/rapor/bilgi": self.api_rapor_bilgi, "/api/rapor/sayfa.png": self.api_rapor_sayfa,
+                 "/api/rapor.pdf": self.api_rapor_pdf, "/api/operator": self.api_operator, "/api/duran": self.api_duran,
+                 "/api/kayitlar": self.api_kayitlar, "/api/cormind/cek": self.api_cek, "/api/cormind/durum": self.api_cek_durum,
+                 "/api/cormind/durdur": self.api_cek_durdur, "/api/outlook": self.api_outlook}.get(yol)
+            if f is None:
+                return self._gonder(h, b"Bulunamadi", "text/plain; charset=utf-8", 404)
+            if yontem == "POST":
+                n = int(h.headers.get("Content-Length") or 0)
+                govde = h.rfile.read(n) if n else b""
+                try:
+                    q.update({k: [str(v)] for k, v in json.loads(govde or b"{}").items()})
+                except ValueError:
+                    pass
+            return f(h, q)
+        except BrokenPipeError:
+            return None
+        except Exception as ex:  # noqa: BLE001
+            try:
+                self._json(h, {"hata": f"{type(ex).__name__}: {ex}"}, 500)
+            except Exception:  # noqa: BLE001
+                pass
+
+    def _dosya(self, h, ad: str):
+        ad = os.path.normpath(ad).replace("\\", "/")
+        if ad.startswith("..") or ad.startswith("/"):
+            return self._gonder(h, b"", "text/plain", 403)
+        yol = tema.kaynak_yolu("assets", "web", ad)
+        if not os.path.isfile(yol):
+            return self._gonder(h, b"Bulunamadi", "text/plain; charset=utf-8", 404)
+        tur = mimetypes.guess_type(yol)[0] or "application/octet-stream"
+        if tur.startswith("text/") or tur.endswith("javascript"):
+            tur += "; charset=utf-8"
+        self._gonder(h, open(yol, "rb").read(), tur)
+
+    # -------------------------------------------------------------- API
+    def _aralik(self, q, con) -> tuple:
+        kap = vt.gun_kapsami(con)
+        son_gun = max(kap) if kap else date.today()
+        son = _tarih(q, "son", son_gun)
+        ilk = _tarih(q, "ilk", son - timedelta(days=6))
+        if son < ilk:
+            ilk, son = son, ilk
+        return ilk, son
+
+    def api_durum(self, h, q):
+        from .surum import SURUM
+        con = self._con()
+        try:
+            kap = vt.gun_kapsami(con)
+            a = vt.ayar_oku(con)
+            self._json(h, {"surum": SURUM, "kapsam_ilk": min(kap) if kap else None, "kapsam_son": max(kap) if kap else None,
+                           "makineler": a.get("makineler", []), "kayit_sayisi": sum(kap.values()), "adres": self.adres(),
+                           "cekim": self.cekim["durum"]})
+        finally:
+            con.close()
+
+    def api_performans(self, h, q):
+        from . import servis
+        con = self._con()
+        try:
+            ilk, son = self._aralik(q, con)
+            veri = servis.performans_verisi(con, vt.ayar_oku(con), ilk, son)
+        finally:
+            con.close()
+        self._json(h, veri)
+
+    def api_tablo(self, h, q):
+        """Senin sabit Excel görünümlü tablon: exe'deki çizimin aynısı, resim olarak."""
+        from . import cizim, servis
+        con = self._con()
+        try:
+            ilk, son = self._aralik(q, con)
+            a = vt.ayar_oku(con)
+            d = servis.donem_verisi(con, a, ilk, son)
+        finally:
+            con.close()
+        if not d["sonuc"]:
+            return self._gonder(h, b"", "image/png", 204)
+        s = d["sonuc"]
+        tum = list(a.get("makineler", [])) + sorted(m for m in s.hucreler if m not in a.get("makineler", []))
+        img = self.gui.calistir(lambda: cizim.tablo_resmi(s, tum, 0, 660, 30, 1.0))
+        self._gonder(h, _png(img), "image/png")
+
+    def _rapor(self, q):
+        from . import servis
+        duzen = q.get("duzen", ["makine"])[0]
+        duzen = duzen if duzen in servis.DUZENLER else "makine"
+        try:
+            tur = max(0, min(3, int(q.get("tur", ["3"])[0])))
+        except ValueError:
+            tur = 3
+        con = self._con()
+        try:
+            ilk, son = self._aralik(q, con)
+            r, bilgi = servis.rapor_verisi(con, vt.ayar_oku(con), duzen, ilk, son, tur)
+        finally:
+            con.close()
+        return r, bilgi
+
+    def api_rapor_bilgi(self, h, q):
+        from . import cizim
+        r, bilgi = self._rapor(q)
+        sayfa = self.gui.calistir(lambda: cizim.sayfa_sayisi(dict(r, yer_tutucu=False))) if r else 0
+        self._json(h, {"var": r is not None, "baslik": r["baslik"] if r else "", "sayfa": sayfa, "gun": len(bilgi["gunler"]),
+                       "kot_sayisi": bilgi["kot_sayisi"], "yatan": bilgi["yatan"], "seflar": bilgi["seflar"]})
+
+    def api_rapor_sayfa(self, h, q):
+        from PySide6.QtCore import QRectF
+        from PySide6.QtGui import QColor, QImage, QPainter
+        from . import cizim
+        r, _b = self._rapor(q)
+        if r is None:
+            return self._gonder(h, b"", "image/png", 204)
+        try:
+            i = int(q.get("i", ["0"])[0])
+        except ValueError:
+            i = 0
+        try:
+            gen = max(600, min(3000, int(q.get("g", ["1800"])[0])))
+        except ValueError:
+            gen = 1800
+
+        def ciz():
+            r2 = dict(r, yer_tutucu=False)
+            yuk = int(gen * 297 / 420)                  # A3 yatay
+            img = QImage(gen, yuk, QImage.Format_ARGB32)
+            img.fill(QColor("white"))
+            p = QPainter(img)
+            p.setRenderHint(QPainter.Antialiasing, True)
+            p.setRenderHint(QPainter.SmoothPixmapTransform, True)
+            cizim.sayfa_ciz(p, QRectF(0, 0, gen, yuk), r2, max(0, min(i, cizim.sayfa_sayisi(r2) - 1)))
+            p.end()
+            return img
+        self._gonder(h, _png(self.gui.calistir(ciz)), "image/png")
+
+    def api_rapor_pdf(self, h, q):
+        from .sayfa_rapor import pdf_yaz
+        r, _b = self._rapor(q)
+        if r is None:
+            return self._json(h, {"hata": "Seçilen günlerde veri yok"}, 404)
+
+        def yaz():
+            ba = QByteArray()
+            buf = QBuffer(ba)
+            buf.open(QIODevice.WriteOnly)
+            pdf_yaz(buf, r)
+            buf.close()
+            return bytes(ba)
+        veri = self.gui.calistir(yaz)
+        ad = "".join(c if c.isalnum() or c in " .-_" else "_" for c in r["baslik"]).strip() or "rapor"
+        from urllib.parse import quote
+        self._gonder(h, veri, "application/pdf", ek={"Content-Disposition": f"inline; filename*=UTF-8''{quote(ad)}.pdf"})
+
+    def api_operator(self, h, q):
+        from datetime import datetime
+        from .operator import operator_adi, operator_dogrula, operatorleri_hesapla
+        from . import servis
+        con = self._con()
+        try:
+            ilk, son = self._aralik(q, con)
+            a = vt.ayar_oku(con)
+            gunler = servis.gunler(ilk, son)
+            alt = datetime(ilk.year, ilk.month, ilk.day)
+            ust = datetime(son.year, son.month, son.day) + timedelta(days=1)
+            kayit = operator_dogrula(vt.kayitlari_getir_operatorlu(con, ilk, son, kirp=False), alt, ust)
+            haric = vt.haric_personel(con)
+            if haric:
+                kayit = [k for k in kayit if operator_adi(k[0]) not in haric]
+            try:
+                v = int(q.get("vardiya", ["0"])[0])
+            except ValueError:
+                v = 0
+            tum = operatorleri_hesapla(kayit, gunler, servis.hesap_ayari(a), {v} if v else None,
+                                       list(a.get("operator_haric_durus") or []))
+        finally:
+            con.close()
+
+        def hm(sn):
+            dk = int(round((sn or 0) / 60))
+            return f"{dk // 60}:{dk % 60:02d}"
+        satirlar = []
+        for ad, r in sorted(tum.items(), key=lambda x: -(x[1].durus_orani or 0)):
+            satirlar.append({"ad": ad, "makine": r.makine_sayisi, "makineler": sorted(r.makineler), "gun": r.gun_sayisi or len(r.gunler),
+                             "calisma": r.calisma_orani, "durus": r.durus_orani, "mola": r.mola_orani, "bosta": r.bosta_orani,
+                             "bosta_s": hm(r.hepsi_calisirken_sn), "cakisan_s": hm(r.cakisan_sn), "plansiz_s": hm(r.plansiz_sn),
+                             "belgesiz_s": hm(r.belgesiz_sn), "ayar_kayip_s": hm(r.setup_kayip_sn), "ort_makine": r.ort_makine,
+                             "en_cok": sorted(((t, hm(sn)) for t, sn in r.durus_tipleri.items()), key=lambda x: x[1], reverse=True)[:3]})
+        self._json(h, {"ilk": ilk, "son": son, "satirlar": satirlar})
+
+    def api_duran(self, h, q):
+        from . import operatorlu_durus, servis
+        con = self._con()
+        try:
+            ilk, son = self._aralik(q, con)
+            satirlar = operatorlu_durus.hesapla(con, servis.gunler(ilk, son))
+        finally:
+            con.close()
+        self._json(h, {"ilk": ilk, "son": son, "satirlar": [
+            {"makine": m, "operator": op, "saat": round(top, 2), "nedenler": sorted(((t, round(sa, 2)) for t, sa in d.items()), key=lambda x: -x[1])}
+            for top, m, op, d in satirlar]})
+
+    def api_kayitlar(self, h, q):
+        from datetime import datetime
+        from .hesap import bozuk_indeksler, statu_bul
+        con = self._con()
+        try:
+            ilk, son = self._aralik(q, con)
+            makine = q.get("makine", [""])[0]
+            bozuk = q.get("bozuk", ["0"])[0] == "1"
+            kolon = "makine, tip, baslangic, bitis, operator, is_emri, urun_kodu, urun_adi"
+            if bozuk:
+                rows = vt.aralik_satirlari(con, kolon, ilk, son, "makine = ?" if makine else "", (makine,) if makine else ()).fetchall()
+                liste = [(r["makine"], r["tip"], vt.zaman(r["baslangic"]), vt.zaman(r["bitis"])) for r in rows]
+                sec = bozuk_indeksler(liste)
+                rows = [r for i, r in enumerate(rows) if i in sec]
+            else:
+                kosul, arg = "baslangic >= ? AND baslangic < ?", [ilk.strftime("%Y-%m-%d 00:00:00"), (son + timedelta(days=1)).strftime("%Y-%m-%d 00:00:00")]
+                if makine:
+                    kosul += " AND makine = ?"
+                    arg.append(makine)
+                rows = con.execute(f"SELECT {kolon} FROM kayit WHERE {kosul} ORDER BY baslangic DESC LIMIT 3001", arg).fetchall()
+        finally:
+            con.close()
+        cikti = []
+        for r in rows[:3000]:
+            b, e = vt.zaman(r["baslangic"]), vt.zaman(r["bitis"])
+            sn = max(0, int((e - b).total_seconds()))
+            cikti.append([r["makine"], r["tip"], statu_bul(r["tip"]), r["baslangic"], r["bitis"],
+                          f"{sn // 3600}:{sn % 3600 // 60:02d}:{sn % 60:02d}", r["operator"] or "", r["is_emri"] or "", r["urun_kodu"] or ""])
+        self._json(h, {"satirlar": cikti, "fazla": len(rows) > 3000})
+
+    # -------------------------------------------------------------- Cormind çekimi (senin bilgisayarında)
+    def api_cek(self, h, q):
+        import base64
+        from PySide6.QtCore import QSettings
+        from . import cormind
+        with self._kilit:
+            if self.cekim["durum"] == "calisiyor":
+                return self._json(h, {"hata": "Zaten bir çekim sürüyor"}, 409)
+            ayar = QSettings("Teknorot", "VardiyaPerformans")
+            kul = str(ayar.value("cormind/kullanici", "") or "")
+            try:
+                sifre = base64.b64decode(str(ayar.value("cormind/sifre", "") or "")).decode("utf8")
+            except Exception:  # noqa: BLE001
+                sifre = ""
+            if not kul or not sifre:
+                return self._json(h, {"hata": "Cormind kullanıcı adı ve şifresi bu bilgisayarda kayıtlı değil. Bir kez programdan "
+                                              "(Veri Aktar) girip çekim yapın; sonra web'den de çekilebilir."}, 400)
+            con = self._con()
+            try:
+                ilk, son = self._aralik(q, con)
+                a = vt.ayar_oku(con)
+            finally:
+                con.close()
+            self.cekim = {"durum": "calisiyor", "metin": "Cormind'e bağlanılıyor…", "yuzde": 0, "dur": False,
+                          "ilk": ilk.isoformat(), "son": son.isoformat(), "baslangic": time.time()}
+        adres = a.get("cormind_adres", cormind.VARSAYILAN_ADRES)
+        idler = a.get("cormind_makine_idleri") or cormind.VARSAYILAN_MAKINE_IDLERI
+
+        def adim(b):
+            n = b.get("parca_sayisi") or 1
+            i = b.get("parca") or 1
+            kayit, toplam = b.get("kayit") or 0, b.get("toplam") or 0
+            ic = (kayit / toplam) if toplam else 0
+            self.cekim["yuzde"] = int(100 * ((i - 1) + ic) / n)
+            a_, s_ = b.get("ilk"), b.get("son")
+            ara = f"{a_:%d.%m.%Y} – {s_:%d.%m.%Y}" if hasattr(a_, "strftime") and hasattr(s_, "strftime") else ""
+            self.cekim["metin"] = (f"Adım {i}/{n} · {ara} · {kayit:,} / {toplam:,} kayıt".replace(",", ".")
+                                   + (f" · şu ana kadar {b.get('kaydedilen'):,} kayıt kaydedildi".replace(",", ".") if b.get("kaydedilen") else ""))
+
+        def calis():
+            con = vt.ac(self.db_yolu)
+            try:
+                r = cormind.cek(con, adres, kul, sifre, ilk, son, idler, adim=adim, iptal=lambda: self.cekim["dur"], uzanan=True)
+                self.cekim.update(durum="bitti", yuzde=100,
+                                  metin=(("DURDURULDU: " if r.get("durduruldu") else "") + f"{r['toplam']:,} kayıt alındı ve kaydedildi.".replace(",", ".")))
+                if self.yenilendi:
+                    try:
+                        self.gui.calistir(self.yenilendi, 120)
+                    except Exception:  # noqa: BLE001
+                        pass
+            except Exception as ex:  # noqa: BLE001
+                self.cekim.update(durum="hata", metin=f"Hata: {ex}")
+            finally:
+                con.close()
+        threading.Thread(target=calis, name="web-cormind", daemon=True).start()
+        self._json(h, {"tamam": True})
+
+    def api_cek_durum(self, h, q):
+        self._json(h, {k: v for k, v in self.cekim.items() if k != "dur"})
+
+    def api_cek_durdur(self, h, q):
+        self.cekim["dur"] = True
+        self._json(h, {"tamam": True})
+
+    # -------------------------------------------------------------- Outlook (senin bilgisayarındaki Outlook)
+    def api_outlook(self, h, q):
+        import sys
+        from . import outlook, servis
+        if sys.platform != "win32":
+            return self._json(h, {"hata": "Outlook yalnızca Windows'ta okunabilir"}, 400)
+        con = self._con()
+        try:
+            ilk, son = self._aralik(q, con)
+        finally:
+            con.close()
+        if not self.gui.calistir(outlook.acik_mi, 30):
+            try:
+                self.gui.calistir(outlook.baslat, 30)
+            except Exception as ex:  # noqa: BLE001
+                return self._json(h, {"hata": str(ex)}, 500)
+            return self._json(h, {"bilgi": "Outlook kapalıydı, sunucu bilgisayarında açılıyor. Posta kutusu yüklenince (yaklaşık "
+                                           "20–30 saniye) tekrar basın."})
+
+        def al():
+            c = vt.ac(self.db_yolu)
+            try:
+                return servis.outlook_kot_al(c, ilk, son)
+            finally:
+                c.close()
+        try:
+            r = self.gui.calistir(al, 600)
+        except RuntimeError as ex:
+            return self._json(h, {"hata": str(ex)}, 500)
+        if not r["mail"]:
+            return self._json(h, {"bilgi": f"{ilk:%d.%m.%Y} – {son:%d.%m.%Y} arasında, göndereni '{r['gonderen']}' ve konusunda "
+                                           f"'{r['konu']}' geçen mail bulunamadı."})
+        self._json(h, {"bilgi": servis.outlook_ozet(r) + (("\n" + r["uyari"]) if r["uyari"] else "")})
+
+
+_SUNUCU: Optional[Sunucu] = None
+
+
+def baslat(db_yolu: str, port: int = VARSAYILAN_PORT, yenilendi: Optional[Callable[[], None]] = None) -> Optional[str]:
+    """Sunucuyu başlatır; adresini döndürür. Port kullanımdaysa (ör. program ikinci kez açıldıysa) None."""
+    global _SUNUCU
+    if _SUNUCU is not None:
+        return _SUNUCU.adres()
+    s = Sunucu(db_yolu, port, yenilendi)
+    try:
+        adres = s.baslat()
+    except OSError:
+        return None
+    _SUNUCU = s
+    return adres
+
+
+def durdur():
+    global _SUNUCU
+    if _SUNUCU is not None:
+        _SUNUCU.durdur()
+        _SUNUCU = None
+
+
+def ayarda_acik() -> bool:
+    """Bu bilgisayarda sunucu açık mı? (Ayar bilgisayara özel: veri tabanı NAS'ta ortak olduğu için oraya yazılmaz.)"""
+    from PySide6.QtCore import QSettings
+    return str(QSettings("Teknorot", "VardiyaPerformans").value("web/acik", "0")) == "1"
+
+
+def ayar_port() -> int:
+    from PySide6.QtCore import QSettings
+    try:
+        return int(QSettings("Teknorot", "VardiyaPerformans").value("web/port", VARSAYILAN_PORT))
+    except (TypeError, ValueError):
+        return VARSAYILAN_PORT
+
+
+def etkin() -> Optional[Sunucu]:
+    return _SUNUCU

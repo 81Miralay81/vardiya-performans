@@ -1,6 +1,7 @@
 """Operatör sayfası: operatör bazında performans, duruş, makineler arası çakışan duruşlar."""
 from __future__ import annotations
 
+from datetime import datetime, timedelta
 from typing import Dict, List
 
 from PySide6.QtCore import Qt
@@ -403,7 +404,9 @@ class OperatorSayfasi(QWidget):
             self.graf_kutu.setVisible(gorunum == 5)
             self.orta_kutu.setVisible(gorunum not in (4, 5))
             if gunler:
-                kayit = vt.kayitlari_getir_operatorlu(self.ana.con, min(gunler), max(gunler))
+                from .operator import operator_dogrula
+                _a, _u = datetime(min(gunler).year, min(gunler).month, min(gunler).day), datetime(max(gunler).year, max(gunler).month, max(gunler).day) + timedelta(days=1)
+                kayit = operator_dogrula(vt.kayitlari_getir_operatorlu(self.ana.con, min(gunler), max(gunler), kirp=False), _a, _u)
                 haric = vt.haric_personel(self.ana.con)       # Ayarlar'da hariç tutulan personel listeye girmez
                 if haric:
                     kayit = [k for k in kayit if operator_adi(k[0]) not in haric]

@@ -306,7 +306,7 @@ class PerformansSayfasi(QWidget):
         self._mola_dk = ayar.mola_saat * 60.0
         gunler = self.ana.donem_gunleri()
         kayit = getattr(self.ana, "kayit", []) or []
-        self._dokum = durus_dokumu(kayit, gunler) if s else {}
+        self._dokum = durus_dokumu(kayit, gunler, ayar.haric) if s else {}
         self._cormind = cormind_hesabi(kayit, gunler, self.ana.ayar.get("makineler", []), ayar) if s else {}
         if self._secili and (not s or self._degerler(self._secili) is None):
             self._secili = None

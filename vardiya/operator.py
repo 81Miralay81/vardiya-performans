@@ -293,3 +293,46 @@ def operatorleri_hesapla(kayitlar: Iterable[Tuple[str, str, str, datetime, datet
         if r.makineler:
             sonuc[ad] = r
     return sonuc
+
+
+def _vardiya_parcalari(bas: datetime, bit: datetime):
+    """Kaydı vardiya sınırlarında (00, 08, 16) böler: (gün, vardiya, başlangıç, bitiş)."""
+    t = bas
+    while t < bit:
+        v = t.hour // 8 + 1
+        sinir = datetime(t.year, t.month, t.day) + timedelta(hours=8 * v)
+        u = min(bit, sinir)
+        yield t.date(), v, t, u
+        t = u
+
+
+def operator_dogrula(kayitlar: Iterable[Tuple[str, str, str, datetime, datetime]], alt: Optional[datetime] = None,
+                     ust: Optional[datetime] = None) -> List[Tuple[str, str, str, datetime, datetime]]:
+    """Kayıttaki operatör adını yalnızca operatörün o vardiyada makinede gerçekten bulunduğu kısımlara bırakır.
+
+    Cormind uzun bir kayda (ör. aylarca süren İŞ EMRİ PLAN YOK) durum başladığı anda makinede kim varsa onun adını yazar;
+    operatör sonra çıksa da ad kayıtta kalır. Bu yüzden kayıt vardiyalara bölünür ve bir vardiya parçasında operatör ancak o
+    vardiyada aynı makinede kendisi bir kayıt başlatmışsa (makinede oturumu ve işlemi varsa) sayılır; yoksa o parça
+    operatörsüz kalır. Operatörün başlattığı kaydın ilk vardiyası her zaman onundur.
+    Kayıtlar kırpılmadan verilmelidir (gerçek başlangıç saati gerekir); alt/ust verilirse çıktı o aralığa kırpılır."""
+    kayitlar = list(kayitlar)
+    var: set = set()                                   # (makine, gün, vardiya, operatör): o vardiyada kayıt başlatmış
+    for op, m, _tip, bas, _bit in kayitlar:
+        ad = operator_adi(op)
+        if ad:
+            var.add((m, bas.date(), bas.hour // 8 + 1, ad))
+    sonuc = []
+    for op, m, tip, bas, bit in kayitlar:
+        a0 = max(bas, alt) if alt else bas
+        b0 = min(bit, ust) if ust else bit
+        if b0 <= a0 and not (bit <= bas and (alt is None or alt <= bas)):
+            continue
+        ad = operator_adi(op)
+        if not ad or bit <= bas:
+            sonuc.append((op, m, tip, a0, b0))
+            continue
+        ilk = (bas.date(), bas.hour // 8 + 1)
+        for g, v, a, b in _vardiya_parcalari(a0, b0):
+            sahip = (g, v) == ilk or (m, g, v, ad) in var
+            sonuc.append((op if sahip else "", m, tip, a, b))
+    return sonuc

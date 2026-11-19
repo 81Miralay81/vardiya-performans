@@ -117,6 +117,20 @@ def kendini_sina() -> int:
             print("HATA: web grafiği çizilemedi")
             return 8
         print("WEB TAMAM", img.width(), "x", img.height())
+    from vardiya import web_sunucu                     # tarayıcı sürümü: sayfa pakette mi, sunucu yanıt veriyor mu
+    import urllib.request
+    adres = web_sunucu.baslat(w.db_yolu, 18090)
+    try:
+        sayfa = urllib.request.urlopen("http://127.0.0.1:18090/", timeout=20).read()
+        durum = urllib.request.urlopen("http://127.0.0.1:18090/api/durum", timeout=20).read()
+    except Exception as ex:  # noqa: BLE001
+        print("HATA: tarayıcı sunucusu yanıt vermedi:", adres, ex)
+        return 9
+    web_sunucu.durdur()
+    if b"Vardiya Performans" not in sayfa or b"kayit_sayisi" not in durum:
+        print("HATA: tarayıcı sayfası eksik")
+        return 9
+    print("TARAYICI TAMAM", len(sayfa), "bayt")
     if sys.platform == "win32":                       # Outlook bağlantı kütüphanesi exe'ye girmiş mi (Outlook'un kendisi açılmaz)
         try:
             import win32com.client  # noqa: F401
@@ -162,6 +176,10 @@ def main() -> int:
         QMessageBox.critical(None, "Vardiya Performans", f"Veri tabanı açılamadı:\n{yol}\n\n{ex}")
         return 1
     teshis.adim("ana pencere kuruldu")
+    from vardiya import web_sunucu
+    if web_sunucu.ayarda_acik() and not os.environ.get("VARDIYA_WEB_YOK"):   # tarayıcıdan erişim: http://bu-bilgisayar:port
+        adres = web_sunucu.baslat(pencere.db_yolu, web_sunucu.ayar_port(), pencere.veri_yenilendi)
+        teshis.adim(f"web sunucusu: {adres}" if adres else "web sunucusu başlatılamadı (port kullanımda)")
     acilis.adim(100, "Hazır")
     pencere.show()
     acilis.close()

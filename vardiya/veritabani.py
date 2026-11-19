@@ -44,6 +44,10 @@ CREATE TABLE IF NOT EXISTS kayit (
     PRIMARY KEY (makine, baslangic, tip)
 );
 CREATE INDEX IF NOT EXISTS ix_kayit_bas ON kayit (baslangic);
+-- 1 günden uzun kayıtlar için küçük ayrı dizin: aralığa önceden uzanan kayıtlar tüm tablo taranmadan bulunur
+CREATE INDEX IF NOT EXISTS ix_kayit_uzun ON kayit (baslangic) WHERE julianday(bitis) - julianday(baslangic) > 1;
+-- gün başına kayıt sayısı özeti (takvimdeki 'verisi olan günler'): tüm tabloyu saymamak için
+CREATE TABLE IF NOT EXISTS gun_ozet (gun TEXT PRIMARY KEY, kayit INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS ayar (anahtar TEXT PRIMARY KEY, deger TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS sef_atama (
     tarih   TEXT NOT NULL,
@@ -87,11 +91,41 @@ def ac(yol: str) -> sqlite3.Connection:
     """Veri tabanını açar (yoksa oluşturur). Ağ klasöründe çalışması için varsayılan günlük kipi kullanılır."""
     klasor = os.path.dirname(os.path.abspath(yol))
     os.makedirs(klasor, exist_ok=True)
-    con = sqlite3.connect(yol, timeout=30)
+    con = sqlite3.connect(yol, timeout=30, check_same_thread=False)
     con.row_factory = sqlite3.Row
+    con.execute("PRAGMA cache_size = -65536")            # 64 MB önbellek: aynı sayfalar ağdan tekrar okunmasın
     con.executescript(SEMA)
     con.commit()
+    if con.execute("SELECT 1 FROM gun_ozet LIMIT 1").fetchone() is None and con.execute("SELECT 1 FROM kayit LIMIT 1").fetchone():
+        gun_ozet_yenile(con)                             # ilk kez: bir defalık tam sayım
     return con
+
+
+def gun_ozet_yenile(con: sqlite3.Connection, ilk: Optional[str] = None, son: Optional[str] = None) -> None:
+    """gun_ozet tablosunu [ilk, son] günleri için (verilmezse tamamen) kayıt tablosundan yeniden sayar."""
+    if ilk is None:
+        con.execute("DELETE FROM gun_ozet")
+        con.execute("INSERT INTO gun_ozet SELECT substr(baslangic,1,10), COUNT(*) FROM kayit GROUP BY 1")
+    else:
+        ilk, son = ilk[:10], (son or ilk)[:10]
+        con.execute("DELETE FROM gun_ozet WHERE gun BETWEEN ? AND ?", (ilk, son))
+        con.execute("INSERT INTO gun_ozet SELECT substr(baslangic,1,10), COUNT(*) FROM kayit "
+                    "WHERE baslangic >= ? AND baslangic < ? GROUP BY 1", (ilk, son + " 99"))
+    con.commit()
+
+
+def aralik_satirlari(con: sqlite3.Connection, kolonlar: str, ilk: date, son: date, ek: str = "", ek_arg: tuple = ()):
+    """[ilk, son] günlerine değen kayıtlar; tüm tablo taranmaz. Aralıkta (ya da bir gün önce) başlayanlar başlangıç dizininden,
+    daha önce başlayıp içeri uzanan uzun kayıtlar küçük 'uzun kayıt' dizininden okunur."""
+    bas = ilk.strftime("%Y-%m-%d 00:00:00")
+    bit = (son + timedelta(days=1)).strftime("%Y-%m-%d 00:00:00")
+    once = (ilk - timedelta(days=1)).strftime("%Y-%m-%d 00:00:00")
+    ek = f" AND ({ek})" if ek else ""
+    return con.execute(
+        f"SELECT {kolonlar} FROM kayit WHERE baslangic >= ? AND baslangic < ? AND bitis >= ?{ek} "
+        f"UNION ALL SELECT {kolonlar} FROM kayit WHERE julianday(bitis) - julianday(baslangic) > 1 "
+        f"AND baslangic < ? AND bitis >= ?{ek}",
+        (once, bit, bas) + tuple(ek_arg) + (once, bas) + tuple(ek_arg))
 
 
 # ------------------------------------------------------------------ ayarlar
@@ -152,14 +186,23 @@ def kayit_yaz(con: sqlite3.Connection, satirlar: Iterable[tuple]) -> Tuple[int, 
         [(k[0], k[1], k[2]) + v for k, v in yazilacak.items()],
     )
     con.commit()
+    gun_ozet_yenile(con, ilk, son)
     return yeni, guncel, ayni
 
 
 def _kirp(bas_s: str, bit_s: str, alt: datetime, ust: datetime) -> Tuple[datetime, datetime]:
     """Kaydı istenen aralığa kırpar. Aylarca süren (ya da hiç kapatılmamış) bir kayıt, yalnızca seçili günler için
     gerekirken baştan sona vardiya vardiya bölünmesin diye: binlerce böyle kayıt hesabı dakikalarca kilitliyordu."""
-    bas, bit = datetime.strptime(bas_s, BICIM), datetime.strptime(bit_s, BICIM)
+    bas, bit = zaman(bas_s), zaman(bit_s)
     return (alt if bas < alt else bas), (ust if bit > ust else bit)
+
+
+def zaman(s: str) -> datetime:
+    """'2026-11-12 08:15:30' -> datetime; strptime'dan çok daha hızlı (binlerce kayıtta fark eder)."""
+    try:
+        return datetime(int(s[0:4]), int(s[5:7]), int(s[8:10]), int(s[11:13]), int(s[14:16]), int(s[17:19]))
+    except (ValueError, IndexError, TypeError):
+        return datetime.strptime(s, BICIM)
 
 
 def kayitlari_getir(con: sqlite3.Connection, ilk: date, son: date, kirp: bool = True) -> List[Tuple[str, str, datetime, datetime]]:
@@ -169,13 +212,11 @@ def kayitlari_getir(con: sqlite3.Connection, ilk: date, son: date, kirp: bool = 
     bit = (son + timedelta(days=1)).strftime("%Y-%m-%d 00:00:00")
     alt, ust = datetime(ilk.year, ilk.month, ilk.day), datetime(son.year, son.month, son.day) + timedelta(days=1)
     sonuc = []
-    for r in con.execute(
-        "SELECT makine, tip, baslangic, bitis FROM kayit WHERE baslangic < ? AND bitis >= ?", (bit, bas)
-    ):
+    for r in aralik_satirlari(con, "makine, tip, baslangic, bitis", ilk, son):
         if kirp:
             b0, b1 = _kirp(r["baslangic"], r["bitis"], alt, ust)
         else:
-            b0, b1 = datetime.strptime(r["baslangic"], BICIM), datetime.strptime(r["bitis"], BICIM)
+            b0, b1 = zaman(r["baslangic"]), zaman(r["bitis"])
         sonuc.append((r["makine"], r["tip"], b0, b1))
     return sonuc
 
@@ -186,21 +227,18 @@ def kayitlari_getir_operatorlu(con: sqlite3.Connection, ilk: date, son: date, ki
     bit = (son + timedelta(days=1)).strftime("%Y-%m-%d 00:00:00")
     alt, ust = datetime(ilk.year, ilk.month, ilk.day), datetime(son.year, son.month, son.day) + timedelta(days=1)
     sonuc = []
-    for r in con.execute("SELECT operator, makine, tip, baslangic, bitis FROM kayit WHERE baslangic < ? AND bitis >= ?", (bit, bas)):
+    for r in aralik_satirlari(con, "operator, makine, tip, baslangic, bitis", ilk, son):
         if kirp:
             b0, b1 = _kirp(r["baslangic"], r["bitis"], alt, ust)
         else:
-            b0, b1 = datetime.strptime(r["baslangic"], BICIM), datetime.strptime(r["bitis"], BICIM)
+            b0, b1 = zaman(r["baslangic"]), zaman(r["bitis"])
         sonuc.append((r["operator"] or "", r["makine"], r["tip"], b0, b1))
     return sonuc
 
 
 def gun_kapsami(con: sqlite3.Connection) -> Dict[date, int]:
-    """Başlangıç gününe göre kayıt sayısı (takvimde 'verisi olan günler' için)."""
-    return {
-        datetime.strptime(r[0], "%Y-%m-%d").date(): r[1]
-        for r in con.execute("SELECT substr(baslangic,1,10) g, COUNT(*) FROM kayit GROUP BY g ORDER BY g")
-    }
+    """Başlangıç gününe göre kayıt sayısı (takvimde 'verisi olan günler' için); küçük özet tablodan okunur."""
+    return {date.fromisoformat(r[0]): r[1] for r in con.execute("SELECT gun, kayit FROM gun_ozet WHERE kayit > 0 ORDER BY gun")}
 
 
 def makineler_kayitta(con: sqlite3.Connection) -> List[str]:

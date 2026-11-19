@@ -197,9 +197,8 @@ class AnaPencere(QMainWindow):
         return self.donem.gunler()
 
     def hesap_ayar(self) -> HesapAyar:
-        a = self.ayar
-        return HesapAyar(esik=a["esik"], vardiya_dk=a["vardiya_dk"], yemek_dk=a["yemek_dk"], cay_dk=a["cay_dk"],
-                          kural="gunluk", yontem=a.get("hesap_yontemi", "vardiya"))
+        from .servis import hesap_ayari
+        return hesap_ayari(self.ayar)
 
     def mesaj(self, metin: str):
         self.mesaj_etiketi.setText(metin)
