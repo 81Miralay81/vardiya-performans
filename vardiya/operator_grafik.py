@@ -36,7 +36,7 @@ def _saat(sn_alani: str):
 METRIKLER: Tuple[Metrik, ...] = (
     Metrik("calisma", "Çalışma %", True, tema.LACIVERT, lambda r: r.calisma_orani, lambda d: d.get("calisma")),
     Metrik("durus", "Duruş %", True, tema.KIRMIZI, lambda r: r.durus_orani, lambda d: d.get("durus")),
-    Metrik("mola", "Mola %", True, "#7B4FA8", lambda r: r.mola_orani, lambda d: d.get("mola")),
+    Metrik("mola", "Molada çalışma %", True, "#7B4FA8", lambda r: r.molada_calisma_orani, lambda d: d.get("molada_calisma")),
     Metrik("bosta", "Boşta kalma (saat)", False, tema.YESIL, _saat("hepsi_calisirken_sn"),
            lambda d: d["bosta_sn"] / 3600.0 if "bosta_sn" in d else None),
     Metrik("bosta_yuzde", "Boşta %", True, "#3E7A1A", lambda r: r.bosta_orani, None),

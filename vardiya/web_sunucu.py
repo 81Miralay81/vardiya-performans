@@ -339,7 +339,7 @@ class Sunucu:
             "makineler": [{"makine": m, "calisma": round(v["calisma"]), "durus": round(v["durus"]), "mola": round(v["mola"])}
                           for m, v in sorted(r.makineler.items())],
             "gunler": [{"gun": f"{g:%d.%m.%Y} {GUN[g.weekday()]}", "kisa": f"{g:%d.%m} {GUN[g.weekday()]}",
-                        "calisma": v["calisma"], "durus": v["durus"], "mola": v["mola"], "bosta_sn": round(v.get("bosta_sn", 0)),
+                        "calisma": v["calisma"], "durus": v["durus"], "molada_calisma": v["molada_calisma"], "makine": v["makine"], "bosta_sn": round(v.get("bosta_sn", 0)),
                         "cakisan_sn": round(v.get("cakisan_sn", 0)), "birim": int(v["birim"])} for g, v in sorted(r.gunler.items())],
             "nedenler": sorted(([t, round(sn)] for t, sn in r.durus_tipleri.items()), key=lambda x: -x[1]),
             "durus_sn": round(r.durus_sn),
@@ -355,11 +355,12 @@ class Sunucu:
         satirlar = []
         for ad, r in sorted(tum.items(), key=lambda x: -(x[1].durus_orani or 0)):
             satirlar.append({"ad": ad, "makine": r.makine_sayisi, "makineler": sorted(r.makineler), "gun": r.gun_sayisi or len(r.gunler),
-                             "calisma": r.calisma_orani, "durus": r.durus_orani, "mola": r.mola_orani, "bosta": r.bosta_orani,
+                             "calisma": r.calisma_orani, "durus": r.durus_orani, "molada_calisma": r.molada_calisma_orani, "bosta": r.bosta_orani,
                              "bosta_s": hm(r.hepsi_calisirken_sn), "cakisan_s": hm(r.cakisan_sn), "plansiz_s": hm(r.plansiz_sn),
                              "belgesiz_s": hm(r.belgesiz_sn), "ayar_kayip_s": hm(r.setup_kayip_sn), "ort_makine": r.ort_makine,
                              "en_cok": [(t, hm(sn)) for t, sn in sorted(r.durus_tipleri.items(), key=lambda x: -x[1])[:3]]})
-        self._json(h, {"ilk": ilk, "son": son, "satirlar": satirlar})
+        from .operator import AYRINTI_ACIKLAMA, SUTUN_ACIKLAMA
+        self._json(h, {"ilk": ilk, "son": son, "satirlar": satirlar, "aciklama": SUTUN_ACIKLAMA, "ayrinti_aciklama": AYRINTI_ACIKLAMA})
 
     def api_duran(self, h, q):
         from . import operatorlu_durus, servis

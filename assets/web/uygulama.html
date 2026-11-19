@@ -136,7 +136,7 @@ td.s{text-align:right;white-space:nowrap}
       <h3>Operatör varken duran makineler <span class="not">yalnızca seçili günler · operatör yalnızca o vardiyada makinede gerçekten iş başlattıysa sayılır · çakışan süreler bir kez sayılır</span></h3>
       <div class="tablokutu"><table id="duran-t"></table></div>
     </div>
-    <div class="kart"><h3>Operatörler <span class="not">satıra tıklayın: makineler, günler, gün gün grafik, duruş nedenleri · altı çizili süreye tıklayın: o sürenin listesi</span></h3>
+    <div class="kart"><h3>Operatörler <span class="not">satıra tıklayın: makineler, günler, gün gün grafik, duruş nedenleri · altı çizili süreye tıklayın: o sürenin listesi · sütun başlığının üzerine gelin: açıklaması</span></h3>
       <div class="tablokutu"><table id="op-t"></table></div></div>
     <div class="perde" id="perde"><div class="pencere">
       <header><h3 id="p-baslik"></h3><span class="not" id="p-not" style="color:var(--soluk);font-size:12px"></span><button id="p-kapat">✕ Kapat</button></header>
@@ -336,10 +336,13 @@ $('routlook').onclick = function(){
 function operator(){
   $('onot').textContent = 'Hesaplanıyor…';
   api('/api/operator', 'vardiya=' + $('ovardiya').value).then(function(d){
-    var h = '<thead><tr><th>Operatör</th><th>Makine</th><th>Gün</th><th>Çalışma</th><th>Duruş</th><th>Mola</th><th>Boşta</th><th>Çakışan duruş</th><th>Ayar kaybı</th><th>İş emri yok</th><th>Belgesiz</th><th>En çok duruş</th></tr></thead><tbody>';
+    ACK = d.ayrinti_aciklama || {};
+    var bas = [['Operatör'], ['Makine'], ['Gün'], ['Çalışma', 'Çalışma %'], ['Duruş', 'Duruş %'], ['Molada çalışma', 'Molada çalışma %'], ['Boşta', 'Boşta süre'],
+               ['Çakışan duruş'], ['Ayar kaybı'], ['İş emri yok'], ['Belgesiz'], ['En çok duruş']];
+    var h = '<thead><tr>' + bas.map(function(b){ var a = (d.aciklama || {})[b[1] || b[0]]; return '<th' + (a ? ' title="' + esc(a).replace(/"/g, '&quot;') + '" style="cursor:help"' : '') + '>' + b[0] + '</th>'; }).join('') + '</tr></thead><tbody>';
     d.satirlar.forEach(function(r){
       var a = esc(r.ad).replace(/"/g, '&quot;');
-      h += '<tr data-ad="' + a + '"><td><b>' + esc(r.ad) + '</b><br><span class="not" style="color:var(--soluk)">' + esc(r.makineler.join(', ')) + '</span></td><td class="s">' + r.makine + '</td><td class="s">' + r.gun + '</td><td class="s">' + yz(r.calisma) + '</td><td class="s">' + yz(r.durus) + '</td><td class="s">' + yz(r.mola) + '</td><td class="s tik" data-l="bosta">' + r.bosta_s + '</td><td class="s tik" data-l="cakisma">' + r.cakisan_s + '</td><td class="s tik" data-l="ayar">' + r.ayar_kayip_s + '</td><td class="s tik" data-l="plansiz">' + r.plansiz_s + '</td><td class="s">' + r.belgesiz_s + '</td><td>' + r.en_cok.map(function(x){ return esc(x[0]) + ' ' + x[1]; }).join(', ') + '</td></tr>';
+      h += '<tr data-ad="' + a + '"><td><b>' + esc(r.ad) + '</b><br><span class="not" style="color:var(--soluk)">' + esc(r.makineler.join(', ')) + '</span></td><td class="s">' + r.makine + '</td><td class="s">' + r.gun + '</td><td class="s">' + yz(r.calisma) + '</td><td class="s">' + yz(r.durus) + '</td><td class="s">' + yz(r.molada_calisma) + '</td><td class="s tik" data-l="bosta">' + r.bosta_s + '</td><td class="s tik" data-l="cakisma">' + r.cakisan_s + '</td><td class="s tik" data-l="ayar">' + r.ayar_kayip_s + '</td><td class="s tik" data-l="plansiz">' + r.plansiz_s + '</td><td class="s">' + r.belgesiz_s + '</td><td>' + r.en_cok.map(function(x){ return esc(x[0]) + ' ' + x[1]; }).join(', ') + '</td></tr>';
     });
     h += '</tbody>';
     $('op-t').innerHTML = h; $('onot').textContent = d.satirlar.length + ' operatör';
@@ -352,7 +355,7 @@ $('ovardiya').onchange = operator;
 function sure(sn){ var dk = Math.round(sn/60); return Math.floor(dk/60) + ':' + String(dk%60).padStart(2,'0'); }
 function dksn(sn){ return Math.floor(sn/60) + ' dk ' + String(Math.round(sn%60)).padStart(2,'0') + ' sn'; }
 function pyz(x){ return (x*100).toFixed(1).replace('.', ',') + '%'; }
-var PV = null;
+var PV = null, ACK = {};
 $('op-t').onclick = function(e){
   var tr = e.target.closest('tr[data-ad]'); if (!tr) return;
   var td = e.target.closest('td.tik'), ad = tr.dataset.ad;
@@ -367,8 +370,10 @@ $('op-t').onclick = function(e){
 $('p-kapat').onclick = function(){ $('perde').classList.remove('ac'); if (G['p-graf']) { G['p-graf'].dispose(); delete G['p-graf']; } };
 $('perde').onclick = function(e){ if (e.target === this) $('p-kapat').click(); };
 document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && $('perde').classList.contains('ac')) $('p-kapat').click(); });
-function tablo(baslik, satirlar, sag){
-  var h = '<div class="tablokutu"><table><tr>' + baslik.map(function(b, i){ return '<th' + (sag.indexOf(i) >= 0 ? ' style="text-align:right"' : '') + '>' + b + '</th>'; }).join('') + '</tr>';
+function tablo(baslik, satirlar, sag, acik){
+  acik = acik || {};
+  var h = '<div class="tablokutu"><table><tr>' + baslik.map(function(b, i){ var st = (sag.indexOf(i) >= 0 ? 'text-align:right;' : '') + (acik[b] ? 'cursor:help' : '');
+    return '<th' + (acik[b] ? ' title="' + esc(acik[b]).replace(/"/g, '&quot;') + '"' : '') + (st ? ' style="' + st + '"' : '') + '>' + b + '</th>'; }).join('') + '</tr>';
   satirlar.forEach(function(s){ h += '<tr>' + s.map(function(x, i){ return '<td' + (sag.indexOf(i) >= 0 ? ' class="s"' : '') + '>' + x + '</td>'; }).join('') + '</tr>'; });
   return h + '</table></div>';
 }
@@ -380,10 +385,10 @@ function ayrinti(s){
   if (G['p-graf']) { G['p-graf'].dispose(); delete G['p-graf']; }
   var ic = $('p-icerik');
   if (s === 'mak') ic.innerHTML = tablo(['Makine','Çalışma','Duruş','Mola','Çalışma payı'], d.makineler.map(function(m){
-    var t = Math.max(1, m.calisma + m.durus + m.mola); return [esc(m.makine), sure(m.calisma), sure(m.durus), sure(m.mola), pyz(m.calisma / t)]; }), [1,2,3,4]);
-  else if (s === 'gun') ic.innerHTML = tablo(['Gün','Çalışma %','Duruş %','Mola %','Boşta','Çakışan duruş','Makine-vardiya'], d.gunler.map(function(g){
-    return [g.gun, pyz(g.calisma), pyz(g.durus), pyz(g.mola), sure(g.bosta_sn), sure(g.cakisan_sn), g.birim]; }), [1,2,3,4,5,6]);
-  else if (s === 'neden') { var top = Math.max(1, d.durus_sn); ic.innerHTML = tablo(['Duruş nedeni','Süre','Payı'], d.nedenler.map(function(n){ return [esc(n[0]), sure(n[1]), pyz(n[1] / top)]; }), [1,2]); }
+    var t = Math.max(1, m.calisma + m.durus + m.mola); return [esc(m.makine), sure(m.calisma), sure(m.durus), sure(m.mola), pyz(m.calisma / t)]; }), [1,2,3,4], ACK['Makineler']);
+  else if (s === 'gun') ic.innerHTML = tablo(['Gün','Çalışma %','Duruş %','Molada çalışma %','Boşta','Çakışan duruş','Makine'], d.gunler.map(function(g){
+    return [g.gun, pyz(g.calisma), pyz(g.durus), pyz(g.molada_calisma), sure(g.bosta_sn), sure(g.cakisan_sn), g.makine]; }), [1,2,3,4,5,6], ACK['Günler']);
+  else if (s === 'neden') { var top = Math.max(1, d.durus_sn); ic.innerHTML = tablo(['Duruş nedeni','Süre','Payı'], d.nedenler.map(function(n){ return [esc(n[0]), sure(n[1]), pyz(n[1] / top)]; }), [1,2], ACK['Duruş nedenleri']); }
   else {
     ic.innerHTML = '<div id="p-graf" class="grafik"></div>';
     var x = d.gunler.map(function(g){ return g.kisa; }), et = {show:true, position:'top', fontSize:11, fontWeight:'bold'};

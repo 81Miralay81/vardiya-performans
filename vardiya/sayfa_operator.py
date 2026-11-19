@@ -10,34 +10,22 @@ from PySide6.QtWidgets import (QAbstractItemView, QApplication, QCheckBox, QComb
                                QHBoxLayout, QHeaderView, QLabel, QListWidget, QListWidgetItem, QMessageBox, QPushButton, QScrollArea, QTableWidget, QTabWidget, QVBoxLayout, QWidget)
 
 from . import tema, veritabani as vt
-from .operator import OperatorSonuc, operator_adi, operatorleri_hesapla
+from .operator import AYRINTI_ACIKLAMA, SUTUN_ACIKLAMA, OperatorSonuc, operator_adi, operatorleri_hesapla
 from .operator_grafik import METRIKLER, METRIK, grafik_ciz
 from .sayfa_kayitlar import _Oge
 from .sayfa_ortak import CizimWidget, etiket, kart, tablo_menusu
 
-BASLIKLAR = ["Operatör", "Makine", "Gün", "Kayıtlı süre", "Çalışma %", "Duruş %", "Mola %", "Toplam duruş", "Çakışan duruş",
+BASLIKLAR = ["Operatör", "Makine", "Gün", "Kayıtlı süre", "Çalışma %", "Duruş %", "Molada çalışma %", "Toplam duruş", "Çakışan duruş",
              "Ayar kaybı", "Boşta süre", "Boşta %", "Belgesiz duruş", "İş emri yok", "Hariç tutulan", "En uzun duruş", "Duruş adedi", "Ort. makine"]
-BASLIK_ACIKLAMA = {
-    "Kayıtlı süre": "Operatörün makinelerinde kayıtlı olduğu toplam süre (çalışma + duruş + mola, saat:dakika)",
-    "Toplam duruş": "Operatörün makinelerindeki duruşların toplamı (mola hariç)",
-    "Çakışan duruş": "Aynı anda en az iki makinenin birlikte durduğu süre. Tıklayınca liste açılır.",
-    "Ayar kaybı": "Operatör bir makinede SETUP/Kurulum yaparken öbür makinelerinde biriken duruş süresi. Tıklayınca liste açılır.",
-    "Boşta süre": "Operatörün molada olmayan TÜM makineleri aynı anda çalışırken geçen süre: yapacak işi yok, boşta. Tıklayınca liste açılır.",
-    "Boşta %": "Boşta süre, operatörün aktif olduğu süreye oranı",
-    "Belgesiz duruş": "Duruş nedeni girilmemiş süre (Belgelenmemiş Duruş)",
-    "İş emri yok": "Operatör makinede tanımlıyken 'İŞ EMRİ PLAN YOK' duruşunda geçen süre. İş emri yoksa operatörün makineden çıkış yapması beklenir. Tıklayınca liste açılır.",
-    "Hariç tutulan": "'Hariç tutulacak duruşlar' düğmesiyle hesap dışı bırakılan duruşların toplamı (üzerine gelince dökümü görünür)",
-    "En uzun duruş": "Tek seferdeki en uzun duruş",
-    "Duruş adedi": "Duruş sayısı",
-    "Ort. makine": "Operatör çalışırken aynı anda ortalama kaç makineye bakıyor",
-}
+BASLIK_ACIKLAMA = SUTUN_ACIKLAMA
 CAKISMA, AYAR_KAYBI, BOSTA, PLANSIZ, HARIC_SUTUN, DURUS_SUTUN, CALISMA_SUTUN = 8, 9, 10, 13, 14, 5, 4
 ACIKLAMA = (
-    "ORANLAR (Çalışma %, Duruş %, Mola %)\\n"
+    "ORANLAR (Çalışma %, Duruş %, Molada çalışma %)\\n"
     "Operatörün çalıştığı her makine ve vardiya için net süre (varsayılan 7,33 saat) esas alınır. Operatör o makinede vardiyanın "
     "yalnızca bir kısmında kayıtlıysa payı o oranda küçülür. Oran önce her gün için ayrı hesaplanır, seçtiğiniz dönemin (hafta, ay) "
     "değeri günlerin ortalamasıdır; dönemin toplamı bölünmez. Çalışma ile duruş birlikte %100'ü aşabilir, çünkü net süreye göre "
-    "hesaplanır (mola hariç).\\n\\n"
+    "hesaplanır (mola hariç). MOLADA ÇALIŞMA: mola hakkının (yemek + çay) molaya ayrılmayıp çalışılarak geçen kısmı; "
+    "hakkından fazla mola kullanan için %0.\\n\\n"
     "TOPLAM DURUŞ\\nOperatörün makinelerindeki duruşların toplamı (mola sayılmaz). İki makinesi birlikte duruyorsa ikisi de toplanır.\\n\\n"
     "ÇAKIŞAN DURUŞ\\nOperatörün aynı anda en az iki makinesinin duruşta olduğu süre (saat olarak bir kez sayılır). Üç makineden biri duruyor, "
     "ikisi çalışıyorsa çakışma sayılmaz. Sayıya tıklayınca çakışmaların listesi açılır.\\n\\n"
@@ -248,12 +236,12 @@ class DetayDialog(QDialog):
                        v["calisma"] / max(1, v["calisma"] + v["durus"] + v["mola"]), True)]
                      for m, v in sorted(r.makineler.items())], (110, 100, 100, 100))
         sekme.addTab(t1, "Makineler")
-        t2 = _tablo(["Gün", "Çalışma %", "Duruş %", "Mola %", "Boşta", "Çakışan duruş", "Makine-vardiya"])
+        t2 = _tablo(["Gün", "Çalışma %", "Duruş %", "Molada çalışma %", "Boşta", "Çakışan duruş", "Makine"])
         _doldur(t2, [[(g.strftime("%d.%m.%Y") + " " + KISA_GUN[g.weekday()], g.toordinal(), False),
                       (tema.yuzde(v["calisma"], 1), v["calisma"], True), (tema.yuzde(v["durus"], 1), v["durus"], True),
-                      (tema.yuzde(v["mola"], 1), v["mola"], True),
+                      (tema.yuzde(v["molada_calisma"], 1), v["molada_calisma"], True),
                       (hm(v.get("bosta_sn", 0)), v.get("bosta_sn", 0), True), (hm(v.get("cakisan_sn", 0)), v.get("cakisan_sn", 0), True),
-                      (str(int(v["birim"])), v["birim"], True)]
+                      (str(v["makine"]), v["makine"], True)]
                      for g, v in sorted(r.gunler.items())], (160, 100, 100, 100, 90, 110))
         sekme.addTab(t2, "Günler")
         self.grafik = CizimWidget(lambda p, rect: gun_grafigi(p, rect, r), 300, 400,
@@ -265,6 +253,11 @@ class DetayDialog(QDialog):
                      for tip, sn in sorted(r.durus_tipleri.items(), key=lambda x: -x[1])], (300, 100))
         t3.sortByColumn(1, Qt.DescendingOrder)
         sekme.addTab(t3, "Duruş nedenleri")
+        for tablo, ad in ((t1, "Makineler"), (t2, "Günler"), (t3, "Duruş nedenleri")):   # başlık açıklamaları
+            for j in range(tablo.columnCount()):
+                h = tablo.horizontalHeaderItem(j)
+                if h and h.text() in AYRINTI_ACIKLAMA[ad]:
+                    h.setToolTip(AYRINTI_ACIKLAMA[ad][h.text()])
 
 
 class HaricDialog(QDialog):
@@ -480,7 +473,7 @@ class OperatorSayfasi(QWidget):
             s = [(r.ad, r.ad, False), (str(r.makine_sayisi), r.makine_sayisi, True), (str(r.gun_sayisi), r.gun_sayisi, True),
                  (hm(kayitli), kayitli, True),
                  (tema.yuzde(r.calisma_orani, 1), r.calisma_orani, True), (tema.yuzde(r.durus_orani, 1), r.durus_orani, True),
-                 (tema.yuzde(r.mola_orani, 1), r.mola_orani, True),
+                 (tema.yuzde(r.molada_calisma_orani, 1), r.molada_calisma_orani, True),
                  (hm(r.durus_sn), r.durus_sn, True), (hm(r.cakisan_sn), r.cakisan_sn, True),
                  (hm(r.setup_kayip_sn), r.setup_kayip_sn, True), (hm(r.hepsi_calisirken_sn), r.hepsi_calisirken_sn, True),
                  (tema.yuzde(r.bosta_orani, 1) if r.bosta_orani is not None else "", r.bosta_orani or 0.0, True),
@@ -662,11 +655,11 @@ class OperatorSayfasi(QWidget):
         from openpyxl import Workbook
         wb = Workbook(write_only=True)
         ws = wb.create_sheet("Operatörler")
-        ws.append(BASLIKLAR[:3] + ["Kayıtlı süre (saat)", "Çalışma", "Duruş", "Mola", "Toplam duruş (saat)", "Çakışan duruş (saat)",
+        ws.append(BASLIKLAR[:3] + ["Kayıtlı süre (saat)", "Çalışma", "Duruş", "Molada çalışma", "Toplam duruş (saat)", "Çakışan duruş (saat)",
                                    "Ayar sırasında diğer makine kaybı (saat)", "Boşta (saat)", "Boşta %",
                                    "Belgelenmemiş duruş (saat)", "İş emri plan yok (saat)", "Hariç tutulan (saat)", "En uzun duruş (saat)", "Duruş adedi", "Aynı anda ort. makine"])
         for r in sorted(self._sonuc.values(), key=lambda x: -x.durus_orani):
-            ws.append([r.ad, r.makine_sayisi, r.gun_sayisi, (r.calisma_sn + r.durus_sn + r.mola_sn) / 3600, r.calisma_orani, r.durus_orani, r.mola_orani,
+            ws.append([r.ad, r.makine_sayisi, r.gun_sayisi, (r.calisma_sn + r.durus_sn + r.mola_sn) / 3600, r.calisma_orani, r.durus_orani, r.molada_calisma_orani,
                        r.durus_sn / 3600, r.cakisan_sn / 3600, r.setup_kayip_sn / 3600, r.hepsi_calisirken_sn / 3600, r.bosta_orani,
                        r.belgesiz_sn / 3600, r.plansiz_sn / 3600, r.haric_sn / 3600, r.en_uzun_durus_sn / 3600, r.durus_adedi, r.ort_makine])
         ws2 = wb.create_sheet("Çakışan duruşlar")

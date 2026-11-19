@@ -31,6 +31,60 @@ def operator_adi(s: Optional[str]) -> str:
 
 PLANSIZ = tr_kucuk("İŞ EMRİ PLAN YOK")
 
+# Sütun başlıklarının üzerine gelince görünen açıklamalar (exe ve tarayıcı aynı metni kullanır)
+SUTUN_ACIKLAMA = {
+    "Makine": "Seçili dönemde çalıştığı farklı makine sayısı",
+    "Gün": "Kayıtlı olduğu gün sayısı",
+    "Kayıtlı süre": "Operatörün makinelerinde kayıtlı olduğu toplam süre (çalışma + duruş + mola, saat:dakika)",
+    "Çalışma %": "Makinelerinin çalıştığı süre ÷ net süre. Her makine-vardiya için net süre 7,33 saattir; operatör vardiyanın "
+                 "yalnızca bir kısmında kayıtlıysa o oranda küçülür. Önce her gün ayrı hesaplanır, dönemin değeri günlerin ortalamasıdır.",
+    "Duruş %": "Makinelerinin duruşta geçen süresi ÷ net süre (Çalışma % ile aynı mantık). Çalışma ile duruş birlikte %100'ü "
+               "aşabilir: ikisi de mola düşülmüş net süreye bölünür, mola saatine denk gelen duruşlar da duruşa yazılır.",
+    "Molada çalışma %": "Mola hakkının molaya ayrılmayıp çalışılarak geçen kısmı. Mola hakkı Ayarlar'daki yemek + çay süresidir ve "
+                        "operatörün makinede kayıtlı olduğu süreyle orantılıdır. Örnek: 60 dakikalık hakkın 49 dakikası molada "
+                        "geçtiyse %18. Hakkından fazla mola kullandıysa %0.",
+    "Toplam duruş": "Operatörün makinelerindeki duruşların toplamı (mola hariç)",
+    "Çakışan duruş": "Aynı anda en az iki makinenin birlikte durduğu süre. Tıklayınca liste açılır.",
+    "Ayar kaybı": "Operatör bir makinede SETUP/Kurulum yaparken öbür makinelerinde biriken duruş süresi. Tıklayınca liste açılır.",
+    "Boşta süre": "Operatörün molada olmayan TÜM makineleri aynı anda çalışırken geçen süre: yapacak işi yok, boşta. Tıklayınca liste açılır.",
+    "Boşta": "Operatörün molada olmayan TÜM makineleri aynı anda çalışırken geçen süre: yapacak işi yok, boşta.",
+    "Boşta %": "Boşta süre, operatörün aktif olduğu süreye oranı",
+    "Belgesiz duruş": "Duruş nedeni girilmemiş süre (Belgelenmemiş Duruş)",
+    "Belgesiz": "Duruş nedeni girilmemiş süre (Belgelenmemiş Duruş)",
+    "İş emri yok": "Operatör makinede tanımlıyken 'İŞ EMRİ PLAN YOK' duruşunda geçen süre. İş emri yoksa operatörün makineden "
+                   "çıkış yapması beklenir. Tıklayınca liste açılır.",
+    "Hariç tutulan": "'Hariç tutulacak duruşlar' düğmesiyle hesap dışı bırakılan duruşların toplamı (üzerine gelince dökümü görünür)",
+    "En uzun duruş": "Tek seferdeki en uzun duruş",
+    "En çok duruş": "Seçili dönemde en uzun süren üç duruş nedeni",
+    "Duruş adedi": "Duruş sayısı",
+    "Ort. makine": "Operatör çalışırken aynı anda ortalama kaç makineye bakıyor",
+}
+# Ayrıntı penceresindeki tablolar
+AYRINTI_ACIKLAMA = {
+    "Makineler": {
+        "Makine": "Operatörün seçili dönemde adının kayıtlı olduğu makine",
+        "Çalışma": "Bu makinede, adı kayıtlıyken makinenin çalıştığı süre (saat:dakika)",
+        "Duruş": "Bu makinede, adı kayıtlıyken makinenin duruşta geçen süresi (saat:dakika)",
+        "Mola": "Bu makinede molada geçen süre (saat:dakika)",
+        "Çalışma payı": "Bu makinede adının kayıtlı olduğu süre içinde çalışmanın payı: çalışma ÷ (çalışma + duruş + mola). "
+                        "Adının kayıtlı olmadığı süre hesaba girmez.",
+    },
+    "Günler": {
+        "Gün": "Operatörün kayıtlı olduğu gün",
+        "Çalışma %": SUTUN_ACIKLAMA["Çalışma %"],
+        "Duruş %": SUTUN_ACIKLAMA["Duruş %"],
+        "Molada çalışma %": SUTUN_ACIKLAMA["Molada çalışma %"],
+        "Boşta": SUTUN_ACIKLAMA["Boşta"],
+        "Çakışan duruş": "O gün aynı anda en az iki makinesinin birlikte durduğu süre (bir kez sayılır)",
+        "Makine": "O gün çalıştığı farklı makine sayısı",
+    },
+    "Duruş nedenleri": {
+        "Duruş nedeni": "Cormind'deki duruş adı",
+        "Süre": "Bu nedenle geçen toplam süre (saat:dakika)",
+        "Payı": "Bu nedenin, operatörün toplam duruş süresi içindeki payı",
+    },
+}
+
 
 def plansiz_mi(tip: str) -> bool:
     return PLANSIZ in tr_kucuk(tip)
@@ -73,7 +127,8 @@ class OperatorSonuc:
     gunler: Dict[date, Dict[str, float]] = field(default_factory=dict)     # gün -> {calisma, durus, mola oranları, makine}
     calisma_orani: Optional[float] = None
     durus_orani: Optional[float] = None
-    mola_orani: Optional[float] = None
+    mola_orani: Optional[float] = None          # molada geçen süre ÷ mola hakkı
+    molada_calisma_orani: Optional[float] = None   # mola hakkının molaya ayrılmayan (çalışılarak geçen) kısmı
     calisma_sn: float = 0.0
     durus_sn: float = 0.0
     mola_sn: float = 0.0
@@ -191,6 +246,7 @@ def _bir_operator(ad: str, kayitlar: List[Tuple[str, str, datetime, datetime]], 
 
     # günlük oranlar: önce her gün ayrı, sonra günlerin ortalaması
     gun_toplam: Dict[date, List[float]] = {}
+    gun_makine: Dict[date, set] = {}
     for (gun, v, makine), u in birim.items():
         pay = min(1.0, (u["kayit"] - u["haric"]) / VARDIYA_SN)     # hariç tutulan süre paydadan da düşer
         if pay <= 0:
@@ -199,18 +255,22 @@ def _bir_operator(ad: str, kayitlar: List[Tuple[str, str, datetime, datetime]], 
         g[0] += u["calisma"]; g[1] += u["durus"]; g[2] += u["mola"]
         g[3] += net_sn * pay; g[4] += mola_kap * pay
         g[5] += 1
+        gun_makine.setdefault(gun, set()).add(makine)
         sonuc.mola_asimi_sn += max(0.0, u["mola"] - mola_kap)
     if not gun_toplam:                 # tüm süresi hariç tutulan duruşlardan oluşan operatör
         return OperatorSonuc(ad)
-    cs, ds, ms = [], [], []
+    cs, ds, ms, mcs = [], [], [], []
     for gun, g in sorted(gun_toplam.items()):
         c, d, m = g[0] / g[3], g[1] / g[3], (g[2] / g[4] if g[4] else 0.0)
-        sonuc.gunler[gun] = {"calisma": c, "durus": d, "mola": m, "birim": g[5]}
-        cs.append(c); ds.append(d); ms.append(m)
+        mc = max(0.0, 1.0 - m)                 # mola hakkını aştıysa molada çalışma yok
+        sonuc.gunler[gun] = {"calisma": c, "durus": d, "mola": m, "molada_calisma": mc, "birim": g[5],
+                             "makine": len(gun_makine.get(gun, ()))}
+        cs.append(c); ds.append(d); ms.append(m); mcs.append(mc)
     sonuc.gun_sayisi = len(gun_toplam)
     sonuc.calisma_orani = min(1.0, sum(cs) / len(cs))
     sonuc.durus_orani = sum(ds) / len(ds)
     sonuc.mola_orani = sum(ms) / len(ms)
+    sonuc.molada_calisma_orani = sum(mcs) / len(mcs)
 
     # --- aynı anda süpürme: makineler arası çakışma, setup kaybı, hepsi çalışırken
     sinirlar = sorted({p[0] for k in parcalar.values() for p in k} | {p[1] for k in parcalar.values() for p in k})
