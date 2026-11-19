@@ -53,6 +53,17 @@ td.s{text-align:right;white-space:nowrap}
 .sayfa{display:none}.sayfa.ac{display:block}
 .rapor img{width:100%;border:1px solid var(--cizgi);border-radius:6px;margin-bottom:12px;background:#fff}
 .yukleniyor{color:var(--soluk);padding:30px;text-align:center}
+#op-t tbody tr{cursor:pointer}#op-t tbody tr:hover td{background:#f5f7fd}
+#op-t td.tik{color:var(--lac);text-decoration:underline dotted}
+.perde{position:fixed;inset:0;background:rgba(21,9,88,.35);z-index:60;display:none;align-items:center;justify-content:center;padding:16px}
+.perde.ac{display:flex}
+.pencere{background:#fff;border-radius:12px;width:min(1100px,100%);height:min(760px,100%);display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(21,9,88,.35)}
+.pencere header{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--cizgi)}
+.pencere header h3{margin:0;color:var(--lac);font-size:16px;flex:1}
+.pencere .govde{flex:1;min-height:0;padding:12px 16px;display:flex;flex-direction:column}
+.sekmeler{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
+.pencere .tablokutu{flex:1;max-height:none}
+.pencere .grafik{flex:1;height:auto;min-height:300px}
 @media (max-width:900px){.kok{grid-template-columns:1fr}nav{position:static;height:auto}.kpi{grid-template-columns:1fr 1fr}.ikili{grid-template-columns:1fr}}
 </style></head><body>
 <div class="kok">
@@ -125,7 +136,12 @@ td.s{text-align:right;white-space:nowrap}
       <h3>Operatör varken duran makineler <span class="not">yalnızca seçili günler · operatör yalnızca o vardiyada makinede gerçekten iş başlattıysa sayılır · çakışan süreler bir kez sayılır</span></h3>
       <div class="tablokutu"><table id="duran-t"></table></div>
     </div>
-    <div class="kart"><div class="tablokutu"><table id="op-t"></table></div></div>
+    <div class="kart"><h3>Operatörler <span class="not">satıra tıklayın: makineler, günler, gün gün grafik, duruş nedenleri · altı çizili süreye tıklayın: o sürenin listesi</span></h3>
+      <div class="tablokutu"><table id="op-t"></table></div></div>
+    <div class="perde" id="perde"><div class="pencere">
+      <header><h3 id="p-baslik"></h3><span class="not" id="p-not" style="color:var(--soluk);font-size:12px"></span><button id="p-kapat">✕ Kapat</button></header>
+      <div class="govde"><div class="sekmeler" id="p-sekme"></div><div id="p-icerik" style="flex:1;min-height:0;display:flex;flex-direction:column"></div></div>
+    </div></div>
   </section>
 
   <!-- KAYITLAR -->
@@ -156,6 +172,7 @@ td.s{text-align:right;white-space:nowrap}
 // ------------------------------------------------------------------ ortak
 var FONT = '"Segoe UI", system-ui, sans-serif';
 function hazirla(o){
+  if (o.duz) { delete o.duz; o.textStyle = {fontFamily: FONT}; return o; }   // düz, etiketli grafik (biçimlendirme işlevleri korunur)
   o = JSON.parse(JSON.stringify(o));
   o.textStyle = Object.assign({fontFamily: FONT}, o.textStyle || {});
   if (o.tooltip && o.tooltip.ozel) {
@@ -319,15 +336,93 @@ $('routlook').onclick = function(){
 function operator(){
   $('onot').textContent = 'Hesaplanıyor…';
   api('/api/operator', 'vardiya=' + $('ovardiya').value).then(function(d){
-    var h = '<tr><th>Operatör</th><th>Makine</th><th>Gün</th><th>Çalışma</th><th>Duruş</th><th>Mola</th><th>Boşta</th><th>Çakışan duruş</th><th>Ayar kaybı</th><th>İş emri yok</th><th>Belgesiz</th><th>En çok duruş</th></tr>';
+    var h = '<thead><tr><th>Operatör</th><th>Makine</th><th>Gün</th><th>Çalışma</th><th>Duruş</th><th>Mola</th><th>Boşta</th><th>Çakışan duruş</th><th>Ayar kaybı</th><th>İş emri yok</th><th>Belgesiz</th><th>En çok duruş</th></tr></thead><tbody>';
     d.satirlar.forEach(function(r){
-      h += '<tr><td><b>' + esc(r.ad) + '</b><br><span class="not" style="color:var(--soluk)">' + esc(r.makineler.join(', ')) + '</span></td><td class="s">' + r.makine + '</td><td class="s">' + r.gun + '</td><td class="s">' + yz(r.calisma) + '</td><td class="s">' + yz(r.durus) + '</td><td class="s">' + yz(r.mola) + '</td><td class="s">' + r.bosta_s + '</td><td class="s">' + r.cakisan_s + '</td><td class="s">' + r.ayar_kayip_s + '</td><td class="s">' + r.plansiz_s + '</td><td class="s">' + r.belgesiz_s + '</td><td>' + r.en_cok.map(function(x){ return esc(x[0]) + ' ' + x[1]; }).join(', ') + '</td></tr>';
+      var a = esc(r.ad).replace(/"/g, '&quot;');
+      h += '<tr data-ad="' + a + '"><td><b>' + esc(r.ad) + '</b><br><span class="not" style="color:var(--soluk)">' + esc(r.makineler.join(', ')) + '</span></td><td class="s">' + r.makine + '</td><td class="s">' + r.gun + '</td><td class="s">' + yz(r.calisma) + '</td><td class="s">' + yz(r.durus) + '</td><td class="s">' + yz(r.mola) + '</td><td class="s tik" data-l="bosta">' + r.bosta_s + '</td><td class="s tik" data-l="cakisma">' + r.cakisan_s + '</td><td class="s tik" data-l="ayar">' + r.ayar_kayip_s + '</td><td class="s tik" data-l="plansiz">' + r.plansiz_s + '</td><td class="s">' + r.belgesiz_s + '</td><td>' + r.en_cok.map(function(x){ return esc(x[0]) + ' ' + x[1]; }).join(', ') + '</td></tr>';
     });
+    h += '</tbody>';
     $('op-t').innerHTML = h; $('onot').textContent = d.satirlar.length + ' operatör';
     if ($('duran').style.display !== 'none') duran();
   });
 }
 $('ovardiya').onchange = operator;
+
+// operatör ayrıntısı (exe'deki pencerenin aynısı)
+function sure(sn){ var dk = Math.round(sn/60); return Math.floor(dk/60) + ':' + String(dk%60).padStart(2,'0'); }
+function dksn(sn){ return Math.floor(sn/60) + ' dk ' + String(Math.round(sn%60)).padStart(2,'0') + ' sn'; }
+function pyz(x){ return (x*100).toFixed(1).replace('.', ',') + '%'; }
+var PV = null;
+$('op-t').onclick = function(e){
+  var tr = e.target.closest('tr[data-ad]'); if (!tr) return;
+  var td = e.target.closest('td.tik'), ad = tr.dataset.ad;
+  $('perde').classList.add('ac'); $('p-baslik').textContent = (td ? '' : 'Operatör ayrıntısı – ') + ad; $('p-not').textContent = '';
+  $('p-sekme').innerHTML = ''; $('p-icerik').innerHTML = '<div class="yukleniyor">Hesaplanıyor…</div>';
+  api('/api/operator/ayrinti', 'vardiya=' + $('ovardiya').value + '&ad=' + encodeURIComponent(ad)).then(function(d){
+    if (d.hata) { $('p-icerik').innerHTML = '<div class="yukleniyor">' + esc(d.hata) + '</div>'; return; }
+    PV = d;
+    if (td) liste(td.dataset.l); else ayrinti('mak');
+  });
+};
+$('p-kapat').onclick = function(){ $('perde').classList.remove('ac'); if (G['p-graf']) { G['p-graf'].dispose(); delete G['p-graf']; } };
+$('perde').onclick = function(e){ if (e.target === this) $('p-kapat').click(); };
+document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && $('perde').classList.contains('ac')) $('p-kapat').click(); });
+function tablo(baslik, satirlar, sag){
+  var h = '<div class="tablokutu"><table><tr>' + baslik.map(function(b, i){ return '<th' + (sag.indexOf(i) >= 0 ? ' style="text-align:right"' : '') + '>' + b + '</th>'; }).join('') + '</tr>';
+  satirlar.forEach(function(s){ h += '<tr>' + s.map(function(x, i){ return '<td' + (sag.indexOf(i) >= 0 ? ' class="s"' : '') + '>' + x + '</td>'; }).join('') + '</tr>'; });
+  return h + '</table></div>';
+}
+function ayrinti(s){
+  var d = PV, sek = [['mak','Makineler'],['gun','Günler'],['graf','Gün gün grafik'],['neden','Duruş nedenleri']];
+  $('p-baslik').textContent = 'Operatör ayrıntısı – ' + d.ad; $('p-not').textContent = d.ilk.split('-').reverse().join('.') + ' – ' + d.son.split('-').reverse().join('.');
+  $('p-sekme').innerHTML = sek.map(function(x){ return '<button class="' + (x[0] === s ? 'sec' : '') + '" data-s="' + x[0] + '">' + x[1] + '</button>'; }).join('');
+  $('p-sekme').querySelectorAll('button').forEach(function(b){ b.onclick = function(){ ayrinti(b.dataset.s); }; });
+  if (G['p-graf']) { G['p-graf'].dispose(); delete G['p-graf']; }
+  var ic = $('p-icerik');
+  if (s === 'mak') ic.innerHTML = tablo(['Makine','Çalışma','Duruş','Mola','Çalışma payı'], d.makineler.map(function(m){
+    var t = Math.max(1, m.calisma + m.durus + m.mola); return [esc(m.makine), sure(m.calisma), sure(m.durus), sure(m.mola), pyz(m.calisma / t)]; }), [1,2,3,4]);
+  else if (s === 'gun') ic.innerHTML = tablo(['Gün','Çalışma %','Duruş %','Mola %','Boşta','Çakışan duruş','Makine-vardiya'], d.gunler.map(function(g){
+    return [g.gun, pyz(g.calisma), pyz(g.durus), pyz(g.mola), sure(g.bosta_sn), sure(g.cakisan_sn), g.birim]; }), [1,2,3,4,5,6]);
+  else if (s === 'neden') { var top = Math.max(1, d.durus_sn); ic.innerHTML = tablo(['Duruş nedeni','Süre','Payı'], d.nedenler.map(function(n){ return [esc(n[0]), sure(n[1]), pyz(n[1] / top)]; }), [1,2]); }
+  else {
+    ic.innerHTML = '<div id="p-graf" class="grafik"></div>';
+    var x = d.gunler.map(function(g){ return g.kisa; }), et = {show:true, position:'top', fontSize:11, fontWeight:'bold'};
+    ciz('p-graf', {
+      title: [{text: d.ad + ' – gün gün', left:'center', textStyle:{color:'#150958', fontSize:15}},
+              {text:'Çalışma ve duruş oranı (net 7,33 saate göre)', left:56, top:34, textStyle:{fontSize:12, color:'#6B7285'}},
+              {text:'Boşta kaldığı ve çakışan duruş süresi (saat)', left:56, top:'54%', textStyle:{fontSize:12, color:'#6B7285'}}],
+      duz: true, legend: {right:14, top:30}, tooltip: {trigger:'axis'},
+      grid: [{left:56, right:14, top:66, height:'30%'}, {left:56, right:14, top:'62%', bottom:34}],
+      xAxis: [{type:'category', data:x, gridIndex:0}, {type:'category', data:x, gridIndex:1}],
+      yAxis: [{type:'value', gridIndex:0, axisLabel:{formatter:function(v){ return '%' + Math.round(v*100); }}}, {type:'value', gridIndex:1}],
+      series: [
+        {name:'Çalışma', type:'bar', data:d.gunler.map(function(g){ return +g.calisma.toFixed(4); }), itemStyle:{color:'#150958'}, label:Object.assign({formatter:function(p){ return '%' + Math.round(p.value*100); }}, et)},
+        {name:'Duruş', type:'bar', data:d.gunler.map(function(g){ return +g.durus.toFixed(4); }), itemStyle:{color:'#C0392B'}, label:Object.assign({formatter:function(p){ return '%' + Math.round(p.value*100); }}, et)},
+        {name:'Boşta', type:'bar', xAxisIndex:1, yAxisIndex:1, data:d.gunler.map(function(g){ return +(g.bosta_sn/3600).toFixed(2); }), itemStyle:{color:'#5E9B2A'}, label:Object.assign({formatter:function(p){ return String(p.value.toFixed(1)).replace('.', ','); }}, et)},
+        {name:'Çakışan duruş', type:'bar', xAxisIndex:1, yAxisIndex:1, data:d.gunler.map(function(g){ return +(g.cakisan_sn/3600).toFixed(2); }), itemStyle:{color:'#E67E22'}, label:Object.assign({formatter:function(p){ return String(p.value.toFixed(1)).replace('.', ','); }}, et)}]
+    });
+  }
+}
+function liste(tur){
+  var d = PV, ad = {bosta:'Boşta kaldığı zamanlar', cakisma:'Çakışan duruşlar', ayar:'Ayar sırasında diğer makinelerdeki duruş', plansiz:'İş emri plan yok'}[tur];
+  $('p-baslik').textContent = ad + ' – ' + d.ad;
+  var kay = tur === 'plansiz' ? d.plansiz : tur === 'bosta' ? d.bosta : d.cakisma.filter(function(e){ return tur !== 'ayar' || e.setup; });
+  var asg = {bosta:300, plansiz:0, cakisma:60, ayar:60}[tur];
+  $('p-sekme').innerHTML = '<span style="color:var(--soluk);font-size:13px;align-self:center">Süre</span><select id="p-asg">' +
+    [[0,'Tümü'],[60,'1 dakikadan uzun'],[300,'5 dakikadan uzun'],[900,'15 dakikadan uzun']].map(function(o){ return '<option value="' + o[0] + '"' + (o[0] === asg ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') +
+    '</select><button id="p-geri">Operatör ayrıntısı</button>';
+  $('p-geri').onclick = function(){ ayrinti('mak'); };
+  function doldur(){
+    var a = +$('p-asg').value, l = kay.filter(function(e){ return e.sn >= a; }).sort(function(x, y){ return y.sn - x.sn; }), top = 0, s;
+    l.forEach(function(e){ top += e.sn; });
+    if (tur === 'plansiz') s = tablo(['Makine','Başlangıç','Bitiş','Süre'], l.map(function(e){ return [esc(e.duruslar[0][0]), e.bas, e.bit, dksn(e.sn)]; }), [3]);
+    else if (tur === 'bosta') s = tablo(['Başlangıç','Bitiş','Süre','Çalışan makineler'], l.map(function(e){ return [e.bas, e.bit, dksn(e.sn), esc(e.calisanlar.join(', '))]; }), [2]);
+    else s = tablo(['Başlangıç','Bitiş','Süre','Duruşta olan makineler','O sırada çalışan makineler','Ayar var'], l.map(function(e){
+      return [e.bas, e.bit, dksn(e.sn), esc(e.duruslar.map(function(x){ return x[0] + ': ' + x[1]; }).join('   ')), esc(e.calisanlar.join(', ') || '-'), e.setup ? 'Evet' : '']; }), [2]);
+    $('p-icerik').innerHTML = s; $('p-not').textContent = l.length + (tur === 'bosta' || tur === 'plansiz' ? ' kayıt' : ' çakışma') + ' · toplam ' + sure(top) + ' (saat:dakika)';
+  }
+  $('p-asg').onchange = doldur; doldur();
+}
 $('oduran').onclick = function(){ var ac = $('duran').style.display === 'none'; $('duran').style.display = ac ? 'block' : 'none'; this.classList.toggle('sec', ac); if (ac) duran(); };
 function duran(){
   $('duran-t').innerHTML = '<tr><td class="yukleniyor">Hesaplanıyor…</td></tr>';
