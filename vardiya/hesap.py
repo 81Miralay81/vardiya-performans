@@ -488,13 +488,8 @@ KISA_DURUS_AZAMI_DK = 30.0         # bundan uzun bir kayıt "Kısa Duruş" olama
 
 
 def durus_adi(tip: str, bas: datetime, bit: datetime) -> str:
-    """Gösterilecek duruş adı. Uzun bir kayıt hiçbir zaman 'Kısa Duruş' adıyla gösterilmez."""
-    ad = tip or "Belirtilmemiş"
-    if tr_kucuk(ad) == tr_kucuk(KISA_DURUS) and (bit - bas).total_seconds() / 60.0 > KISA_DURUS_AZAMI_DK:
-        # Eski çekimlerde Cormind'in "Çalışmıyor – İŞ EMRİ PLAN YOK" durumu yanlışlıkla "Kısa Duruş" adıyla kaydedildi
-        # (ham dökümle doğrulandı). Uzun "Kısa Duruş" bu yüzden İŞ EMRİ PLAN YOK'tur; yeniden çekilen günlerde ad doğru gelir.
-        return "İŞ EMRİ PLAN YOK"
-    return ad
+    """Gösterilecek duruş adı: Cormind'deki adı neyse odur (hiçbir duruş başka bir adın altına toplanmaz)."""
+    return tip or "Belirtilmemiş"
 
 
 def cormind_hesabi(kayitlar: Iterable[Tuple[str, str, datetime, datetime]], gunler: Iterable[date], makineler: Iterable[str],
