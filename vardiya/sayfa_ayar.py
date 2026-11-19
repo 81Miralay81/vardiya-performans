@@ -397,7 +397,9 @@ class AyarSayfasi(QWidget):
             it.setCheckState(Qt.Unchecked if ad in haric else Qt.Checked)
             self.personel.addItem(it)
         self.personel.blockSignals(False)
-        self.personel_bilgi.setText(f"{len(adlar)} kişi · {len(haric & set(adlar))} kişi hariç tutuluyor")
+        self.personel_bilgi.setText(f"{len(adlar)} kişi · {len(haric & set(adlar))} kişi hariç tutuluyor"
+                                    + ("" if vt.sozluk_hazir(self.ana.con) else
+                                       " · liste hazırlanıyor (eski kayıtlar taranıyor), birazdan tamamlanır…"))
 
     def _op_tur_doldur(self):
         from .operatorlu_durus import durus_turleri
@@ -412,15 +414,19 @@ class AyarSayfasi(QWidget):
         self.op_turler.blockSignals(False)
 
     def _op_tur_degisti(self, _it):
-        haric = sorted(self.op_turler.item(i).text() for i in range(self.op_turler.count())
-                       if self.op_turler.item(i).checkState() == Qt.Unchecked)
+        gorunen = {self.op_turler.item(i).text() for i in range(self.op_turler.count())}
+        haric = sorted((set(self.ana.ayar.get("op_durus_haric") or []) - gorunen)      # listede (henüz) olmayanlar korunur
+                       | {self.op_turler.item(i).text() for i in range(self.op_turler.count())
+                          if self.op_turler.item(i).checkState() == Qt.Unchecked})
         vt.ayar_yaz(self.ana.con, "op_durus_haric", haric)
         self.ana.ayar = vt.ayar_oku(self.ana.con)
 
     def _personel_degisti(self, _it):
         from . import veritabani as vt
-        haric = sorted(self.personel.item(i).text() for i in range(self.personel.count())
-                       if self.personel.item(i).checkState() == Qt.Unchecked)
+        gorunen = {self.personel.item(i).text() for i in range(self.personel.count())}
+        haric = sorted((vt.haric_personel(self.ana.con) - gorunen)                     # listede (henüz) olmayanlar korunur
+                       | {self.personel.item(i).text() for i in range(self.personel.count())
+                          if self.personel.item(i).checkState() == Qt.Unchecked})
         vt.ayar_yaz(self.ana.con, "haric_personel", haric)
         self.ana.ayar = vt.ayar_oku(self.ana.con)
         self.personel_bilgi.setText(f"{self.personel.count()} kişi · {len(haric)} kişi hariç tutuluyor")
@@ -431,6 +437,30 @@ class AyarSayfasi(QWidget):
             self._listeler_kirli = False
             self._personel_doldur()
             self._op_tur_doldur()
+            self._sozluk_bekle()
+
+    def _sozluk_bekle(self):
+        """Ad sözlüğü arka planda hazırlanıyorsa listeleri birkaç saniyede bir tazeler (sayfa hiç donmaz)."""
+        from PySide6.QtCore import QTimer
+        if vt.sozluk_hazir(self.ana.con) or getattr(self, "_sozluk_zamanlayici", None):
+            return
+        vt.sozluk_arkada_doldur(self.ana.db_yolu)
+
+        def _tik():
+            hazir = vt.sozluk_hazir(self.ana.con)
+            if self.isVisible():
+                self._personel_doldur()
+                self._op_tur_doldur()
+            else:
+                self._listeler_kirli = True
+            if hazir:
+                self._sozluk_zamanlayici.stop()
+                self._sozluk_zamanlayici = None
+            else:
+                vt.sozluk_arkada_doldur(self.ana.db_yolu)   # yarıda kaldıysa kaldığı yerden sürdür
+        self._sozluk_zamanlayici = QTimer(self)
+        self._sozluk_zamanlayici.timeout.connect(_tik)
+        self._sozluk_zamanlayici.start(4000)
 
     def yenile(self):
         self._listeler_kirli = True

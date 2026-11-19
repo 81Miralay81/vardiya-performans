@@ -119,3 +119,17 @@ def test_sozluk_kayit_yaz_ile_guncel(tmp_path):
     vt.kayit_yaz(con, [("IM22", datetime(2026, 11, 3, 8), datetime(2026, 11, 3, 9), "Can", "Çalışma", "", "", "")])
     assert vt.makineler_kayitta(con) == ["IM21", "IM22"]
     assert vt.toplam_kayit(con) == 2
+
+
+def test_sozluk_ay_ay_doldurulur(tmp_path):
+    con = vt.ac(str(tmp_path / "s2.db"))
+    vt.kayit_yaz(con, [("IM21", datetime(2026, 9, 2, 8), datetime(2026, 9, 2, 9), "Ali", "Kısa Duruş", "", "", ""),
+                       ("IM23", datetime(2026, 11, 2, 8), datetime(2026, 11, 2, 9), "Can", "SETUP", "", "", "")])
+    con.execute("DELETE FROM sozluk")                     # eski sürümden gelen veri tabanı: sözlük boş
+    con.commit()
+    assert vt.sozluk_degerleri(con, "makine") == [] and not vt.sozluk_hazir(con)
+    vt.sozluk_doldur(con)
+    assert vt.sozluk_hazir(con)
+    assert vt.makineler_kayitta(con) == ["IM21", "IM23"]
+    assert vt.sozluk_degerleri(con, "tip") == ["Kısa Duruş", "SETUP"]
+    assert vt.sozluk_degerleri(con, "_ay") == []

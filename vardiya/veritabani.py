@@ -206,33 +206,61 @@ def _sozluge_ekle(con: sqlite3.Connection, uclu) -> None:
     con.commit()
 
 
+def sozluk_hazir(con: sqlite3.Connection) -> bool:
+    return con.execute("SELECT 1 FROM sozluk WHERE tur='_hazir'").fetchone() is not None
+
+
 def sozluk_doldur(con: sqlite3.Connection) -> None:
-    """Bir defalık: kayıt tablosunu bir kez tarayıp sözlüğü doldurur (sonra kayit_yaz güncel tutar)."""
-    _sozluge_ekle(con, con.execute("SELECT DISTINCT makine, operator, tip FROM kayit"))
+    """Bir defalık: kayıtları ay ay (en yeni aydan geriye) tarayıp sözlüğü doldurur; sonra kayit_yaz güncel tutar.
+    Her ay ayrı okunup hemen kaydedilir: yarıda kalırsa bir sonraki açılışta kaldığı aydan sürer, veri tabanı uzun süre
+    kilitlenmez ve listeler en son aylardan başlayarak hemen dolmaya başlar."""
+    if sozluk_hazir(con):
+        return
+    r = con.execute("SELECT MIN(gun), MAX(gun) FROM gun_ozet").fetchone()
+    if r and r[0]:
+        bitmis = {x[0] for x in con.execute("SELECT deger FROM sozluk WHERE tur='_ay'")}
+        y, a = int(r[1][:4]), int(r[1][5:7])
+        en_eski = r[0][:7]
+        while f"{y:04d}-{a:02d}" >= en_eski:
+            ay = f"{y:04d}-{a:02d}"
+            if ay not in bitmis:
+                sy, sa = (y + 1, 1) if a == 12 else (y, a + 1)
+                _sozluge_ekle(con, con.execute("SELECT DISTINCT makine, operator, tip FROM kayit WHERE baslangic >= ? "
+                                               "AND baslangic < ?", (ay + "-01", f"{sy:04d}-{sa:02d}-01")))
+                con.execute("INSERT OR IGNORE INTO sozluk(tur, deger) VALUES('_ay', ?)", (ay,))
+                con.commit()
+            y, a = (y - 1, 12) if a == 1 else (y, a - 1)
     con.execute("INSERT OR IGNORE INTO sozluk(tur, deger) VALUES('_hazir', '1')")
+    con.execute("DELETE FROM sozluk WHERE tur='_ay'")
     con.commit()
 
 
+_SOZLUK_IS = None
+
+
 def sozluk_arkada_doldur(yol: str) -> None:
-    """Açılıştan sonra arka planda (kendi bağlantısıyla) sözlüğü hazırlar; program bu sırada kullanılabilir."""
+    """Sözlüğü arka planda (kendi bağlantısıyla) hazırlar; program bu sırada donmadan kullanılabilir.
+    Zaten çalışıyorsa ya da hazırsa bir şey yapmaz."""
     import threading
+    global _SOZLUK_IS
+    if _SOZLUK_IS is not None and _SOZLUK_IS.is_alive():
+        return
 
     def _is():
         try:
             c = ac(yol)
             try:
-                if c.execute("SELECT 1 FROM sozluk WHERE tur='_hazir'").fetchone() is None:
-                    sozluk_doldur(c)
+                sozluk_doldur(c)
             finally:
                 c.close()
-        except Exception:  # noqa: BLE001  (hazırlanamazsa liste ilk ihtiyaçta hazırlanır)
+        except Exception:  # noqa: BLE001  (yarım kalırsa bir sonraki çağrıda kaldığı yerden sürer)
             pass
-    threading.Thread(target=_is, name="sozluk", daemon=True).start()
+    _SOZLUK_IS = threading.Thread(target=_is, name="sozluk", daemon=True)
+    _SOZLUK_IS.start()
 
 
 def sozluk_degerleri(con: sqlite3.Connection, tur: str) -> List[str]:
-    if con.execute("SELECT 1 FROM sozluk WHERE tur='_hazir'").fetchone() is None:
-        sozluk_doldur(con)
+    """Sözlükteki adlar. Asla tüm tabloyu taramaz: sözlük henüz hazırlanıyorsa o ana kadar bulunanlar döner."""
     return [r[0] for r in con.execute("SELECT deger FROM sozluk WHERE tur=? ORDER BY deger", (tur,))]
 
 
