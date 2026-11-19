@@ -79,7 +79,7 @@ def hesapla(con, gunler: List[date]) -> List[tuple]:
 
 def durus_turleri(con) -> List[str]:
     """Kayıtlarda geçen duruş türleri (mola ve çalışma hariç), alfabetik."""
-    return sorted({r[0] for r in con.execute("SELECT DISTINCT tip FROM kayit") if r[0] and statu_bul(r[0]) == DURUS},
+    return sorted({t for t in vt.sozluk_degerleri(con, "tip") if t and statu_bul(t) == DURUS},
                   key=lambda s: s.casefold())
 
 

@@ -176,6 +176,8 @@ def main() -> int:
         QMessageBox.critical(None, "Vardiya Performans", f"Veri tabanı açılamadı:\n{yol}\n\n{ex}")
         return 1
     teshis.adim("ana pencere kuruldu")
+    from vardiya import veritabani as _vt
+    _vt.sozluk_arkada_doldur(pencere.db_yolu)           # listeler için ad sözlüğü (bir defalık, arka planda)
     from vardiya import web_sunucu
     if web_sunucu.ayarda_acik() and not os.environ.get("VARDIYA_WEB_YOK"):   # tarayıcıdan erişim: http://bu-bilgisayar:port
         adres = web_sunucu.baslat(pencere.db_yolu, web_sunucu.ayar_port(), pencere.veri_yenilendi)

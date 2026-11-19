@@ -48,6 +48,8 @@ CREATE INDEX IF NOT EXISTS ix_kayit_bas ON kayit (baslangic);
 CREATE INDEX IF NOT EXISTS ix_kayit_uzun ON kayit (baslangic) WHERE julianday(bitis) - julianday(baslangic) > 1;
 -- gün başına kayıt sayısı özeti (takvimdeki 'verisi olan günler'): tüm tabloyu saymamak için
 CREATE TABLE IF NOT EXISTS gun_ozet (gun TEXT PRIMARY KEY, kayit INTEGER NOT NULL);
+-- kayıtlarda geçen makine / operatör / duruş türü adları: listeler için tüm tabloyu (ağ üzerinden) taramamak için
+CREATE TABLE IF NOT EXISTS sozluk (tur TEXT NOT NULL, deger TEXT NOT NULL, PRIMARY KEY (tur, deger)) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS ayar (anahtar TEXT PRIMARY KEY, deger TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS sef_atama (
     tarih   TEXT NOT NULL,
@@ -187,7 +189,55 @@ def kayit_yaz(con: sqlite3.Connection, satirlar: Iterable[tuple]) -> Tuple[int, 
     )
     con.commit()
     gun_ozet_yenile(con, ilk, son)
+    _sozluge_ekle(con, ((s[0], s[3], s[4]) for s in satirlar))
     return yeni, guncel, ayni
+
+
+def _sozluge_ekle(con: sqlite3.Connection, uclu) -> None:
+    ekle = set()
+    for makine, op, tip in uclu:
+        if makine:
+            ekle.add(("makine", makine))
+        if op:
+            ekle.add(("operator", op))
+        if tip:
+            ekle.add(("tip", tip))
+    con.executemany("INSERT OR IGNORE INTO sozluk(tur, deger) VALUES(?,?)", sorted(ekle))
+    con.commit()
+
+
+def sozluk_doldur(con: sqlite3.Connection) -> None:
+    """Bir defalık: kayıt tablosunu bir kez tarayıp sözlüğü doldurur (sonra kayit_yaz güncel tutar)."""
+    _sozluge_ekle(con, con.execute("SELECT DISTINCT makine, operator, tip FROM kayit"))
+    con.execute("INSERT OR IGNORE INTO sozluk(tur, deger) VALUES('_hazir', '1')")
+    con.commit()
+
+
+def sozluk_arkada_doldur(yol: str) -> None:
+    """Açılıştan sonra arka planda (kendi bağlantısıyla) sözlüğü hazırlar; program bu sırada kullanılabilir."""
+    import threading
+
+    def _is():
+        try:
+            c = ac(yol)
+            try:
+                if c.execute("SELECT 1 FROM sozluk WHERE tur='_hazir'").fetchone() is None:
+                    sozluk_doldur(c)
+            finally:
+                c.close()
+        except Exception:  # noqa: BLE001  (hazırlanamazsa liste ilk ihtiyaçta hazırlanır)
+            pass
+    threading.Thread(target=_is, name="sozluk", daemon=True).start()
+
+
+def sozluk_degerleri(con: sqlite3.Connection, tur: str) -> List[str]:
+    if con.execute("SELECT 1 FROM sozluk WHERE tur='_hazir'").fetchone() is None:
+        sozluk_doldur(con)
+    return [r[0] for r in con.execute("SELECT deger FROM sozluk WHERE tur=? ORDER BY deger", (tur,))]
+
+
+def toplam_kayit(con: sqlite3.Connection) -> int:
+    return con.execute("SELECT COALESCE(SUM(kayit), 0) FROM gun_ozet").fetchone()[0]
 
 
 def _kirp(bas_s: str, bit_s: str, alt: datetime, ust: datetime) -> Tuple[datetime, datetime]:
@@ -242,7 +292,7 @@ def gun_kapsami(con: sqlite3.Connection) -> Dict[date, int]:
 
 
 def makineler_kayitta(con: sqlite3.Connection) -> List[str]:
-    return [r[0] for r in con.execute("SELECT DISTINCT makine FROM kayit ORDER BY makine")]
+    return sozluk_degerleri(con, "makine")
 
 
 def aktarim_kaydet(con, dosya, toplam, yeni, guncel, ayni, atlanan, ilk_gun, son_gun):
@@ -385,7 +435,7 @@ def metin_yaz(con, anahtar: str, icerik: Optional[str]) -> None:
 def personel_listesi(con: sqlite3.Connection) -> List[str]:
     """Kayıtlarda geçen tüm personel (operatör) adları, alfabetik."""
     from .operator import operator_adi                 # '-' gibi harfsiz değerler personel sayılmaz
-    return sorted({ad for r in con.execute("SELECT DISTINCT operator FROM kayit") if (ad := operator_adi(r[0]))},
+    return sorted({ad for r in sozluk_degerleri(con, "operator") if (ad := operator_adi(r))},
                   key=lambda s: s.casefold())
 
 

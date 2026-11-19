@@ -301,7 +301,7 @@ class AnaPencere(QMainWindow):
                                    f"{acilis.sure_yazisi(max(1.0, acilis.hiz_oku() * n_kayit / 1000.0 - gecen))}")
             k = self.kapsam()
             if k:
-                n = self.con.execute("SELECT COUNT(*) FROM kayit").fetchone()[0]
+                n = vt.toplam_kayit(self.con)
                 self.alt_bilgi.setText(f"Veri: {n:,} kayıt\n{min(k):%d.%m.%Y} – {max(k):%d.%m.%Y}".replace(",", "."))
             else:
                 self.alt_bilgi.setText("Henüz veri yok")

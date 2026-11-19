@@ -117,7 +117,7 @@ class KayitlarSayfasi(QWidget):
         onceki_m, onceki_t = self.makine.currentText(), self.tip.currentText()
         self.makine.clear()
         self.makine.addItems(["Tümü"] + list(ay["makineler"]))
-        tipler = [r[0] for r in self.ana.con.execute("SELECT DISTINCT tip FROM kayit ORDER BY tip")]
+        tipler = vt.sozluk_degerleri(self.ana.con, "tip")
         self.tip.clear()
         self.tip.addItems(["Tümü"] + [t for t in tipler if t])
         if onceki_m:

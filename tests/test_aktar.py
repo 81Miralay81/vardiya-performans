@@ -109,3 +109,13 @@ def test_xlsx_icerik_xls_adli(tmp_path):
     f.rename(g)
     con = vt.ac(str(tmp_path / "z.db"))
     assert ia.aktar(con, str(g)).yeni == 1
+
+
+def test_sozluk_kayit_yaz_ile_guncel(tmp_path):
+    con = vt.ac(str(tmp_path / "s.db"))
+    vt.kayit_yaz(con, [("IM21", datetime(2026, 11, 2, 8), datetime(2026, 11, 2, 9), "Ali Veli", "Kısa Duruş", "", "", "")])
+    assert vt.makineler_kayitta(con) == ["IM21"]
+    assert vt.personel_listesi(con) == ["Ali Veli"]
+    vt.kayit_yaz(con, [("IM22", datetime(2026, 11, 3, 8), datetime(2026, 11, 3, 9), "Can", "Çalışma", "", "", "")])
+    assert vt.makineler_kayitta(con) == ["IM21", "IM22"]
+    assert vt.toplam_kayit(con) == 2
