@@ -109,7 +109,7 @@ class Sunucu:
             self.httpd = None
 
     def adres(self) -> str:
-        return f"http://{socket.gethostname()}:{self.port}"
+        return f"http://{yerel_ip()}:{self.port}"
 
     # -------------------------------------------------------------- yanıt yardımcıları
     @staticmethod
@@ -500,6 +500,29 @@ class Sunucu:
             return self._json(h, {"bilgi": f"{ilk:%d.%m.%Y} – {son:%d.%m.%Y} arasında, göndereni '{r['gonderen']}' ve konusunda "
                                            f"'{r['konu']}' geçen mail bulunamadı."})
         self._json(h, {"bilgi": servis.outlook_ozet(r) + (("\n" + r["uyari"]) if r["uyari"] else "")})
+
+
+def yerel_ip() -> str:
+    """Bu bilgisayarın iç ağdaki IP adresi (ör. 192.168.x.x). Dışarıya hiçbir şey gönderilmez: yalnızca hangi ağ
+    kartının kullanılacağı sorulur. Bulunamazsa bilgisayar adı döner."""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect(("10.255.255.255", 1))
+            ip = s.getsockname()[0]
+        finally:
+            s.close()
+        if ip and not ip.startswith("127."):
+            return ip
+    except OSError:
+        pass
+    try:
+        ipler = [i for i in socket.gethostbyname_ex(socket.gethostname())[2] if not i.startswith("127.")]
+        if ipler:
+            return sorted(ipler, key=lambda i: (not i.startswith("192.168."), not i.startswith("10."), i))[0]
+    except OSError:
+        pass
+    return socket.gethostname()
 
 
 _SUNUCU: Optional[Sunucu] = None
