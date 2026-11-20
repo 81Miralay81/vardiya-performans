@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Callable, Dict, List, Optional
 
-from PySide6.QtCore import QRectF, Qt, Signal
+from PySide6.QtCore import QRectF, Qt, QThread, QTimer, Signal
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QScrollArea, QSizePolicy, QToolTip, QVBoxLayout, QWidget
 
 from . import cizim, cizim_ek, tema
@@ -60,6 +60,29 @@ class TikliCizim(CizimWidget):
             if b:
                 self.tiklandi.emit(*b)
         super().mouseReleaseEvent(e)
+
+
+class _KirilimIs(QThread):
+    """3. kırılım hesabı arka planda (kendi veri tabanı bağlantısıyla): ağ diskinde pencere donmasın."""
+    bitti = Signal(object, object, object)       # (makine, duruş, sonuç)
+
+    def __init__(self, db_yolu, ilk, son, makine, tip, parent=None):
+        super().__init__(parent)
+        self.a = (db_yolu, ilk, son, makine, tip)
+
+    def run(self):
+        from . import veritabani as vt
+        from .kirilim import durus_kirilimi
+        db_yolu, ilk, son, makine, tip = self.a
+        try:
+            con = vt.ac(db_yolu)
+            try:
+                k = durus_kirilimi(con, ilk, son, makine, tip)
+            finally:
+                con.close()
+        except Exception as e:  # noqa: BLE001
+            k = {"hata": str(e)}
+        self.bitti.emit(makine, tip, k)
 
 
 class _Kutu(QFrame):
@@ -321,23 +344,38 @@ class PerformansSayfasi(QWidget):
         if self._tip == tip and self.k_kirilim.isVisible():      # aynı duruşa ikinci tıklama kapatır
             self._kirilim_kapat()
             return
-        from .kirilim import OPERATOR_YOK, durus_kirilimi
         gunler = self.ana.donem_gunleri()
         if not gunler:
             return
         self._tip = tip
-        k = durus_kirilimi(self.ana.con, min(gunler), max(gunler), m, tip)
-        renk = tema.durus_rengi(tip)
-        self._kirilim = {"vardiya": [(a, x, tema.LACIVERT) for a, x in k["vardiya"]],
-                         "operator": [(a, x, "#B0B4C0" if a == OPERATOR_YOK else renk) for a, x in k["operator"]]}
-        top = sum(x for _a, x in k["vardiya"])
+        self._kirilim = {}
         self.k_baslik.setText(f"{m} · {tip} – vardiya ve operatör kırılımı")
-        self.k_alt.setText(f"toplam {cizim._saat_dk(top)} saat · gri: duruş sürerken makinede operatör kayıtlı değil · "
-                           "aynı duruşa yeniden tıklarsanız kapanır")
+        self.k_alt.setText("hesaplanıyor…")
         self.k_kirilim.show()
         for w in (self.g_detay, self.g_kv, self.g_ko):
             w.update()
         self._sc.ensureWidgetVisible(self.k_kirilim, 0, 30)
+        is_ = _KirilimIs(self.ana.db_yolu, min(gunler), max(gunler), m, tip, self)
+        is_.bitti.connect(self._kirilim_geldi)
+        is_.finished.connect(is_.deleteLater)
+        self._kirilim_is = is_
+        is_.start()
+
+    def _kirilim_geldi(self, m, tip, k):
+        if m != self._secili or tip != self._tip or not self.k_kirilim.isVisible():
+            return                                  # bu arada başka makine / duruş seçildi
+        if "hata" in k:
+            self.k_alt.setText(f"Hesaplanamadı: {k['hata']}")
+            return
+        from .kirilim import OPERATOR_YOK
+        renk = tema.durus_rengi(tip)
+        self._kirilim = {"vardiya": [(a, x, tema.LACIVERT) for a, x in k["vardiya"]],
+                         "operator": [(a, x, "#B0B4C0" if a == OPERATOR_YOK else renk) for a, x in k["operator"]]}
+        top = sum(x for _a, x in k["vardiya"])
+        self.k_alt.setText(f"toplam {cizim._saat_dk(top)} saat · gri: duruş sürerken makinede operatör kayıtlı değil · "
+                           "aynı duruşa yeniden tıklarsanız kapanır")
+        for w in (self.g_kv, self.g_ko):
+            w.update()
 
     def _kirilim_kapat(self):
         self._tip = None
@@ -424,6 +462,12 @@ class PerformansSayfasi(QWidget):
             self.g_oee.update()
             self.g_zaman.update()
             self._sc.ensureWidgetVisible(self.k_cormind, 0, 60)
+
+    def showEvent(self, e):
+        super().showEvent(e)
+        if not getattr(self, "_isitildi", False):     # ayrıntı grafiklerinin tarayıcı motorunu önceden kur (ilk tıklama donmasın)
+            self._isitildi = True
+            QTimer.singleShot(1500, lambda: [w.web_hazirla() for w in (self.g_detay, self.g_kv, self.g_ko)])
 
     def yenile(self):
         s, ayar = self.ana.sonuc, self.ana.hesap_ayar()

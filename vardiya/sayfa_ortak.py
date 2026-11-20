@@ -140,6 +140,16 @@ class CizimWidget(QWidget):
         buyuk.update()
         d.exec()
 
+    def web_hazirla(self):
+        """Web görünümünü önceden (gizli) kurar: ilk gösterimde pencere donmasın (tarayıcı motoru açılışı ~1-2 sn)."""
+        from . import web
+        if web.WEB_VAR and self._web is None:
+            self._web = web.WebGorunum(self)
+            if hasattr(self, "tiklandi"):
+                self._web.tiklandi.connect(lambda a, k: self.tiklandi.emit(a, k))
+            self._web.setGeometry(self.rect())
+            self._web.hide()
+
     def _web_planla(self):
         from . import web
         if web.WEB_VAR and not self._web_planli:
