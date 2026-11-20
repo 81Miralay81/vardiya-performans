@@ -50,6 +50,24 @@ def degerler(sonuc, m: str) -> Optional[Tuple[float, float, bool]]:
     return None
 
 
+def supheli_hesabi(con, a: dict, gun_listesi: List[date]) -> dict:
+    """Şüpheli molalar (Ayarlar'da mola saatleri yazılıysa): makine -> vardiya -> {dk_gun, adet, olaylar}."""
+    from .kirilim import supheli_molalar, supheli_ozet
+    ms = a.get("mola_saatleri") or {}
+    if not gun_listesi or not any((ms.get(str(v)) or {}).get(k) for v in (1, 2, 3) for k in ("cay", "yemek")):
+        return {}
+    kayit = vt.kayitlari_getir_operatorlu(con, min(gun_listesi), max(gun_listesi), kirp=True)
+    return supheli_ozet(supheli_molalar(kayit, gun_listesi, ms), kayit, gun_listesi)
+
+
+def mola_pastasi(s, seflar: dict, supheli: dict, m: str) -> list:
+    """Bir makinenin vardiya bazlı mola pastası verisi: [(başlık, grup lideri, mola oranı, şüpheli dk/gün, şüpheli adet)]."""
+    h = s.hucreler.get(m, {}) if s else {}
+    sp = supheli.get(m, {})
+    return [(f"{v}. VARDİYA", seflar.get(v, ""), h[v][2], round(sp.get(v, {}).get("dk_gun", 0.0), 2), sp.get(v, {}).get("adet", 0))
+            for v in VARDIYALAR if v in h]
+
+
 def performans_verisi(con, a: dict, ilk: date, son: date) -> dict:
     """Performans sayfasının bütün verisi; grafikler web_secenek ile (exe'deki 3B grafiklerin aynısı)."""
     from . import web_secenek as ws
@@ -65,6 +83,7 @@ def performans_verisi(con, a: dict, ilk: date, son: date) -> dict:
     makineler = a.get("makineler", [])
     dokum = durus_dokumu(d["kayit"], d["gunler"], ayar.haric)
     cm = cormind_hesabi(d["kayit"], d["gunler"], makineler, ayar)
+    sup = supheli_hesabi(con, a, d["secili"])
     yontem = dict(tema.YONTEMLER).get(ayar.yontem, "").lower()
     sonuc["kartlar"] = {
         "genel": {"deger": tema.yuzde(s.genel[0]) if s.genel[0] is not None else "-",
@@ -74,12 +93,13 @@ def performans_verisi(con, a: dict, ilk: date, son: date) -> dict:
                         + f"{s.vardiyalar[v].gun_sayisi} gün", "sef": d["seflar"].get(v, "")} for v in VARDIYALAR]}
     sonuc["grafik"] = {
         "vardiya": ws.vardiya_grafigi(dict(sonuc=s, seflar=d["seflar"], secim=0, baslik="")),
-        "genel": ws.genel_performans_grafigi(dict(sonuc=s, makineler=makineler, mola_pay=mola_pay, baslik=None)),
+        "genel": ws.genel_performans_grafigi(dict(sonuc=s, makineler=makineler, mola_pay=mola_pay, baslik=None, supheli=set(sup))),
         "oee": ws.cormind_oee_grafigi(dict(cm=cm, baslik="OEE Grafiği (Cormind)", limit=85.0)),
         "zaman": ws.cormind_durus_grafigi(dict(cm=cm, baslik="Zaman Dağılım Grafiği (Cormind)", limit=15.0)),
     }
     sonuc["dokum"] = {m: sorted(((t, round(x, 4)) for t, x in v.items() if x > 0.004), key=lambda x: -x[1]) for m, v in dokum.items()}
-    sonuc["mola"] = {m: [(f"{v}. VARDİYA", d["seflar"].get(v, ""), h[v][2]) for v in VARDIYALAR if v in h] for m, h in s.hucreler.items()}
+    sonuc["mola"] = {m: mola_pastasi(s, d["seflar"], sup, m) for m in s.hucreler}
+    sonuc["supheli"] = {m: {str(v): [e.sozluk() for e in x["olaylar"]] for v, x in vs.items()} for m, vs in sup.items()}
     sonuc["mola_dk"] = mola_dk
     sonuc["degerler"] = {m: degerler(s, m) for m in set(s.makine_ort) | set(s.esik_alti)}
     sonuc["bozuk"] = s.bozuk_kayit

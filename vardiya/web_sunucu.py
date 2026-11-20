@@ -144,7 +144,7 @@ class Sunucu:
                 return self._gonder(h, open(tema.kaynak_yolu("assets", "logo.png"), "rb").read(), "image/png")
             f = {"/api/durum": self.api_durum, "/api/performans": self.api_performans, "/api/tablo.png": self.api_tablo,
                  "/api/rapor/bilgi": self.api_rapor_bilgi, "/api/rapor/sayfa.png": self.api_rapor_sayfa,
-                 "/api/rapor.pdf": self.api_rapor_pdf, "/api/operator": self.api_operator, "/api/operator/ayrinti": self.api_operator_ayrinti, "/api/duran": self.api_duran,
+                 "/api/rapor.pdf": self.api_rapor_pdf, "/api/operator": self.api_operator, "/api/operator/ayrinti": self.api_operator_ayrinti, "/api/operator/cakisma": self.api_operator_cakisma, "/api/duran": self.api_duran, "/api/kirilim": self.api_kirilim,
                  "/api/kayitlar": self.api_kayitlar, "/api/cormind/cek": self.api_cek, "/api/cormind/durum": self.api_cek_durum,
                  "/api/cormind/durdur": self.api_cek_durdur, "/api/outlook": self.api_outlook}.get(yol)
             if f is None:
@@ -343,8 +343,31 @@ class Sunucu:
                         "cakisan_sn": round(v.get("cakisan_sn", 0)), "birim": int(v["birim"])} for g, v in sorted(r.gunler.items())],
             "nedenler": sorted(([t, round(sn)] for t, sn in r.durus_tipleri.items()), key=lambda x: -x[1]),
             "durus_sn": round(r.durus_sn),
+            "makine_durus": {m: {t: round(x) for t, x in d.items()} for m, d in r.makine_durus.items()},
+            "makine_gun": [[m, f"{g:%d.%m} {GUN[g.weekday()]}", round(v["calisma"]), round(v["durus"]), round(v["mola"])]
+                           for (m, g), v in sorted(r.makine_gun.items(), key=lambda x: (x[0][1], x[0][0]))],
+            "gun_iso": [g.isoformat() for g in sorted(r.gunler)],
             "cakisma": [ep(e) for e in r.cakismalar[:5000]], "bosta": [ep(e) for e in r.bosta_listesi[:5000]],
             "plansiz": [ep(e) for e in r.plansiz_listesi[:5000]]})
+
+    def api_operator_cakisma(self, h, q):
+        """Bir günün çakışan duruşları (zaman çizelgesi için): makineler, duruş blokları ve çakışmalar."""
+        ad = (q.get("ad") or [""])[0]
+        try:
+            gun = date.fromisoformat((q.get("gun") or [""])[0])
+        except ValueError:
+            return self._json(h, {"hata": "gün geçersiz"}, 400)
+        _ilk, _son, tum = self._operatorler(q)
+        r = tum.get(ad)
+        if r is None:
+            return self._json(h, {"hata": f"{ad} bu dönemde bulunamadı."}, 404)
+        f = "%Y-%m-%d %H:%M:%S"
+        cak = [e for e in r.cakismalar if e.bas.date() == gun]
+        makineler = sorted({m for e in cak for m, _t in e.duruslar} | {m for e in cak for m in e.calisanlar})
+        bloklar = {m: [[a.strftime(f), b.strftime(f), d, tp] for a, b, d, tp, g, _v in r.parcalar.get(m, []) if g == gun] for m in makineler}
+        self._json(h, {"ad": ad, "gun": gun.isoformat(), "makineler": makineler, "bloklar": bloklar,
+                       "cakismalar": [{"bas": e.bas.strftime(f), "bit": e.bit.strftime(f), "sn": round(e.sn), "duruslar": [[m, t] for m, t in e.duruslar],
+                                       "calisanlar": list(e.calisanlar), "setup": e.setup_var} for e in cak]})
 
     def api_operator(self, h, q):
         ilk, son, tum = self._operatorler(q)
@@ -361,6 +384,17 @@ class Sunucu:
                              "en_cok": [(t, hm(sn)) for t, sn in sorted(r.durus_tipleri.items(), key=lambda x: -x[1])[:3]]})
         from .operator import AYRINTI_ACIKLAMA, SUTUN_ACIKLAMA
         self._json(h, {"ilk": ilk, "son": son, "satirlar": satirlar, "aciklama": SUTUN_ACIKLAMA, "ayrinti_aciklama": AYRINTI_ACIKLAMA})
+
+    def api_kirilim(self, h, q):
+        """Performans 3. kırılım: bir makinenin bir duruş türünün vardiya ve operatör dağılımı."""
+        from .kirilim import durus_kirilimi
+        con = self._con()
+        try:
+            ilk, son = self._aralik(q, con)
+            k = durus_kirilimi(con, ilk, son, (q.get("makine") or [""])[0], (q.get("tip") or [""])[0])
+        finally:
+            con.close()
+        self._json(h, {"vardiya": [[a, round(x, 4)] for a, x in k["vardiya"]], "operator": [[a, round(x, 4)] for a, x in k["operator"]]})
 
     def api_duran(self, h, q):
         from . import operatorlu_durus, servis

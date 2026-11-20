@@ -219,13 +219,30 @@ class CakismaDialog(QDialog):
         self.ozet.setText(f"{len(liste)} {'kayıt' if self.bosta else 'çakışma'} · toplam {hm(toplam)} (saat:dakika)")
 
 
+def _buyuk_pencere(d: QDialog, oran: float = 0.86):
+    """Pencereyi ekranın büyük kısmını kaplayacak boyutta açar (grafikler küçük kalmasın)."""
+    ekran = QApplication.primaryScreen()
+    if ekran is None:
+        d.resize(1280, 820)
+        return
+    g = ekran.availableGeometry()
+    d.resize(int(g.width() * oran), int(g.height() * oran))
+
+
+def _sure_dk(sn: float) -> str:
+    return f"{sn / 60:.0f} dk" if sn < 3600 else hm(sn)
+
+
 class DetayDialog(QDialog):
-    """Bir operatörün makine, gün ve duruş nedeni dökümü."""
+    """Bir operatörün makine, gün, grafik ve duruş nedeni dökümü."""
 
     def __init__(self, parent, r: OperatorSonuc):
         super().__init__(parent)
+        from .sayfa_performans import TikliCizim
+        from . import cizim_ek
+        self.r = r
         self.setWindowTitle(f"Operatör ayrıntısı – {r.ad}")
-        self.resize(820, 560)
+        _buyuk_pencere(self)
         l = QVBoxLayout(self)
         sekme = QTabWidget()
         l.addWidget(sekme)
@@ -234,7 +251,7 @@ class DetayDialog(QDialog):
                       (hm(v["mola"]), v["mola"], True),
                       (tema.yuzde(v["calisma"] / max(1, v["calisma"] + v["durus"] + v["mola"]), 1),
                        v["calisma"] / max(1, v["calisma"] + v["durus"] + v["mola"]), True)]
-                     for m, v in sorted(r.makineler.items())], (110, 100, 100, 100))
+                     for m, v in sorted(r.makineler.items())], (130, 120, 120, 120))
         sekme.addTab(t1, "Makineler")
         t2 = _tablo(["Gün", "Çalışma %", "Duruş %", "Molada çalışma %", "Boşta", "Çakışan duruş", "Makine"])
         _doldur(t2, [[(g.strftime("%d.%m.%Y") + " " + KISA_GUN[g.weekday()], g.toordinal(), False),
@@ -242,22 +259,159 @@ class DetayDialog(QDialog):
                       (tema.yuzde(v["molada_calisma"], 1), v["molada_calisma"], True),
                       (hm(v.get("bosta_sn", 0)), v.get("bosta_sn", 0), True), (hm(v.get("cakisan_sn", 0)), v.get("cakisan_sn", 0), True),
                       (str(v["makine"]), v["makine"], True)]
-                     for g, v in sorted(r.gunler.items())], (160, 100, 100, 100, 90, 110))
+                     for g, v in sorted(r.gunler.items())], (170, 120, 120, 140, 100, 120))
         sekme.addTab(t2, "Günler")
-        self.grafik = CizimWidget(lambda p, rect: gun_grafigi(p, rect, r), 300, 400,
-                                  kopya_resim=lambda: self.grafik.resim(2.0))
-        sekme.addTab(self.grafik, "Gün gün grafik")
+
+        # ---- grafik: üstte makine bazlı (çalışma + duruş üst üste), altta gün gün boşta / çakışan
+        gw = QWidget()
+        gl = QVBoxLayout(gw)
+        gl.setContentsMargins(4, 4, 4, 4)
+        self.g_makine = TikliCizim(lambda p, rect, b: cizim_ek.yigin_grafigi(
+            p, rect, self._makine_listesi(), f"{r.ad} – makine bazlı",
+            "seçili dönemin tamamı · çalışma ve duruşun, ikisinin toplamı içindeki payı · bir makineye tıklayın: o makinenin gün gün grafiği",
+            bolgeler=b), 300, 400)
+        self.g_makine.tiklandi.connect(lambda m, _k: MakineGunDialog(self, r, m).exec())
+        self.g_bc = TikliCizim(lambda p, rect, b: cizim_ek.bosta_cakisan_grafigi(p, rect, self._bc_listesi(), bolgeler=b), 220, 400)
+        self.g_bc.tiklandi.connect(lambda g, _k: CakismaGunDialog(self, r, g).exec())
+        gl.addWidget(self.g_makine, 3)
+        gl.addWidget(self.g_bc, 2)
+        sekme.addTab(gw, "Grafik")
+
         t3 = _tablo(["Duruş nedeni", "Süre", "Payı"])
         top = max(1.0, r.durus_sn)
         _doldur(t3, [[(tip, tip, False), (hm(sn), sn, True), (tema.yuzde(sn / top, 1), sn, True)]
-                     for tip, sn in sorted(r.durus_tipleri.items(), key=lambda x: -x[1])], (300, 100))
+                     for tip, sn in sorted(r.durus_tipleri.items(), key=lambda x: -x[1])], (340, 120))
         t3.sortByColumn(1, Qt.DescendingOrder)
-        sekme.addTab(t3, "Duruş nedenleri")
+        t3.setToolTip("Bir duruş nedenine tıklayın: o duruşun makine bazında dağılımı")
+        t3.setCursor(Qt.PointingHandCursor)
+        t3.cellClicked.connect(lambda row, _c: DurusMakineDialog(self, r, t3.item(row, 0).text()).exec() if t3.item(row, 0) else None)
+        w3 = QWidget()
+        l3 = QVBoxLayout(w3)
+        l3.setContentsMargins(0, 4, 0, 0)
+        l3.addWidget(etiket("Bir duruş nedenine tıklayın: o duruşun hangi makinede ne kadar sürdüğü açılır.", "AltBaslik"))
+        l3.addWidget(t3)
+        sekme.addTab(w3, "Duruş nedenleri")
         for tablo, ad in ((t1, "Makineler"), (t2, "Günler"), (t3, "Duruş nedenleri")):   # başlık açıklamaları
             for j in range(tablo.columnCount()):
                 h = tablo.horizontalHeaderItem(j)
                 if h and h.text() in AYRINTI_ACIKLAMA[ad]:
                     h.setToolTip(AYRINTI_ACIKLAMA[ad][h.text()])
+
+    def _makine_listesi(self):
+        r = self.r
+        return [(m, m, v["calisma"], v["durus"], "") for m, v in sorted(r.makineler.items()) if v["calisma"] + v["durus"] > 0]
+
+    def _bc_listesi(self):
+        return [(g, f"{g:%d.%m} {KISA_GUN[g.weekday()]}", v.get("bosta_sn", 0) / 3600, v.get("cakisan_sn", 0) / 3600)
+                for g, v in sorted(self.r.gunler.items())]
+
+
+class MakineGunDialog(QDialog):
+    """Operatörün bir makinedeki gün gün çalışma / duruş payı."""
+
+    def __init__(self, parent, r: OperatorSonuc, makine: str):
+        super().__init__(parent)
+        from . import cizim_ek
+        self.setWindowTitle(f"{makine} – {r.ad} · gün gün")
+        _buyuk_pencere(self, 0.72)
+        l = QVBoxLayout(self)
+        veri = [(g, f"{g:%d.%m}\n{KISA_GUN[g.weekday()]}", v["calisma"], v["durus"], "")
+                for (m, g), v in sorted(r.makine_gun.items(), key=lambda x: x[0][1]) if m == makine and v["calisma"] + v["durus"] > 0]
+        g = CizimWidget(lambda p, rect: cizim_ek.yigin_grafigi(p, rect, veri, f"{makine} – {r.ad} · gün gün",
+                                                                  "her gün: çalışma ve duruşun, ikisinin toplamı içindeki payı"), 300, 400)
+        l.addWidget(g)
+
+
+class DurusMakineDialog(QDialog):
+    """Operatörün bir duruş nedeninin makine bazında dağılımı."""
+
+    def __init__(self, parent, r: OperatorSonuc, tip: str):
+        super().__init__(parent)
+        from . import cizim_ek
+        self.setWindowTitle(f"{tip} – {r.ad} · makine bazında")
+        _buyuk_pencere(self, 0.72)
+        l = QVBoxLayout(self)
+        satir = sorted(((m, d.get(tip, 0.0)) for m, d in r.makine_durus.items() if d.get(tip, 0.0) > 0), key=lambda x: -x[1])
+        top = sum(x for _m, x in satir) or 1.0
+        l.addWidget(etiket(f"{r.ad} · {tip}: toplam {hm(top)} (saat:dakika) · operatörün toplam duruşunun "
+                           f"{tema.yuzde(top / max(1.0, r.durus_sn), 1)}'i", "KartBaslik"))
+        renk = tema.durus_rengi(tip)
+        g = CizimWidget(lambda p, rect: cizim_ek.kirilim_grafigi(p, rect, [(m, x / 3600, renk) for m, x in satir], f"{tip} – makine bazında"),
+                        300, 400)
+        l.addWidget(g, 3)
+        t = _tablo(["Makine", "Süre", "Bu duruşun payı", "Makinenin duruşları içindeki payı"])
+        _doldur(t, [[(m, m, False), (hm(x), x, True), (tema.yuzde(x / top, 1), x, True),
+                     (tema.yuzde(x / max(1.0, r.makineler.get(m, {}).get("durus", 0.0)), 1), x, True)] for m, x in satir],
+                (130, 120, 140))
+        l.addWidget(t, 2)
+
+
+class CakismaGunDialog(QDialog):
+    """Bir günün çakışan duruşları: zaman çizelgesi (makine satırları, duruş blokları, çakışma taralı) ve liste.
+    Listede bir satıra tıklayınca çizelge o çakışmaya yakınlaşır; "Tüm gün" düğmesi geri döner."""
+
+    def __init__(self, parent, r: OperatorSonuc, gun):
+        super().__init__(parent)
+        from . import cizim_ek
+        self.r, self.gun = r, gun
+        self.setWindowTitle(f"Çakışan duruşlar – {r.ad} · {gun:%d.%m.%Y}")
+        _buyuk_pencere(self, 0.9)
+        l = QVBoxLayout(self)
+        self.tum_cak = [e for e in r.cakismalar if e.bas.date() == gun]
+        self.makineler = sorted({m for e in self.tum_cak for m, _t in e.duruslar} | {m for e in self.tum_cak for m in e.calisanlar})
+        self.bloklar = {m: [(a, b, d, tp) for a, b, d, tp, g, _v in r.parcalar.get(m, []) if g == gun] for m in self.makineler}
+        tum = [x for m in self.makineler for x in self.bloklar[m]]
+        self.gun_t0 = min((a for a, *_ in tum), default=datetime(gun.year, gun.month, gun.day))
+        self.gun_t1 = max((b for _a, b, *_ in tum), default=self.gun_t0 + timedelta(hours=8))
+        self.t0, self.t1, self.vurgu = self.gun_t0, self.gun_t1, None
+        self.bilgi = etiket("", "AltBaslik")
+        l.addWidget(self.bilgi)
+        f = QHBoxLayout()
+        self.min_sure = QComboBox()
+        for ad, sn in (("Tümü", 0), ("1 dakikadan uzun", 60), ("5 dakikadan uzun", 300), ("15 dakikadan uzun", 900)):
+            self.min_sure.addItem(ad, sn)
+        self.min_sure.setCurrentIndex(1)
+        self.min_sure.currentIndexChanged.connect(self._doldur)
+        b_tum = QPushButton("Tüm gün")
+        b_tum.setToolTip("Çizelgeyi günün tamamına geri getirir")
+        b_tum.clicked.connect(lambda: self._yakinlas(None))
+        f.addWidget(etiket("Süre", "KartBaslik", kelime=False))
+        f.addWidget(self.min_sure)
+        f.addWidget(b_tum)
+        f.addWidget(etiket("Listede bir satıra tıklayın: çizelge o çakışmaya yakınlaşır.", "AltBaslik"), 1)
+        l.addLayout(f)
+        self.g = CizimWidget(lambda p, rect: cizim_ek.cakisma_cizelgesi(p, rect, self.makineler, self.bloklar, self.numarali,
+                                                                          self.t0, self.t1, self.vurgu),
+                             max(200, 70 + 64 * len(self.makineler)), 600)
+        self.g.setMinimumHeight(max(200, 70 + 64 * len(self.makineler)))
+        l.addWidget(self.g, 3)
+        self.t = _tablo(["#", "Başlangıç", "Bitiş", "Süre", "Duruşta olan makineler", "O sırada çalışan makineler", "Ayar var"])
+        self.t.cellClicked.connect(lambda row, _c: self._yakinlas(self.t.item(row, 0).text() if self.t.item(row, 0) else None))
+        l.addWidget(self.t, 2)
+        self._doldur()
+
+    def _doldur(self):
+        asg = self.min_sure.currentData() or 0
+        self.cak = [e for e in self.tum_cak if e.sn >= asg]
+        self.numarali = [(str(i + 1), e.bas, e.bit) for i, e in enumerate(self.cak)]
+        top = sum(e.sn for e in self.cak)
+        self.bilgi.setText(f"{len(self.cak)} çakışma · toplam {hm(top)} (saat:dakika) · kırmızı tarama: iki ya da daha fazla makinenin aynı "
+                           "anda durduğu süre · açık yeşil: çalışma · açık turuncu: mola · renkli blok: duruş (adıyla)")
+        _doldur(self.t, [[(str(i + 1), i + 1, True), (f"{e.bas:%H:%M:%S}", e.bas, False), (f"{e.bit:%H:%M:%S}", e.bit, False),
+                          (_sure_dk(e.sn), e.sn, True), ("   ".join(f"{m}: {tp}" for m, tp in e.duruslar), "", False),
+                          (", ".join(e.calisanlar) or "-", "", False), ("Evet" if e.setup_var else "", e.setup_var, False)]
+                         for i, e in enumerate(self.cak)], (44, 90, 90, 80, 520, 200))
+        self.t.sortByColumn(0, Qt.AscendingOrder)
+        self._yakinlas(None)
+
+    def _yakinlas(self, no):
+        e = next((x for i, x in enumerate(self.cak) if str(i + 1) == no), None) if no else None
+        if e is None:
+            self.t0, self.t1, self.vurgu = self.gun_t0, self.gun_t1, None
+        else:
+            pay = max(timedelta(minutes=15), (e.bit - e.bas) * 2)
+            self.t0, self.t1, self.vurgu = max(self.gun_t0, e.bas - pay), min(self.gun_t1, e.bit + pay), no
+        self.g.update()
 
 
 class HaricDialog(QDialog):

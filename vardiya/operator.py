@@ -150,6 +150,9 @@ class OperatorSonuc:
     durus_tipleri: Dict[str, float] = field(default_factory=dict)
     cakismalar: List[Episode] = field(default_factory=list)
     gun_sayisi: int = 0
+    makine_durus: Dict[str, Dict[str, float]] = field(default_factory=dict)        # makine -> duruş türü -> saniye
+    makine_gun: Dict[Tuple[str, date], Dict[str, float]] = field(default_factory=dict)   # (makine, gün) -> {calisma, durus, mola} sn
+    parcalar: Dict[str, list] = field(default_factory=dict)   # makine -> [(baş, bit, durum, tür, gün, vardiya)] (zaman çizelgesi için)
 
     @property
     def makine_sayisi(self) -> int:
@@ -201,6 +204,7 @@ def _bir_operator(ad: str, kayitlar: List[Tuple[str, str, datetime, datetime]], 
             parcalar[makine] = kes
     if not parcalar:
         return sonuc
+    sonuc.parcalar = parcalar
 
     # (gün, vardiya, makine) birimleri
     birim: Dict[Tuple[date, int, str], Dict[str, float]] = {}
@@ -214,6 +218,8 @@ def _bir_operator(ad: str, kayitlar: List[Tuple[str, str, datetime, datetime]], 
             anahtar = {CALISIYOR: "calisma", DURUS: "durus", MOLA: "mola", HARIC: "haric"}[durum]
             u[anahtar] += sn
             mk[anahtar] += sn
+            mg = sonuc.makine_gun.setdefault((makine, gun), {"calisma": 0.0, "durus": 0.0, "mola": 0.0, "haric": 0.0})
+            mg[anahtar] += sn
             if durum in (DURUS, HARIC) and plansiz_mi(tip):       # hariç tutulsa bile izlenir
                 sonuc.plansiz_sn += sn
                 son = sonuc.plansiz_listesi[-1] if sonuc.plansiz_listesi else None
@@ -227,6 +233,8 @@ def _bir_operator(ad: str, kayitlar: List[Tuple[str, str, datetime, datetime]], 
                 onceki = None
             elif durum == DURUS:
                 sonuc.durus_tipleri[tip] = sonuc.durus_tipleri.get(tip, 0.0) + sn
+                md = sonuc.makine_durus.setdefault(makine, {})
+                md[tip] = md.get(tip, 0.0) + sn
                 if tr_kucuk(tip) == tr_kucuk("Belgelenmemiş Duruş"):
                     sonuc.belgesiz_sn += sn
                 if setup_mi(tip):

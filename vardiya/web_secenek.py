@@ -162,9 +162,13 @@ def genel_performans_grafigi(a: dict) -> dict:
     alt = -10 * max(1, math.ceil((mola_pay + 0.5) / 10))     # eksen 0'dan onar onar: ..., 10%, 0%, -10%
     return {"title": _baslik(baslik), "tooltip": _ipucu(),
             "legend": {"bottom": 0, "itemWidth": 14, "itemHeight": 10, "textStyle": {"color": SOLUK}},
-            "grid": {"left": 50, "right": 30, "top": 46 if baslik else 16, "bottom": 70},
-            "xAxis": _eksen_x([v[0] + ("\n👤" if v[0] in (a.get("isaretli") or set()) else "") for v in veri],
-                              axisLine={"onZero": True, "lineStyle": {"color": "#9AA3B8"}}, position="bottom"),
+            "grid": {"left": 50, "right": 30, "top": 46 if baslik else 16, "bottom": 88 if a.get("supheli") else 70},
+            "xAxis": _eksen_x([v[0] + ("\n👤" if v[0] in (a.get("isaretli") or set()) else "")
+                               + ("\n{u|⚠}" if v[0] in (a.get("supheli") or set()) else "") for v in veri],
+                              axisLine={"onZero": True, "lineStyle": {"color": "#9AA3B8"}}, position="bottom", triggerEvent=True,
+                              axisLabel={"color": YAZI, "fontWeight": 600, "interval": 0, "fontSize": 11, "lineHeight": 16,
+                                         "rotate": 45 if len(veri) > 18 else 0,
+                                         "rich": {"u": {"color": "#D35400", "fontSize": 17, "fontWeight": 700, "padding": [2, 0, 0, 0]}}}),
             "yAxis": _eksen_y(min=alt, max=110, interval=10,
                               axisLabel={"color": SOLUK, "formatter": "{value}%"}),
             "series": seri}
@@ -231,8 +235,12 @@ def durus_dokum_grafigi(a: dict) -> dict:
         return _bos("Bu dönemde duruş kaydı yok")
     from .cizim import _iki_satir, _saat_dk
     toplam = sum(x[1] for x in liste) or 1.0
-    d = [{"value": round(sa, 3), "itemStyle": dict(_golge(), color=_gecis(tema.durus_rengi(t)), borderRadius=[4, 4, 0, 0]),
-          "tip": f"<b>{t}</b><br>{_saat_dk(sa)} saat · duruşların {sa / toplam * 100:.0f}%'i",
+    secili = a.get("secili")
+    d = [{"value": round(sa, 3), "anahtar": t, "kisim": "tip",
+          "itemStyle": dict(_golge(), color=_gecis(tema.durus_rengi(t)), borderRadius=[4, 4, 0, 0],
+                            **({"borderColor": LACIVERT, "borderWidth": 2} if t == secili else {})),
+          "tip": f"<b>{t}</b><br>{_saat_dk(sa)} saat · duruşların {sa / toplam * 100:.0f}%'i"
+                 "<br><span style='color:#8a90a2'>tıklayın: vardiya ve operatör kırılımı</span>",
           "label": {"formatter": f"{_saat_dk(sa)} sa\n{sa / toplam * 100:.0f}%"}} for t, sa in liste]
     return {"title": _baslik(baslik, 15), "tooltip": _ipucu(), "grid": {"left": 56, "right": 20, "top": 56 if baslik else 34, "bottom": 70},
             "xAxis": _eksen_x([_iki_satir(t) for t, _ in liste], axisLabel={"color": YAZI, "fontWeight": 600, "interval": 0, "fontSize": 11, "lineHeight": 14}),
@@ -246,18 +254,27 @@ def mola_pasta_grafigi(a: dict) -> dict:
         return _bos("Bu makine için vardiya bazlı mola verisi yok")
     n = len(vardiyalar)
     seri, baslik = [], []
-    for i, (ad, sef, oran) in enumerate(vardiyalar):
+    for i, vt_ in enumerate(vardiyalar):
+        ad, sef, oran = vt_[0], vt_[1], vt_[2]
+        sup_dk = vt_[3] if len(vt_) > 3 else 0.0
+        adet = vt_[4] if len(vt_) > 4 else 0
         oran = max(0.0, min(1.0, oran))
+        sup = max(0.0, min(1.0 - oran, sup_dk / mola_dk if mola_dk else 0.0))
         x = f"{(i + 0.5) * 100 / n:.1f}%"
-        baslik.append({"text": ad, "subtext": tema.tr_buyuk(sef) if sef else "", "left": x, "top": 4, "textAlign": "center",
-                       "textStyle": {"color": LACIVERT, "fontSize": 14, "fontWeight": 700}, "subtextStyle": {"color": tema.YESIL, "fontWeight": 700}})
-        seri.append({"type": "pie", "center": [x, "58%"], "radius": ["34%", "64%"], "avoidLabelOverlap": True,
+        alt = (tema.tr_buyuk(sef) if sef else "") + (f"\n{{s|⚠ {adet} şüpheli mola · tıklayın}}" if adet else "")
+        baslik.append({"text": ad, "subtext": alt, "left": x, "top": 4, "textAlign": "center",
+                       "subtextStyle": {"color": tema.YESIL, "fontWeight": 700, "rich": {"s": {"color": "#C0392B", "fontWeight": 700}}},
+                       "textStyle": {"color": LACIVERT, "fontSize": 14, "fontWeight": 700}})
+        seri.append({"type": "pie", "center": [x, "60%"], "radius": ["30%", "56%"], "avoidLabelOverlap": True,
                      "itemStyle": {"borderColor": "#fff", "borderWidth": 2, **_golge()},
                      "label": {"formatter": "{b}\n{c} dk", "color": YAZI, "fontWeight": 600},
-                     "data": [{"name": "Mola yapılan", "value": round(oran * mola_dk), "itemStyle": {"color": TURUNCU_},
+                     "data": [{"name": "Mola yapılan", "value": round(oran * mola_dk), "itemStyle": {"color": TURUNCU_}, "anahtar": ad, "kisim": "pasta",
                                "tip": f"<b>{ad}</b><br>Mola yapılan: <b>{oran * mola_dk:.0f} dk</b> ({oran * 100:.0f}%)"},
-                              {"name": "Molada çalışılan", "value": round((1 - oran) * mola_dk), "itemStyle": {"color": MOR_},
-                               "tip": f"<b>{ad}</b><br>Molada çalışılan: <b>{(1 - oran) * mola_dk:.0f} dk</b> ({(1 - oran) * 100:.0f}%)"}]})
+                              {"name": "Molada çalışılan", "value": round((1 - oran - sup) * mola_dk), "itemStyle": {"color": MOR_}, "anahtar": ad, "kisim": "pasta",
+                               "tip": f"<b>{ad}</b><br>Molada çalışılan: <b>{(1 - oran - sup) * mola_dk:.0f} dk</b> ({(1 - oran - sup) * 100:.0f}%)"}]
+                             + ([{"name": "Şüpheli çalışma", "value": round(sup * mola_dk, 1), "itemStyle": {"color": "#C0392B"}, "anahtar": ad, "kisim": "pasta",
+                                  "tip": f"<b>{ad}</b><br>Şüpheli çalışma: <b>{sup * mola_dk:.0f} dk</b> günde ort. · {adet} olay"
+                                         "<br><span style='color:#8a90a2'>tıklayın: zaman çizelgesi</span>"}] if sup else [])})
     return {"title": baslik, "tooltip": _ipucu(), "series": seri}
 
 
@@ -301,7 +318,24 @@ def operator_grafik(a: dict) -> dict:
     return {"title": basliklar, "tooltip": _ipucu(), "grid": grids, "xAxis": xs, "yAxis": ys, "series": seriler}
 
 
+def kirilim_grafigi(a: dict) -> dict:
+    liste, baslik = a.get("liste") or [], a.get("baslik")
+    toplam = sum(x[1] for x in liste) or 0.0
+    if not liste or toplam <= 0:
+        return _bos("Kayıt yok")
+    from .cizim import _saat_dk
+    from .cizim_ek import etiket_iki_satir
+    d = [{"value": round(sa, 3), "itemStyle": dict(_golge(), color=_gecis(r), borderRadius=[4, 4, 0, 0]),
+          "tip": f"<b>{ad}</b><br>{_saat_dk(sa)} saat · %{sa / toplam * 100:.0f}",
+          "label": {"formatter": f"{_saat_dk(sa)} sa\n%{sa / toplam * 100:.0f}"}} for ad, sa, r in liste]
+    return {"title": _baslik(baslik, 14), "tooltip": _ipucu(), "grid": {"left": 56, "right": 16, "top": 64 if baslik else 40, "bottom": 50},
+            "xAxis": _eksen_x([etiket_iki_satir(x[0]) for x in liste], axisLabel={"color": YAZI, "fontWeight": 600, "interval": 0, "fontSize": 11, "lineHeight": 14}),
+            "yAxis": {"type": "value", "axisLabel": {"color": SOLUK, "formatter": "{value} sa"}, "splitLine": {"lineStyle": {"color": CIZGI}}},
+            "series": [{"type": "bar", "data": d, "barMaxWidth": 70, "label": {"show": True, "position": "top", "color": YAZI, "fontWeight": 700, "fontSize": 11}}]}
+
+
 YAPICILAR = {
+    "kirilim_grafigi": kirilim_grafigi,
     "vardiya_grafigi": vardiya_grafigi,
     "makine_grafigi": makine_grafigi,
     "genel_performans_grafigi": genel_performans_grafigi,

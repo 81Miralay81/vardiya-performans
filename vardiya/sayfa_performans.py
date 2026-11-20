@@ -2,7 +2,8 @@
 
 Makine sütunları hep %100'dür (çalışma + duruş); sıfırın altında mola hakkı gösterilir (mola yapılan / molada çalışılan).
 Sütunun çalışma ya da duruş kısmına tıklayınca altta o makinenin duruşları büyükten küçüğe, mola kısmına tıklayınca
-vardiya bazlı mola pastaları açılır. 'Cormind rapor sistemi' düğmesi Cormind'in kendi hesabını ayrı bir bölümde gösterir."""
+vardiya bazlı mola pastaları açılır. Bir duruşa tıklayınca o duruşun vardiya ve operatör kırılımı (3. kırılım), şüpheli
+molası olan makinenin altındaki ⚠ işaretine ya da pastaya tıklayınca şüpheli molaların zaman çizelgesi açılır. 'Cormind rapor sistemi' düğmesi Cormind'in kendi hesabını ayrı bir bölümde gösterir."""
 from __future__ import annotations
 
 from typing import Callable, Dict, List, Optional
@@ -10,7 +11,7 @@ from typing import Callable, Dict, List, Optional
 from PySide6.QtCore import QRectF, Qt, Signal
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QScrollArea, QSizePolicy, QToolTip, QVBoxLayout, QWidget
 
-from . import cizim, tema
+from . import cizim, cizim_ek, tema
 from .hesap import VARDIYALAR, cormind_hesabi, durus_dokumu
 from .sayfa_ortak import CizimWidget, etiket, kart
 
@@ -103,6 +104,10 @@ class PerformansSayfasi(QWidget):
         self._dokum: Dict[str, Dict[str, float]] = {}
         self._cormind: Dict[str, dict] = {}
         self._mola_pay, self._mola_dk = 9.09, 40.0
+        self._tip: Optional[str] = None          # 3. kırılımda seçili duruş
+        self._kirilim: Dict[str, list] = {}
+        self._supheli: Dict[str, dict] = {}       # makine -> vardiya -> {dk_gun, adet, olaylar}
+        self._sup_v: Optional[int] = None
         dis = QVBoxLayout(self)
         dis.setContentsMargins(26, 22, 26, 22)
         dis.setSpacing(0)
@@ -161,7 +166,8 @@ class PerformansSayfasi(QWidget):
 
         # ---------------------------------------------------------------- ayrıntı
         kd, self.d_baslik, self.d_alt, _s = _kart_baslikli("Ayrıntı", "yukarıdaki grafikte bir makineye tıklayın")
-        self.g_detay = CizimWidget(self._detay_ciz, 340, 300, kopya_resim=lambda: self.g_detay.resim(2.0))
+        self.g_detay = TikliCizim(self._detay_ciz, 360, 300)
+        self.g_detay.tiklandi.connect(self._detay_tik)
         kd.layout().addWidget(self.g_detay)
         self.k_detay = kd
         b_kapat = QPushButton("✕")
@@ -172,6 +178,40 @@ class PerformansSayfasi(QWidget):
         _s.addWidget(b_kapat)
         kd.hide()                               # bir makineye tıklanana kadar gizli
         kok.addWidget(kd)
+
+        # ---------------------------------------------------------------- 3. kırılım: duruşun vardiya / operatör dağılımı
+        kk, self.k_baslik, self.k_alt, _s = _kart_baslikli("Kırılım", "")
+        ikili = QHBoxLayout()
+        ikili.setSpacing(12)
+        self.g_kv = CizimWidget(lambda p, r: cizim_ek.kirilim_grafigi(p, r, self._kirilim.get("vardiya", []), "Vardiyaya göre"), 320, 260,
+                                kopya_resim=lambda: self.g_kv.resim(2.0))
+        self.g_ko = CizimWidget(lambda p, r: cizim_ek.kirilim_grafigi(p, r, self._kirilim.get("operator", []), "Operatöre göre"), 320, 260,
+                                kopya_resim=lambda: self.g_ko.resim(2.0))
+        ikili.addWidget(self.g_kv, 1)
+        ikili.addWidget(self.g_ko, 1)
+        kk.layout().addLayout(ikili)
+        b_k = QPushButton("✕")
+        b_k.setToolTip("Kırılımı kapat")
+        b_k.setFixedSize(28, 26)
+        b_k.clicked.connect(self._kirilim_kapat)
+        _s.addWidget(b_k)
+        kk.hide()
+        self.k_kirilim = kk
+        kok.addWidget(kk)
+
+        # ---------------------------------------------------------------- şüpheli mola zaman çizelgesi
+        ks, self.s_baslik, self.s_alt, _s = _kart_baslikli("Şüpheli molalar", "")
+        self.g_sup = CizimWidget(lambda p, r: cizim_ek.supheli_cizelgesi(p, r, self._sup_olaylar()), 220, 300,
+                                 kopya_resim=lambda: self.g_sup.resim(2.0))
+        ks.layout().addWidget(self.g_sup)
+        b_s = QPushButton("✕")
+        b_s.setToolTip("Kapat")
+        b_s.setFixedSize(28, 26)
+        b_s.clicked.connect(self._supheli_kapat)
+        _s.addWidget(b_s)
+        ks.hide()
+        self.k_supheli = ks
+        kok.addWidget(ks)
 
 
         # ---------------------------------------------------------------- Cormind rapor sistemi
@@ -222,7 +262,7 @@ class PerformansSayfasi(QWidget):
     def _makine_ciz(self, p, rect, bolgeler):
         if self.ana.sonuc:
             cizim.genel_performans_grafigi(p, rect, self.ana.sonuc, self.ana.ayar.get("makineler", []), self._mola_pay, None,
-                                           bolgeler=bolgeler, secili=self._secili)
+                                           bolgeler=bolgeler, secili=self._secili, supheli=set(self._supheli) or None)
 
     def _degerler(self, m: str):
         """(çalışma, mola, eşik altı mı) ya da None."""
@@ -236,6 +276,11 @@ class PerformansSayfasi(QWidget):
         return None
 
     def _makine_ipucu(self, m, _kisim) -> str:
+        if _kisim == "supheli":
+            vs = self._supheli.get(m, {})
+            return (f"<b>{m}</b> · <span style='color:#ffb3ad'>⚠ şüpheli mola</span><br>"
+                    + "<br>".join(f"{v}. vardiya: {x['adet']} olay" for v, x in sorted(vs.items()))
+                    + "<br>tıklayın: mola pastası ve zaman çizelgesi")
         d = self._degerler(m)
         if not d:
             return m
@@ -246,31 +291,110 @@ class PerformansSayfasi(QWidget):
                 + f"<br>Mola yapılan: günde ort. <b>{mo * dk:.0f} dk</b> ({dk:.0f} dk içinden)"
                 + f"<br>Molada çalışılan: günde ort. <b>{(1 - mo) * dk:.0f} dk</b>")
 
-    def _detay_ciz(self, p, rect):
+    def _detay_ciz(self, p, rect, bolgeler=None):
         m = self._secili
         s = self.ana.sonuc
         if not m or not s:
             return
         if self._mod == "mola":
-            hucre = s.hucreler.get(m, {})
-            veri = [(f"{v}. VARDİYA", (self.ana.seflar or {}).get(v, ""), hucre[v][2]) for v in VARDIYALAR if v in hucre]
-            cizim.mola_pasta_grafigi(p, rect, veri, self._mola_dk)
+            from .servis import mola_pastasi
+            cizim.mola_pasta_grafigi(p, rect, mola_pastasi(s, self.ana.seflar or {}, self._supheli, m), self._mola_dk, bolgeler=bolgeler)
         else:
             liste = sorted(((t, x) for t, x in self._dokum.get(m, {}).items() if x > 0.004), key=lambda x: -x[1])
-            cizim.durus_dokum_grafigi(p, rect, liste)
+            cizim.durus_dokum_grafigi(p, rect, liste, bolgeler=bolgeler, secili=self._tip)
+
+    # ------------------------------------------------------------------ 3. kırılım ve şüpheli mola
+    def _detay_tik(self, anahtar, kisim):
+        if kisim == "tip" and self._mod != "mola":
+            self._kirilim_ac(anahtar)
+        elif kisim == "pasta" and self._mod == "mola":
+            try:
+                v = int(str(anahtar).split(".")[0])
+            except ValueError:
+                return
+            self._supheli_ac(v)
+
+    def _kirilim_ac(self, tip: str):
+        m = self._secili
+        if not m or not tip:
+            return
+        if self._tip == tip and self.k_kirilim.isVisible():      # aynı duruşa ikinci tıklama kapatır
+            self._kirilim_kapat()
+            return
+        from .kirilim import OPERATOR_YOK, durus_kirilimi
+        gunler = self.ana.donem_gunleri()
+        if not gunler:
+            return
+        self._tip = tip
+        k = durus_kirilimi(self.ana.con, min(gunler), max(gunler), m, tip)
+        renk = tema.durus_rengi(tip)
+        self._kirilim = {"vardiya": [(a, x, tema.LACIVERT) for a, x in k["vardiya"]],
+                         "operator": [(a, x, "#B0B4C0" if a == OPERATOR_YOK else renk) for a, x in k["operator"]]}
+        top = sum(x for _a, x in k["vardiya"])
+        self.k_baslik.setText(f"{m} · {tip} – vardiya ve operatör kırılımı")
+        self.k_alt.setText(f"toplam {cizim._saat_dk(top)} saat · gri: duruş sürerken makinede operatör kayıtlı değil · "
+                           "aynı duruşa yeniden tıklarsanız kapanır")
+        self.k_kirilim.show()
+        for w in (self.g_detay, self.g_kv, self.g_ko):
+            w.update()
+        self._sc.ensureWidgetVisible(self.k_kirilim, 0, 30)
+
+    def _kirilim_kapat(self):
+        self._tip = None
+        if hasattr(self, "k_kirilim"):
+            self.k_kirilim.hide()
+            self.g_detay.update()
+
+    def _sup_olaylar(self) -> list:
+        if not self._secili or self._sup_v is None:
+            return []
+        return self._supheli.get(self._secili, {}).get(self._sup_v, {}).get("olaylar", [])
+
+    def _supheli_ac(self, v: Optional[int] = None):
+        m = self._secili
+        vs = self._supheli.get(m or "", {})
+        if v is None:
+            v = min(vs) if vs else None
+        if v is None or v not in vs:
+            self._supheli_kapat()
+            return
+        self._sup_v = v
+        n = len(vs[v]["olaylar"])
+        self.s_baslik.setText(f"{m} · {v}. vardiya – şüpheli molalar ({n})")
+        self.s_alt.setText("mola saatinin 30 dk öncesi ve sonrası · kesik çerçeve: Ayarlar'daki mola saati · turuncu: mola · "
+                           "yeşil: çalışma · kırmızı: duruş · kırmızı tarama: mola saatinde başlayan çalışma")
+        self.g_sup.setFixedHeight(max(220, 112 * n))
+        self.k_supheli.show()
+        self.g_sup.update()
+        self._sc.ensureWidgetVisible(self.k_supheli, 0, 30)
+
+    def _supheli_kapat(self):
+        self._sup_v = None
+        if hasattr(self, "k_supheli"):
+            self.k_supheli.hide()
 
     # ------------------------------------------------------------------ davranış
     def _detay_kapat(self):
         self._secili = None
         self.k_detay.hide()
+        self._kirilim_kapat()
+        self._supheli_kapat()
         self.g_makine.update()
 
     def _sec(self, makine, kisim):
-        if self._secili == makine and getattr(self, "_mod", None) == kisim and self.k_detay.isVisible():
+        supheli = kisim == "supheli"
+        if supheli:
+            kisim = "mola"                      # ⚠: mola pastası + şüpheli zaman çizelgesi
+        if not supheli and self._secili == makine and getattr(self, "_mod", None) == kisim and self.k_detay.isVisible():
             self._detay_kapat()                 # aynı yere ikinci tıklama kapatır
             return
+        if self._secili != makine or self._mod != kisim:
+            self._kirilim_kapat()               # başka makine / bölüm: 3. kırılım duruşa tıklanana kadar açılmaz
+            self._supheli_kapat()
         self._secili, self._mod = makine, kisim
         self.k_detay.show()
+        if supheli:
+            self._supheli_ac()
         self._detay_yaz()
         for w in (self.g_makine, self.g_detay):
             w.update()
@@ -285,12 +409,13 @@ class PerformansSayfasi(QWidget):
         d = self._degerler(m)
         if self._mod == "mola":
             self.d_baslik.setText(f"{m} – vardiya bazlı mola dağılımı")
-            self.d_alt.setText(f"pastanın tamamı mola hakkı (günde {self._mola_dk:.0f} dk) · turuncu: mola yapılan · mor: molada çalışılan")
+            self.d_alt.setText(f"pastanın tamamı mola hakkı (günde {self._mola_dk:.0f} dk) · turuncu: mola yapılan · mor: molada çalışılan"
+                               + (" · kırmızı: şüpheli çalışma (pastaya tıklayın: zaman çizelgesi)" if self._supheli.get(m) else ""))
         else:
             top = sum(self._dokum.get(m, {}).values())
             self.d_baslik.setText(f"{m} – duruşlar (büyükten küçüğe)")
             self.d_alt.setText((f"toplam duruş {cizim._saat_dk(top)} saat" + (f" · çalışma {tema.yuzde(d[0], 1)}" if d else "")
-                                + " · mola kısmına tıklarsanız vardiya bazlı mola açılır") if top else "bu dönemde duruş kaydı yok")
+                                + " · bir duruşa tıklayın: vardiya ve operatör kırılımı") if top else "bu dönemde duruş kaydı yok")
 
     def _cormind_goster(self, acik: bool):
         self.k_cormind.setVisible(acik)
@@ -308,6 +433,13 @@ class PerformansSayfasi(QWidget):
         kayit = getattr(self.ana, "kayit", []) or []
         self._dokum = durus_dokumu(kayit, gunler, ayar.haric) if s else {}
         self._cormind = cormind_hesabi(kayit, gunler, self.ana.ayar.get("makineler", []), ayar) if s else {}
+        try:
+            from .servis import supheli_hesabi
+            self._supheli = supheli_hesabi(self.ana.con, self.ana.ayar, sorted(gunler)) if s else {}
+        except Exception:  # noqa: BLE001  (şüpheli mola hesabı ana sayfayı hiçbir zaman bozmasın)
+            self._supheli = {}
+        self._kirilim_kapat()
+        self._supheli_kapat()
         if self._secili and (not s or self._degerler(self._secili) is None):
             self._secili = None
         if not self._secili:

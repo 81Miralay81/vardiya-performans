@@ -65,7 +65,7 @@
         textShadowColor: ust_mu ? 'transparent' : 'rgba(0,0,0,0.25)', textShadowBlur: ust_mu ? 0 : 2}});
     }
     return {type: 'group', children: cocuk, originX: pA[0], originY: p0[1],
-            enterFrom: {scaleY: 0, style: {opacity: 0.4}}, enterAnimation: {duration: 900, delay: api.gecikme * params.dataIndex}};
+            enterFrom: {scaleY: 0}, enterAnimation: {duration: 900, delay: api.gecikme * params.dataIndex}};
   }
 
   window.ucBoyut = function (o) {
@@ -93,7 +93,7 @@
       var etiket = s.label || {};
       var gecikme = Math.min(40, 700 / Math.max(1, data.length));
       var yeniSeri = {
-        type: 'custom', name: s.name, xAxisIndex: xi, yAxisIndex: s.yAxisIndex || 0, data: data, z: s.z,
+        type: 'custom', name: s.name, xAxisIndex: xi, yAxisIndex: s.yAxisIndex || 0, data: data, z: s.z || 3,
         color: hex(renk), silent: s.silent, tooltip: s.tooltip, markLine: s.markLine, encode: {x: 0, y: [1, 2]},
         renderItem: function (params, api) {
           api.veriler = veriler; api.renk = renk; api.etiket = etiket; api.azami = s.barMaxWidth; api.gecikme = gecikme;

@@ -32,6 +32,11 @@ window.goster = function(opt){
     ekran = echarts.init(document.getElementById('g'), null, {renderer: 'canvas'});
     ekran.on('click', function(p){
       var d = p.data || {};
+      if (p.componentType === 'xAxis') {          // eksen etiketi: ⚠ şüpheli mola işareti ya da makine adı
+        var v = String(p.value || '');
+        console.log('TIK|' + JSON.stringify({anahtar: v.split('\n')[0], kisim: v.indexOf('⚠') >= 0 ? 'supheli' : 'durus'}));
+        return;
+      }
       console.log('TIK|' + JSON.stringify({anahtar: d.anahtar || p.name || null, kisim: d.kisim || null}));
     });
     window.addEventListener('resize', function(){ ekran.resize(); });

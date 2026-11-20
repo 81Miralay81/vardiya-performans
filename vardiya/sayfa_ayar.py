@@ -93,6 +93,34 @@ class AyarSayfasi(QWidget):
         f.addRow("Yemek molası (her vardiyada 1 kez)", self.yemek_dk)
         f.addRow("Çay molası", self.cay_dk)
         f.addRow("Net çalışma süresi", self.net)
+        # mola saatleri: şüpheli mola (mola saatinde moladan çıkıp çalışmaya geçen makine) yalnızca bu aralıklarda aranır
+        from PySide6.QtCore import QRegularExpression
+        from PySide6.QtGui import QRegularExpressionValidator
+        from PySide6.QtWidgets import QGridLayout
+        mw = QWidget()
+        mg = QGridLayout(mw)
+        mg.setContentsMargins(0, 0, 0, 0)
+        mg.setHorizontalSpacing(8)
+        for j, b in enumerate(("", "Çay başlangıç", "Çay bitiş", "Yemek başlangıç", "Yemek bitiş")):
+            if b:
+                mg.addWidget(etiket(b, "AltBaslik", kelime=False), 0, j)
+        dogrula = QRegularExpressionValidator(QRegularExpression(r"^$|^([01]?\d|2[0-4]):[0-5]\d$"))
+        self.mola_saat = {}
+        for i, v in enumerate(VARDIYALAR):
+            mg.addWidget(etiket(f"{v}. vardiya ({(v - 1) * 8:02d}–{v * 8:02d})", kelime=False), i + 1, 0)
+            for j, anahtar in enumerate(("cay_bas", "cay_bit", "yemek_bas", "yemek_bit")):
+                e = QLineEdit()
+                e.setPlaceholderText("ss:dd")
+                e.setValidator(dogrula)
+                e.setMaximumWidth(90)
+                e.setToolTip("Saat:dakika, ör. 12:40. O vardiyada bu mola yoksa boş bırakın.")
+                self.mola_saat[(v, anahtar)] = e
+                mg.addWidget(e, i + 1, j + 1)
+        mg.setColumnStretch(5, 1)
+        f.addRow("Mola saatleri (şüpheli mola için)", mw)
+        f.addRow("", etiket("Şüpheli mola: mola saati içinde makine moladan çıkıp çalışmaya geçerse (ör. duruştaki tezgahın mola saatinde "
+                            "çalıştırılması) Performans'ta makinenin altında ⚠ çıkar. Mola saatinde zaten çalışıp çalışmaya devam eden "
+                            "makine şüpheli sayılmaz. Saatleri yazıp Kaydet'e basın.", "AltBaslik"))
         for w in (self.esik, self.vardiya_dk, self.yemek_dk, self.cay_dk):
             w.setMaximumWidth(150)
             w.setButtonSymbols(QAbstractSpinBox.PlusMinus)
@@ -505,6 +533,11 @@ class AyarSayfasi(QWidget):
         self.vardiya_dk.setValue(a["vardiya_dk"])
         self.yemek_dk.setValue(a["yemek_dk"])
         self.cay_dk.setValue(a["cay_dk"])
+        ms = a.get("mola_saatleri") or {}
+        for (v, anahtar), e in self.mola_saat.items():
+            tur, uc = anahtar.split("_")
+            ab = (ms.get(str(v)) or {}).get(tur) or ["", ""]
+            e.setText(ab[0] if uc == "bas" else ab[1])
         self.idle.setChecked(bool(a.get("idle_makineleri_goster")))
         self.mak_liste.clear()
         for m in a["makineler"]:
@@ -522,6 +555,13 @@ class AyarSayfasi(QWidget):
         vt.ayar_yaz(con, "vardiya_dk", self.vardiya_dk.value())
         vt.ayar_yaz(con, "yemek_dk", self.yemek_dk.value())
         vt.ayar_yaz(con, "cay_dk", self.cay_dk.value())
+        ms = {}
+        for v in VARDIYALAR:
+            for tur in ("cay", "yemek"):
+                b, s = self.mola_saat[(v, tur + "_bas")].text().strip(), self.mola_saat[(v, tur + "_bit")].text().strip()
+                if b and s:
+                    ms.setdefault(str(v), {})[tur] = [b, s]
+        vt.ayar_yaz(con, "mola_saatleri", ms)
         vt.ayar_yaz(con, "idle_makineleri_goster", self.idle.isChecked())
         vt.ayar_yaz(con, "makineler", self._adlar(self.mak_liste))
         vt.ayar_yaz(con, "sefler", self._adlar(self.sef_liste))
