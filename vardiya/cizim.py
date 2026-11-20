@@ -604,11 +604,12 @@ def genel_performans_grafigi(p: QPainter, rect: QRectF, sonuc: DonemSonuc, makin
         elif m in sonuc.esik_alti:
             e = sonuc.esik_alti[m]
             veri.append((m, max(0.0, min(1.0, e[0])), max(0.0, min(1.0, e[2])), True))
-        elif bos_goster and m in makineler:       # Ayarlar: çalışmayanlar da gösterilsin -> kaydı olmayan makine boş sütun
-            veri.append((m, None, None, False))
+        elif bos_goster and m in makineler:       # Ayarlar: çalışmayanlar da gösterilsin -> kaydı olmayan makine
+            veri.append((m, 0.0, 0.0, True))      # çalışmayan makine gibi: tamamı duruş, soluk/taralı
     gos_h = 24 * s
     sup_h = 22 * s if supheli else 0
-    sol, sag, ust, alt = 56 * s, 78 * s, (44 if baslik else 18) * s, 34 * s + gos_h + sup_h
+    egik = (rect.width() - 134 * s) / max(1, len(veri)) < 52 * s
+    sol, sag, ust, alt = 56 * s, 78 * s, (44 if baslik else 18) * s, (58 if egik else 34) * s + gos_h + sup_h
     alan = QRectF(rect.left() + sol, rect.top() + ust, rect.width() - sol - sag, rect.height() - ust - alt)
     if not veri:
         _yaz(p, rect, "Seçilen dönemde gösterilecek veri yok", 16 * s, False, ORTA, tema.YAZI_SOLUK)
@@ -658,10 +659,6 @@ def genel_performans_grafigi(p: QPainter, rect: QRectF, sonuc: DonemSonuc, makin
         cx = alan.left() + slot * (i + 0.5)
         if m == secili:
             p.fillRect(QRectF(cx - slot / 2, alan.top(), slot, alan.height()), QColor(36, 26, 140, 22))
-        if c is None:                             # kaydı yok: yalnızca adı (soluk)
-            _yaz(p, QRectF(cx - slot / 2, alan.bottom() + 4 * s, slot, 20 * s), m, (12 if slot > 44 * s else 10) * s, True, ORTA, tema.YAZI_SOLUK)
-            _yaz(p, QRectF(cx - slot / 2, yy(50) - 10 * s, slot, 20 * s), "kayıt yok" if slot > 60 * s else "–", 9 * s, False, ORTA, tema.YAZI_SOLUK)
-            continue
         if bolgeler is not None:
             bolgeler.append((QRectF(cx - slot / 2, alan.top(), slot, yy(0) - alan.top()), m, "durus"))
             bolgeler.append((QRectF(cx - slot / 2, yy(0), slot, alan.bottom() - yy(0) + 24 * s), m, "mola"))
@@ -672,11 +669,18 @@ def genel_performans_grafigi(p: QPainter, rect: QRectF, sonuc: DonemSonuc, makin
         yapilan = min(hak, int(round(mo * mola_pay)))
         parca(cx, -mo * mola_pay, 0, TURUNCU_, alti, f"{yapilan}%")
         parca(cx, -mola_pay, -mo * mola_pay, MOR_, alti, f"{hak - yapilan}%")
-        if alti:
+        if alti and slot > 54 * s:
             _yaz(p, QRectF(cx - slot / 2, yy(100) - 18 * s, slot, 16 * s), "eşik altı", 9 * s, False, ORTA, tema.YAZI_SOLUK)
-        _yaz(p, QRectF(cx - slot / 2, alan.bottom() + 4 * s, slot, 20 * s), m, (12 if slot > 44 * s else 10) * s, True, ORTA, tema.YAZI)
+        if egik:                                  # çok makine: adlar çapraz yazılır, üst üste binmez
+            p.save()
+            p.translate(cx + 4 * s, alan.bottom() + 6 * s)
+            p.rotate(-40)
+            _yaz(p, QRectF(-70 * s, -8 * s, 70 * s, 16 * s), m, 10.5 * s, True, SAG, tema.YAZI)
+            p.restore()
+        else:
+            _yaz(p, QRectF(cx - slot / 2, alan.bottom() + 4 * s, slot, 20 * s), m, 12 * s, True, ORTA, tema.YAZI)
         if supheli and m in supheli:              # şüpheli mola: makine adının altında ⚠ (tıklanır)
-            ir = QRectF(cx - slot / 2, alan.bottom() + 23 * s, slot, 22 * s)
+            ir = QRectF(cx - slot / 2, alan.bottom() + (47 if egik else 23) * s, slot, 22 * s)
             _yaz(p, ir, "⚠", 16 * s, True, ORTA, "#D35400")
             if bolgeler is not None:
                 bolgeler.insert(0, (ir, m, "supheli"))

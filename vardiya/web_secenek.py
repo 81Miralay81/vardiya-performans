@@ -134,17 +134,13 @@ def genel_performans_grafigi(a: dict) -> dict:
         elif m in sonuc.esik_alti:
             e = sonuc.esik_alti[m]
             veri.append((m, max(0.0, min(1.0, e[0])), max(0.0, min(1.0, e[2])), True))
-        elif a.get("bos_goster") and m in makineler:   # kaydı olmayan makine: boş sütun (adı görünür)
-            veri.append((m, None, None, False))
+        elif a.get("bos_goster") and m in makineler:   # kaydı olmayan makine: çalışmayan makine gibi (tamamı duruş, taralı)
+            veri.append((m, 0.0, 0.0, True))
     if not veri:
         return _bos()
     hak = int(round(mola_pay))
     seriler = {"Çalışma": [], "Duruş": [], "Mola yapılan": [], "Molada çalışılan": []}
     for m, ca, mo, alti in veri:
-        if ca is None:
-            for d_ in seriler.values():
-                d_.append({"value": None, "anahtar": m, "tip": f"<b>{m}</b><br>Seçili dönemde kayıt yok"})
-            continue
         yapilan = min(hak, int(round(mo * mola_pay)))
         tip = (f"<b>{m}</b>" + (" <span style='color:#8a90a2'>(eşik altı, hesaba girmez)</span>" if alti else "")
                + f"<br>Çalışma: <b>{_yuzde(ca)}</b><br>Duruş: <b>{_yuzde(1 - ca)}</b>"
