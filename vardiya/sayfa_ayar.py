@@ -317,6 +317,24 @@ class AyarSayfasi(QWidget):
         os_.addWidget(self.oto_not, 1)
         kd.layout().addLayout(os_)
 
+        # ------------------------------------------------ açık programlar: güncelleme öncesi herkesi kapat (yalnızca exe)
+        ks_ = QHBoxLayout()
+        self.b_hepsini_kapat = QPushButton("Tüm açık programları kapat")
+        self.b_hepsini_kapat.setObjectName("Lacivert")
+        self.b_hepsini_kapat.setToolTip("Güncelleme öncesi: bu program diğer bütün bilgisayarlarda 60 saniyelik uyarıyla kapanır. "
+                                        "Bu bilgisayardaki program kapanmaz.")
+        self.b_hepsini_kapat.clicked.connect(self._hepsini_kapat)
+        b_yen = QPushButton("Yenile")
+        b_yen.setToolTip("Açık programlar listesini yenile")
+        b_yen.clicked.connect(self._acik_yaz)
+        self.acik_not = QLabel("")
+        self.acik_not.setObjectName("AltBaslik")
+        self.acik_not.setWordWrap(True)
+        ks_.addWidget(self.b_hepsini_kapat)
+        ks_.addWidget(b_yen)
+        ks_.addWidget(self.acik_not, 1)
+        kd.layout().addLayout(ks_)
+
         # ------------------------------------------------ personel listesi
         from PySide6.QtWidgets import QListWidget, QListWidgetItem
         kp = kart()
@@ -498,8 +516,38 @@ class AyarSayfasi(QWidget):
         self.ana.ayar = vt.ayar_oku(self.ana.con)
         self.personel_bilgi.setText(f"{self.personel.count()} kişi · {len(haric)} kişi hariç tutuluyor")
 
+    def _acik_liste(self):
+        from .oturum import acik_programlar
+        kendi = getattr(getattr(self.ana, "oturum", None), "kimlik", None)
+        try:
+            return [x for x in acik_programlar(self.ana.con) if x["kimlik"] != kendi]
+        except Exception:  # noqa: BLE001
+            return []
+
+    def _acik_yaz(self):
+        l = self._acik_liste()
+        if not l:
+            self.acik_not.setText("Şu an başka bilgisayarda açık program görünmüyor (liste yarım dakikada bir güncellenir).")
+        else:
+            self.acik_not.setText(f"Başka bilgisayarlarda açık: {len(l)} · "
+                                  + ", ".join(f"{x['pc']}{' (' + x['kullanici'] + ')' if x['kullanici'] else ''} · {x['surum']}" for x in l))
+
+    def _hepsini_kapat(self):
+        from PySide6.QtWidgets import QMessageBox
+        from .oturum import GERI_SAYIM_SN, kapat_iste
+        l = self._acik_liste()
+        ad = ", ".join(x["pc"] for x in l) if l else "şu an görünen yok"
+        if QMessageBox.question(self, "Tüm açık programları kapat",
+                                f"Vardiya Performans diğer bütün bilgisayarlarda {GERI_SAYIM_SN} saniyelik uyarıyla kapanacak "
+                                f"(açık: {ad}). Bu bilgisayardaki program kapanmaz.\n\nDevam edilsin mi?") != QMessageBox.Yes:
+            return
+        kapat_iste(self.ana.con, getattr(getattr(self.ana, "oturum", None), "kimlik", ""))
+        self.acik_not.setText(f"Kapatma isteği gönderildi. Açık programlar yarım dakika içinde isteği görüp {GERI_SAYIM_SN} sn sonra "
+                              "kapanır; yaklaşık 1,5 dakika sonra exe'yi değiştirebilirsiniz. 'Yenile' ile kontrol edin.")
+
     def showEvent(self, e):
         super().showEvent(e)
+        self._acik_yaz()
         if getattr(self, "_listeler_kirli", True):     # personel ve duruş türü listeleri yalnızca sayfa açılınca okunur
             self._listeler_kirli = False
             self._personel_doldur()

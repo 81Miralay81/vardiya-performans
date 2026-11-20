@@ -150,9 +150,19 @@ class AnaPencere(QMainWindow):
         from .oto_cekim import OtoCekim                 # otomatik Cormind çekimi (yalnızca ayarda açık bilgisayarda)
         self.oto = OtoCekim(self)
         self.sayfalar["ayar"].oto_bagla(self.oto)
+        from .oturum import Oturum, kapanis_uyarisi       # açık programlar / güncelleme için uzaktan kapatma
+        self.oturum = Oturum(self.db_yolu, self)
+        self.oturum.kapat_istendi.connect(lambda pc: kapanis_uyarisi(self, pc))
         self._guncelleme = None
         if guncelleme.calisan_exe() and not os.environ.get("VARDIYA_GUNCELLEME_YOK"):
             QTimer.singleShot(2500, lambda: self._guncelleme_baslat(elle=False))
+
+    def closeEvent(self, e):
+        try:
+            self.oturum.bitir()
+        except Exception:  # noqa: BLE001
+            pass
+        super().closeEvent(e)
 
     def _guncelleme_baslat(self, elle: bool = False):
         exe = guncelleme.calisan_exe()
