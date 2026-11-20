@@ -99,3 +99,36 @@ def test_isle_filtre():
           "Kalan": 61.0, "Kidem": 4, "Yil": 2026, "GirisTarih": "2022-09-21T00:00:00"}]
     assert "kalan 61" in pv.isle(con, json.dumps(b))
     assert pv.bakiyeler(con)[9]["kalan"] == 61.0
+
+
+def test_turler_ve_cikis():
+    con = _con()
+    r = pv.tani_ve_kaydet(con, json.dumps([{"ysicilid": 7, "ypersonel": "X", "y2026x10x05": "08:00-16:00<br>0800-1600<br>08:00 16:00<br>a<br>b<br>0U0,white,0"},
+                                           {"ysicilid": 8, "ypersonel": "Y", "y2026x10x31": 0}]))
+    assert r["tur"] == "giris_cikis" and r["ilk"] == "2026-10-05" and r["son"] == "2026-10-31"
+    assert pv.tani_ve_kaydet(con, json.dumps([{"ysicilid": 7, "ypersonel": "X", "y2026x10x05": "?BY 08:00-18:00,white,x"}]))["tur"] == "plan"
+    liste = [{"id": 7, "adsoyad": "X", "sicilno": "1", "pozisyonad": "P", "mesaiperiyoduad": "TEC", "cikistarih": None},
+             {"id": 9, "adsoyad": "Z", "sicilno": "3", "pozisyonad": "P", "mesaiperiyoduad": "TEC", "cikistarih": "2026-09-30T00:00:00"}]
+    assert pv.tani_ve_kaydet(con, json.dumps(liste))["tur"] == "liste_hepsi"
+    assert pv.tani_ve_kaydet(con, json.dumps(liste[1:]))["tur"] == "liste_cikan"
+    assert pv.personel(con)[9]["cikis_tarih"] == "2026-09-30"
+    assert pv.aktif_siciller(con) == [7, 8]
+    b = pv.tani_ve_kaydet(con, json.dumps([{"SicilID": 7, "Ad": "X", "Soyad": "", "Hak": 1, "Kalan": 2, "GirisTarih": ""}]))
+    assert b["tur"] == "bakiye" and b["sid"] == 7
+
+
+def test_sablon_degistirme():
+    u, ok = pv.tarih_degistir("a?bas=2026-10-01&bit=2026-10-31", date(2026, 10, 1), date(2026, 10, 31), date(2026, 2, 1), date(2026, 2, 28))
+    assert ok and u == "a?bas=2026-02-01&bit=2026-02-28"
+    u, ok = pv.tarih_degistir("a?x=1", date(2026, 10, 1), date(2026, 10, 31), date(2026, 2, 1), date(2026, 2, 28))
+    assert not ok
+    assert pv.kimlik_degistir("id=5729&k=15729", 5729, 1) == ("id=1&k=15729", True)
+    assert len(pv.aylar(date(2026, 1, 1), date(2026, 11, 19))) == 11
+
+
+def test_sablon_kasim_zinciri():
+    # 31.10 -> 19.11 yazıldıktan sonra 'son+1' (01.11) yeniden değiştirilmemeli
+    u, ok = pv.tarih_degistir('{"bas":"01.10.2026","bit":"31.10.2026"}', date(2026, 10, 1), date(2026, 10, 31), date(2026, 11, 1), date(2026, 11, 19))
+    assert ok and u == '{"bas":"01.11.2026","bit":"19.11.2026"}'
+    u, ok = pv.tarih_degistir("b=2026-10-01&e=2026-11-01", date(2026, 10, 1), date(2026, 10, 31), date(2026, 2, 1), date(2026, 2, 28))
+    assert ok and u == "b=2026-02-01&e=2026-03-01"

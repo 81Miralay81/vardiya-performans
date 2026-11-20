@@ -466,6 +466,14 @@ class PersonelSayfasi(QWidget):
     def _ad(self, sid: int) -> str:
         return str(self._kisi.get(sid, {}).get("ad") or sid)
 
+    def _cikis(self, sid: int) -> str:
+        return str(self._kisi.get(sid, {}).get("cikis_tarih") or "")
+
+    def _gorunen_ad(self, sid: int) -> str:
+        c = self._cikis(sid)
+        return (pv.tr_baslik(self._ad(sid)) + (" ★" if self._lider_mi(sid) else "")
+                + (f" · ayrıldı {pv._tr(c)}" if c else ""))
+
     def _lider_mi(self, sid: int) -> bool:
         return pv.GRUP_LIDERI in str(self._kisi.get(sid, {}).get("pozisyon") or "").upper()
 
@@ -478,7 +486,7 @@ class PersonelSayfasi(QWidget):
         self.k_kisi.blockSignals(True)
         self.k_kisi.clear()
         for sid in sorted(self._kisi, key=lambda s: self._ad(s)):
-            self.k_kisi.addItem(pv.tr_baslik(self._ad(sid)), sid)
+            self.k_kisi.addItem(pv.tr_baslik(self._ad(sid)) + (" (ayrıldı)" if self._cikis(sid) else ""), sid)
         self.k_kisi.setCurrentIndex(max(0, self.k_kisi.findData(sec)))
         self.k_kisi.blockSignals(False)
         self._kart_ciz()
@@ -495,7 +503,11 @@ class PersonelSayfasi(QWidget):
             for a in ("planli", "geldi", "gelmedi", "eksik", "izinli", "gec_adet", "gec_dk", "erken_adet", "erken_dk", "fazla_dk",
                       "tatil_calisti"):
                 setattr(top, a, getattr(top, a) + getattr(o, a))
-            t.setItem(i, 0, _hucre_kisi(pv.tr_baslik(self._ad(sid)) + (" ★" if self._lider_mi(sid) else ""), sid))
+            it0 = _hucre_kisi(self._gorunen_ad(sid), sid)
+            if self._cikis(sid):
+                it0.setForeground(QColor(tema.YAZI_SOLUK))
+                it0.setToolTip(f"İşten çıkış: {pv._tr(self._cikis(sid))}")
+            t.setItem(i, 0, it0)
             t.setItem(i, 1, QTableWidgetItem(pv.tr_baslik(p.get("pozisyon") or "")))
             t.setItem(i, 2, _hucre({"1": "1 (08–16)", "2": "2 (16–24)", "3": "3 (24–08)", "G": "Gündüz"}.get(bv.get(sid), "-"),
                                    bv.get(sid, "Z")))
@@ -531,7 +543,7 @@ class PersonelSayfasi(QWidget):
         fz = self.ana.ayar.get("pv_fazla_en_az_dk", pv.VARSAYILAN_FAZLA_EN_AZ_DK)
         self.devam_not.setText(f"Geç gelme / erken çıkma: {tol} dk tolerans. Fazla çalışma: vardiya bitişinden en az {fz} dk sonra çıkış "
                                "ve tatil günü çalışması. İzinli günlerdeki geç gelme ve erken çıkma izinli sayılır. Gelmedi: planlı gün, kart "
-                               "kaydı yok, izin yok. Kalan yıllık izin, Personel Veri ekranında izin formunda kişi açıldığında güncellenir. Satıra çift "
+                               "kaydı yok, izin yok. Kalan yıllık izin ve personel bilgileri her akşam otomatik (ya da Personel Veri'de 'Tüm personel bilgilerini güncelle' ile) yenilenir. Satıra çift "
                                "tıklayın: personel kartı.")
 
     # ---------------------------------------------------------------- vardiya listesi
@@ -599,7 +611,7 @@ class PersonelSayfasi(QWidget):
                 t.setSpan(i, 0, 1, 8)
                 t.setRowHeight(i, 26)
                 continue
-            t.setItem(i, 0, _hucre_kisi(pv.tr_baslik(self._ad(sid)) + (" ★" if self._lider_mi(sid) else ""), sid))
+            t.setItem(i, 0, _hucre_kisi(self._gorunen_ad(sid), sid))
             for j in range(7):
                 g = kisi[sid].get(h0 + timedelta(days=j))
                 if g is None:
@@ -723,20 +735,22 @@ class PersonelSayfasi(QWidget):
                 self.k_foto.setText("fotoğraf yok")
         else:
             self.k_foto.clear()
-            self.k_foto.setText("fotoğraf yok\n(Personel Veri'de kişi\nkartı açılınca gelir)")
+            self.k_foto.setText("fotoğraf yok\n(Personel Veri'de\n'Tüm personel bilgilerini\ngüncelle' ile gelir)")
         b = self._bakiye.get(sid) or {}
         satir = [("Ad Soyad", f"<b>{pv.tr_baslik(p.get('ad') or '')}</b>"), ("Sicil no", p.get("sicilno") or "-"),
                  ("Pozisyon", pv.tr_baslik(p.get("pozisyon") or "-")), ("Yaka", pv.tr_baslik(p.get("yaka") or "-")),
                  ("Vardiya düzeni", p.get("periyot") or "-"),
                  ("İşe giriş / kıdem", (pv._tr(b.get("giris_tarih") or p.get("giris_tarih") or "") or "-")
                   + (f" · {b['kidem']} yıl" if b.get("kidem") is not None else ""))]
+        if p.get("cikis_tarih"):
+            satir.append(("İşten çıkış", f"<b style='color:{tema.KIRMIZI}'>{pv._tr(p['cikis_tarih'])}</b>"))
         if kimlik:
             satir.append(("Cep telefonu", p.get("telefon") or "-"))
         if b:
             satir.append(("Yıllık izin", f"hak {b.get('hak') or 0:g} · kullanılan {b.get('kullanilan') or 0:g} · devir {b.get('devir') or 0:g}"
                                          f" · <b>kalan {b.get('kalan') or 0:g}</b> <span style='color:#6b7285'>({str(b.get('guncel') or '')[:10]})</span>"))
         else:
-            satir.append(("Yıllık izin", "<span style='color:#6b7285'>bilinmiyor (Personel Veri'de izin formunda kişi açılınca gelir)</span>"))
+            satir.append(("Yıllık izin", "<span style='color:#6b7285'>bilinmiyor (Personel Veri'de 'Tüm personel bilgilerini güncelle' ile gelir)</span>"))
         self.k_bilgi.setText("<table cellpadding='3'>" + "".join(
             f"<tr><td style='color:#6b7285;padding-right:14px'>{a}</td><td>{d}</td></tr>" for a, d in satir) + "</table>")
         o = self._ozet.get(sid)

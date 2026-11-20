@@ -350,9 +350,12 @@ class AyarSayfasi(QWidget):
         # ------------------------------------------------ otomatik Cormind çekimi (bu bilgisayara özel)
         from . import oto_cekim
         os_ = QHBoxLayout()
-        self.oto_acik = QCheckBox("Cormind'den otomatik çek (bu bilgisayar)")
-        self.oto_acik.setToolTip("Program açılınca ve açık kaldıysa her gece 01:00'de, son tam çekilen günden düne kadar eksik "
-                                 "günler Cormind'den çekilir. Bugün hiçbir zaman otomatik çekilmez (tabloda yarım gün olmasın). "
+        self.oto_acik = QCheckBox("Otomatik çek: Cormind ve personel verisi (bu bilgisayar)")
+        self.oto_acik.setToolTip("Cormind: program açılınca ve açık kaldıysa her gece 01:00'de, son tam çekilen günden düne kadar eksik "
+                                 "günler çekilir. Bugün hiçbir zaman otomatik çekilmez (tabloda yarım gün olmasın).\n"
+                                 "Personel verisi: her akşam 20:00'de dünün giriş-çıkış listesi (ayın başından itibaren yeniden; aynı gün "
+                                 "çoğalmaz, düzeltilmişse güncellenir), personel listesi, işten çıkanlar, izin bakiyeleri ve kişi kartları "
+                                 "alınır. Program o saatte kapalıysa açıldığında tamamlanır.\n"
                                  "Yalnızca bu kutunun işaretli olduğu bilgisayar çeker.")
         self.oto_acik.setChecked(oto_cekim.ayarda_acik())
         self.oto_not = QLabel("Kapalı")

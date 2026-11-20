@@ -48,6 +48,10 @@ BILINEN_IZINLER = {"01": "Yıllık izin / Raporlu ödenmeyen", "02": "Ücretli i
 
 def kur(con) -> None:
     con.executescript(SEMA)
+    kol = {r[1] for r in con.execute("PRAGMA table_info(pv_personel)")}
+    if "cikis_tarih" not in kol:                      # işten çıkış tarihi (sonradan eklendi)
+        con.execute("ALTER TABLE pv_personel ADD COLUMN cikis_tarih TEXT")
+        con.commit()
 
 
 def _simdi() -> str:
@@ -139,6 +143,13 @@ def _liste(metin: str):
 
 def isle(con, metin: str) -> Optional[str]:
     """Sistem yanıtını tanır ve yalnızca gerekli alanları kaydeder. Dönüş: kısa açıklama (tanınmadıysa None)."""
+    r = tani_ve_kaydet(con, metin)
+    return r["aciklama"] if r else None
+
+
+def tani_ve_kaydet(con, metin: str) -> Optional[dict]:
+    """{'aciklama', 'tur', ...}. tur: giris_cikis (ilk, son) · plan · izin_tur · bakiye (sid) · kisi_karti (sid) ·
+    liste_aktif · liste_cikan. Tanınmayan yanıt (ör. firmanın tüm personel listesi) hiç yazılmaz: None."""
     v = _liste(metin)
     if v is None:
         return None
@@ -146,17 +157,27 @@ def isle(con, metin: str) -> Optional[str]:
     kur(con)
     if "ysicilid" in k and any(GUN_ANAHTAR.match(a) for a in k):
         kisi = [r for r in v if not str(r.get("ysicilid", "")).startswith("m")]
-        return _tapivot(con, kisi) if kisi else None
+        if not kisi:
+            return None
+        gunler_ = sorted({f"{m.group(1)}-{m.group(2)}-{m.group(3)}" for r in kisi for a in r if (m := GUN_ANAHTAR.match(a))})
+        gercek = any(isinstance(d, str) and "<br>" in d for r in kisi for d in r.values())
+        return {"aciklama": _tapivot(con, kisi), "tur": "giris_cikis" if gercek else "plan",
+                "ilk": gunler_[0] if gunler_ else None, "son": gunler_[-1] if gunler_ else None}
     if "kod" in k and "ad" in k and "saatlikizin" in k:
-        return _izin_tur(con, [(r.get("kod"), r.get("ad"), r.get("saatlikizin"), r.get("ucretli")) for r in v])
+        a = _izin_tur(con, [(r.get("kod"), r.get("ad"), r.get("saatlikizin"), r.get("ucretli")) for r in v])
+        return {"aciklama": a, "tur": "izin_tur"} if a else None
     if "izinID" in k and "Aciklama" in k and "Kod" in k:
-        return _izin_tur(con, [(r.get("Kod"), r.get("Aciklama"), None, None) for r in v])
+        a = _izin_tur(con, [(r.get("Kod"), r.get("Aciklama"), None, None) for r in v])
+        return {"aciklama": a, "tur": "izin_tur"} if a else None
     if "SicilID" in k and "Kalan" in k and "Hak" in k:
-        return _bakiye(con, v)
+        return {"aciklama": _bakiye(con, v), "tur": "bakiye", "sid": k.get("SicilID") if len(v) == 1 else None}
     if "fotoimage" in k and "adsoyad" in k and "sicilno" in k and "adres" in k:
-        return _kisi_ayrinti(con, v)
+        a = _kisi_ayrinti(con, v)
+        return {"aciklama": a, "tur": "kisi_karti", "sid": k.get("id") if len(v) == 1 else None} if a else None
     if "adsoyad" in k and "sicilno" in k and "pozisyonad" in k and "mesaiperiyoduad" in k:
-        return _kisi_listesi(con, v)
+        cikan = any(r.get("cikistarih") for r in v)
+        aktif = any(not r.get("cikistarih") for r in v)
+        return {"aciklama": _kisi_listesi(con, v), "tur": "liste_cikan" if cikan and not aktif else ("liste_hepsi" if cikan else "liste_aktif")}
     return None
 
 
@@ -243,15 +264,17 @@ def _kisi_listesi(con, v) -> str:
             sid = int(r["id"])
         except (KeyError, TypeError, ValueError):
             continue
-        con.execute("INSERT INTO pv_personel(sicilid, sicilno, ad, pozisyon, yaka, bolum, periyot, telefon, guncel) "
-                    "VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(sicilid) DO UPDATE SET sicilno=excluded.sicilno, ad=excluded.ad, "
+        cikis = str(r.get("cikistarih") or "")[:10] or None
+        con.execute("INSERT INTO pv_personel(sicilid, sicilno, ad, pozisyon, yaka, bolum, periyot, telefon, cikis_tarih, guncel) "
+                    "VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(sicilid) DO UPDATE SET sicilno=excluded.sicilno, ad=excluded.ad, "
                     "pozisyon=excluded.pozisyon, yaka=excluded.yaka, bolum=excluded.bolum, periyot=excluded.periyot, "
-                    "telefon=excluded.telefon, guncel=excluded.guncel",
+                    "telefon=excluded.telefon, cikis_tarih=excluded.cikis_tarih, guncel=excluded.guncel",
                     (sid, str(r.get("sicilno") or ""), str(r.get("adsoyad") or "").strip(), r.get("pozisyonad"), r.get("yakaad"),
-                     r.get("bolumad"), r.get("mesaiperiyoduad"), str(r.get("ceptelefon") or "").strip(), simdi))
+                     r.get("bolumad"), r.get("mesaiperiyoduad"), str(r.get("ceptelefon") or "").strip(), cikis, simdi))
         n += 1
     con.commit()
-    return f"personel listesi: {n} kişi"
+    c = sum(1 for r in v if r.get("cikistarih"))
+    return f"personel listesi: {n} kişi" + (f" ({c} işten çıkmış)" if c else "")
 
 
 def _kisi_ayrinti(con, v) -> Optional[str]:
@@ -492,3 +515,62 @@ def sure_yaz(dk: int) -> str:
     if dk < 60:
         return f"{dk} dk"
     return f"{dk // 60} sa {dk % 60:02d} dk" if dk % 60 else f"{dk // 60} sa"
+
+
+# ====================================================================== istek şablonları (otomatik çekim)
+def _tarih_bicimleri(d: date) -> List[str]:
+    return list(dict.fromkeys([d.isoformat(), d.strftime("%d.%m.%Y"), d.strftime("%Y%m%d"), d.strftime("%d/%m/%Y"),
+                               d.strftime("%Y/%m/%d"), d.strftime("%m/%d/%Y"), d.strftime("%d-%m-%Y"), d.strftime("%Y.%m.%d")]))
+
+
+def tarih_degistir(metin: str, eski_ilk: date, eski_son: date, yeni_ilk: date, yeni_son: date) -> Tuple[str, bool]:
+    """İstek adresinde/gövdesinde dönem başlangıç ve bitiş tarihlerini (hangi biçimde yazılmışsa) yenileriyle değiştirir.
+    Bitiş tarihi 'hariç' yazılmış olabilir (son + 1 gün). Değiştirmeler birbirini etkilemesin diye önce yer tutucu konur.
+    Dönüş: (yeni metin, tarihler bulundu mu)."""
+    from urllib.parse import quote
+    if not metin:
+        return metin, False
+    sonuc, yer = metin, {}
+
+    def degistir(eski: date, yeni: date, ad: str) -> bool:
+        nonlocal sonuc
+        for be, by in zip(_tarih_bicimleri(eski), _tarih_bicimleri(yeni)):
+            for a, b in ((be, by), (quote(be, safe=""), quote(by, safe=""))):
+                if a in sonuc:
+                    tutucu = f"\x00{ad}\x00"
+                    sonuc = sonuc.replace(a, tutucu)
+                    yer[tutucu] = b
+                    return True
+        return False
+    ilk_ok = degistir(eski_ilk, yeni_ilk, "ilk")
+    son_ok = eski_ilk != eski_son and degistir(eski_son, yeni_son, "son")
+    if not son_ok and eski_ilk != eski_son:
+        son_ok = degistir(eski_son + timedelta(days=1), yeni_son + timedelta(days=1), "son1")
+    for t, v in yer.items():
+        sonuc = sonuc.replace(t, v)
+    return sonuc, (ilk_ok and son_ok) or (eski_ilk == eski_son and ilk_ok)
+
+
+def kimlik_degistir(metin: str, eski: int, yeni: int) -> Tuple[str, bool]:
+    """İstekte kişi numarasını (tam sayı olarak geçtiği yerlerde) değiştirir."""
+    if not metin:
+        return metin, False
+    desen = re.compile(r"(?<![0-9])" + re.escape(str(eski)) + r"(?![0-9])")
+    yeni_metin, n = desen.subn(str(yeni), metin)
+    return yeni_metin, n > 0
+
+
+def aylar(ilk: date, son: date) -> List[Tuple[date, date]]:
+    """[ilk, son] aralığını ay ay böler."""
+    sonuc = []
+    a = date(ilk.year, ilk.month, 1)
+    while a <= son:
+        sonraki = date(a.year + (a.month == 12), a.month % 12 + 1, 1)
+        sonuc.append((max(a, ilk), min(sonraki - timedelta(days=1), son)))
+        a = sonraki
+    return sonuc
+
+
+def aktif_siciller(con) -> List[int]:
+    kur(con)
+    return [r[0] for r in con.execute("SELECT sicilid FROM pv_personel WHERE cikis_tarih IS NULL OR cikis_tarih = '' ORDER BY ad")]
