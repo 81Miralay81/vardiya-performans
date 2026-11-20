@@ -123,8 +123,11 @@ def genel_performans_grafigi(a: dict) -> dict:
     sonuc, makineler, mola_pay = a["sonuc"], a.get("makineler") or [], float(a.get("mola_pay") or 9.0)
     baslik, secili = a.get("baslik"), a.get("secili")
     sirali = list(makineler) + sorted(m for m in sonuc.hucreler if m not in makineler)
+    gizli = a.get("gizli") or set()
     veri = []
     for m in sirali:
+        if m in gizli:
+            continue
         ort = sonuc.makine_ort.get(m)
         if ort and ort[0] is not None:
             veri.append((m, max(0.0, min(1.0, ort[0])), max(0.0, min(1.0, ort[2] or 0.0)), False))

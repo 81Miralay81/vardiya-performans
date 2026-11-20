@@ -141,6 +141,10 @@ class AyarSayfasi(QWidget):
         k.layout().addLayout(f)
         self.idle = QCheckBox("Çalışmayan makineleri de makine grafiğinde göster")
         k.layout().addWidget(self.idle)
+        self.gizle = QCheckBox("Çalışmayan makineleri Performans grafiğinde ve raporlarda gösterme")
+        self.gizle.setToolTip("Seçili dönemde hiç çalışmayan makineler (çalışma payı %1'in altında, ör. tamamı İŞ EMRİ PLAN YOK) "
+                              "makine bazlı performans grafiğinden çıkarılır.")
+        k.layout().addWidget(self.gizle)
         ic.addWidget(k)
 
         # ------------------------------------------------ makineler + şefler
@@ -553,6 +557,7 @@ class AyarSayfasi(QWidget):
             ab = (ms.get(str(v)) or {}).get(tur) or ["", ""]
             e.setText(ab[0] if uc == "bas" else ab[1])
         self.idle.setChecked(bool(a.get("idle_makineleri_goster")))
+        self.gizle.setChecked(bool(a.get("calismayanlari_gizle", True)))
         self.mak_liste.clear()
         for m in a["makineler"]:
             self._ekle(self.mak_liste, m)
@@ -578,6 +583,7 @@ class AyarSayfasi(QWidget):
         vt.ayar_yaz(con, "mola_saatleri", ms)
         vt.ayar_yaz(con, "supheli_en_kisa_mola_dk", self.sup_min.value())
         vt.ayar_yaz(con, "idle_makineleri_goster", self.idle.isChecked())
+        vt.ayar_yaz(con, "calismayanlari_gizle", self.gizle.isChecked())
         vt.ayar_yaz(con, "makineler", self._adlar(self.mak_liste))
         vt.ayar_yaz(con, "sefler", self._adlar(self.sef_liste))
         vt.ayar_yaz(con, "vardiya_sef", {str(v): c.currentText() for v, c in self.varsayilan.items()})

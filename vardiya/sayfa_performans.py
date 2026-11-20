@@ -12,7 +12,7 @@ from PySide6.QtCore import QRectF, Qt, QThread, QTimer, Signal
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QScrollArea, QSizePolicy, QToolTip, QVBoxLayout, QWidget
 
 from . import cizim, cizim_ek, tema
-from .hesap import VARDIYALAR, cormind_hesabi, durus_dokumu
+from .hesap import VARDIYALAR, calismayan_makineler, cormind_hesabi, durus_dokumu
 from .sayfa_ortak import CizimWidget, etiket, kart
 
 
@@ -285,7 +285,8 @@ class PerformansSayfasi(QWidget):
     def _makine_ciz(self, p, rect, bolgeler):
         if self.ana.sonuc:
             cizim.genel_performans_grafigi(p, rect, self.ana.sonuc, self.ana.ayar.get("makineler", []), self._mola_pay, None,
-                                           bolgeler=bolgeler, secili=self._secili, supheli=set(self._supheli) or None)
+                                           bolgeler=bolgeler, secili=self._secili, supheli=set(self._supheli) or None,
+                                           gizli=calismayan_makineler(self.ana.sonuc) if self.ana.ayar.get("calismayanlari_gizle", True) else None)
 
     def _degerler(self, m: str):
         """(çalışma, mola, eşik altı mı) ya da None."""

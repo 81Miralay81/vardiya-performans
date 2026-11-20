@@ -29,6 +29,7 @@ VARSAYILAN_AYAR = {
     "sefler": ["Güryay", "Bülent", "Serhat"],
     "vardiya_sef": {"1": "Güryay", "2": "Bülent", "3": "Serhat"},
     "idle_makineleri_goster": False,
+    "calismayanlari_gizle": True,
 }
 
 SEMA = """

@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
 from . import tema, veritabani as vt
-from .hesap import VARDIYALAR, HesapAyar, cormind_hesabi, durus_dokumu, hesapla, tr_kucuk, yatan_makineler
+from .hesap import VARDIYALAR, HesapAyar, calismayan_makineler, cormind_hesabi, durus_dokumu, hesapla, tr_kucuk, yatan_makineler
 from .kot import idari_icerik, metne_cevir
 
 DUZENLER = ("makine", "vardiya", "idari")
@@ -95,7 +95,8 @@ def performans_verisi(con, a: dict, ilk: date, son: date) -> dict:
                         + f"{s.vardiyalar[v].gun_sayisi} gün", "sef": d["seflar"].get(v, "")} for v in VARDIYALAR]}
     sonuc["grafik"] = {
         "vardiya": ws.vardiya_grafigi(dict(sonuc=s, seflar=d["seflar"], secim=0, baslik="")),
-        "genel": ws.genel_performans_grafigi(dict(sonuc=s, makineler=makineler, mola_pay=mola_pay, baslik=None, supheli=set(sup))),
+        "genel": ws.genel_performans_grafigi(dict(sonuc=s, makineler=makineler, mola_pay=mola_pay, baslik=None, supheli=set(sup),
+                                                  gizli=calismayan_makineler(s) if a.get("calismayanlari_gizle", True) else set())),
         "oee": ws.cormind_oee_grafigi(dict(cm=cm, baslik="OEE Grafiği (Cormind)", limit=85.0)),
         "zaman": ws.cormind_durus_grafigi(dict(cm=cm, baslik="Zaman Dağılım Grafiği (Cormind)", limit=15.0)),
     }

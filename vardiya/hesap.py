@@ -466,6 +466,21 @@ def durus_dokumu(kayitlar: Iterable[Tuple[str, str, datetime, datetime]], gunler
     return sonuc
 
 
+def calismayan_makineler(sonuc: Optional["DonemSonuc"], sinir: float = 0.01) -> set:
+    """Seçili dönemde hiç çalışmayan makineler (çalışma payı %1'in altında): Ayarlar'daki seçenekle grafiklerden çıkarılır."""
+    if not sonuc:
+        return set()
+    gizli = set()
+    for m, ort in sonuc.makine_ort.items():
+        if ort and ort[0] is not None and ort[0] < sinir:
+            gizli.add(m)
+    for m, e in sonuc.esik_alti.items():
+        if m not in sonuc.makine_ort or sonuc.makine_ort[m][0] is None:
+            if e[0] < sinir:
+                gizli.add(m)
+    return gizli
+
+
 YATAN_TURLER = ("iş emri plan yok", "çalışmıyor", "makina arızası", "kayıt yok")
 
 

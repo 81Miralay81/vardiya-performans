@@ -581,7 +581,7 @@ def cormind_oee_grafigi(p: QPainter, rect: QRectF, cm: Dict[str, dict], baslik: 
 def genel_performans_grafigi(p: QPainter, rect: QRectF, sonuc: DonemSonuc, makineler: List[str], mola_pay: float,
                              baslik: Optional[str] = "Genel Performans: Çalışma, Duruş ve Mola",
                              bolgeler: Optional[list] = None, secili: Optional[str] = None, isaretli: Optional[set] = None,
-                             supheli: Optional[set] = None):
+                             supheli: Optional[set] = None, gizli: Optional[set] = None):
     # bolgeler verilirse her sütunun tıklanabilir alanları eklenir: (QRectF, makine, "durus" | "mola")
     """Bizim hesabımız: her sütun %100 (yeşil çalışma + kırmızı duruş); sıfırın altında mola hakkı
     (turuncu: mola yapılan, mor: molada çalışılan). Eşik altı makineler soluk çizilir ve hesaba girmez."""
@@ -596,6 +596,8 @@ def genel_performans_grafigi(p: QPainter, rect: QRectF, sonuc: DonemSonuc, makin
     sirali = list(makineler) + sorted(m for m in sonuc.hucreler if m not in makineler)
     veri = []
     for m in sirali:
+        if gizli and m in gizli:                  # Ayarlar: çalışmayan makineler gösterilmez
+            continue
         ort = sonuc.makine_ort.get(m)
         if ort and ort[0] is not None:
             veri.append((m, max(0.0, min(1.0, ort[0])), max(0.0, min(1.0, ort[2] or 0.0)), False))
