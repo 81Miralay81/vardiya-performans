@@ -581,7 +581,7 @@ def cormind_oee_grafigi(p: QPainter, rect: QRectF, cm: Dict[str, dict], baslik: 
 def genel_performans_grafigi(p: QPainter, rect: QRectF, sonuc: DonemSonuc, makineler: List[str], mola_pay: float,
                              baslik: Optional[str] = "Genel Performans: Çalışma, Duruş ve Mola",
                              bolgeler: Optional[list] = None, secili: Optional[str] = None, isaretli: Optional[set] = None,
-                             supheli: Optional[set] = None, gizli: Optional[set] = None):
+                             supheli: Optional[set] = None, gizli: Optional[set] = None, bos_goster: bool = False):
     # bolgeler verilirse her sütunun tıklanabilir alanları eklenir: (QRectF, makine, "durus" | "mola")
     """Bizim hesabımız: her sütun %100 (yeşil çalışma + kırmızı duruş); sıfırın altında mola hakkı
     (turuncu: mola yapılan, mor: molada çalışılan). Eşik altı makineler soluk çizilir ve hesaba girmez."""
@@ -604,6 +604,8 @@ def genel_performans_grafigi(p: QPainter, rect: QRectF, sonuc: DonemSonuc, makin
         elif m in sonuc.esik_alti:
             e = sonuc.esik_alti[m]
             veri.append((m, max(0.0, min(1.0, e[0])), max(0.0, min(1.0, e[2])), True))
+        elif bos_goster and m in makineler:       # Ayarlar: çalışmayanlar da gösterilsin -> kaydı olmayan makine boş sütun
+            veri.append((m, None, None, False))
     gos_h = 24 * s
     sup_h = 22 * s if supheli else 0
     sol, sag, ust, alt = 56 * s, 78 * s, (44 if baslik else 18) * s, 34 * s + gos_h + sup_h
@@ -656,6 +658,10 @@ def genel_performans_grafigi(p: QPainter, rect: QRectF, sonuc: DonemSonuc, makin
         cx = alan.left() + slot * (i + 0.5)
         if m == secili:
             p.fillRect(QRectF(cx - slot / 2, alan.top(), slot, alan.height()), QColor(36, 26, 140, 22))
+        if c is None:                             # kaydı yok: yalnızca adı (soluk)
+            _yaz(p, QRectF(cx - slot / 2, alan.bottom() + 4 * s, slot, 20 * s), m, (12 if slot > 44 * s else 10) * s, True, ORTA, tema.YAZI_SOLUK)
+            _yaz(p, QRectF(cx - slot / 2, yy(50) - 10 * s, slot, 20 * s), "kayıt yok" if slot > 60 * s else "–", 9 * s, False, ORTA, tema.YAZI_SOLUK)
+            continue
         if bolgeler is not None:
             bolgeler.append((QRectF(cx - slot / 2, alan.top(), slot, yy(0) - alan.top()), m, "durus"))
             bolgeler.append((QRectF(cx - slot / 2, yy(0), slot, alan.bottom() - yy(0) + 24 * s), m, "mola"))

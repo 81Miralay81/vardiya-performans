@@ -96,7 +96,8 @@ def performans_verisi(con, a: dict, ilk: date, son: date) -> dict:
     sonuc["grafik"] = {
         "vardiya": ws.vardiya_grafigi(dict(sonuc=s, seflar=d["seflar"], secim=0, baslik="")),
         "genel": ws.genel_performans_grafigi(dict(sonuc=s, makineler=makineler, mola_pay=mola_pay, baslik=None, supheli=set(sup),
-                                                  gizli=calismayan_makineler(s) if a.get("calismayanlari_gizle", True) else set())),
+                                                  gizli=calismayan_makineler(s) if a.get("calismayanlari_gizle", True) else set(),
+                                                  bos_goster=not a.get("calismayanlari_gizle", True))),
         "oee": ws.cormind_oee_grafigi(dict(cm=cm, baslik="OEE Grafiği (Cormind)", limit=85.0)),
         "zaman": ws.cormind_durus_grafigi(dict(cm=cm, baslik="Zaman Dağılım Grafiği (Cormind)", limit=15.0)),
     }
@@ -170,7 +171,7 @@ def rapor_verisi(con, a: dict, duzen: str, ilk: date, son: date, tur: int = 3, b
         bilgi.update(kot_sayisi=len(kotlar), tezgah_sayisi=sum(len(k.tezgahlar) for k in kotlar), metin_elle=ozel is not None,
                      yatan=sorted(yatan))
     r = dict(baslik=baslik or oneri_baslik(duzen, tur, ilk, son), donem=donem, duzen=duzen, sonuc=sonuc, makineler=makineler,
-             seflar=seflar, gorsel=gorsel if duzen == "makine" else None, bos_goster=a.get("idle_makineleri_goster", False),
+             seflar=seflar, gorsel=gorsel if duzen == "makine" else None, bos_goster=not a.get("calismayanlari_gizle", True),
              esik=a["esik"], net_saat=ayar.net_saat, yer_tutucu=True, alt_sag=f"Oluşturma: {datetime.now():%d.%m.%Y %H:%M}",
              ilk=ilk, son=son, cormind=cm, **ek)
     return r, bilgi

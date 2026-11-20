@@ -28,7 +28,7 @@ VARSAYILAN_AYAR = {
     "makineler": VARSAYILAN_MAKINELER,
     "sefler": ["Güryay", "Bülent", "Serhat"],
     "vardiya_sef": {"1": "Güryay", "2": "Bülent", "3": "Serhat"},
-    "idle_makineleri_goster": False,
+    "idle_makineleri_goster": False,          # eski ayar (artık kullanılmıyor; calismayanlari_gizle)
     "calismayanlari_gizle": True,
 }
 

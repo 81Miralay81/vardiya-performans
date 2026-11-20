@@ -286,7 +286,8 @@ class PerformansSayfasi(QWidget):
         if self.ana.sonuc:
             cizim.genel_performans_grafigi(p, rect, self.ana.sonuc, self.ana.ayar.get("makineler", []), self._mola_pay, None,
                                            bolgeler=bolgeler, secili=self._secili, supheli=set(self._supheli) or None,
-                                           gizli=calismayan_makineler(self.ana.sonuc) if self.ana.ayar.get("calismayanlari_gizle", True) else None)
+                                           gizli=calismayan_makineler(self.ana.sonuc) if self.ana.ayar.get("calismayanlari_gizle", True) else None,
+                                           bos_goster=not self.ana.ayar.get("calismayanlari_gizle", True))
 
     def _degerler(self, m: str):
         """(çalışma, mola, eşik altı mı) ya da None."""

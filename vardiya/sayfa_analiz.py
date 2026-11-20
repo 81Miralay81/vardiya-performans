@@ -121,7 +121,7 @@ class AnalizSayfasi(QWidget):
     def _makine_ciz(self, p, rect):
         s = self.ana.sonuc
         if s:
-            cizim.makine_grafigi(p, rect, s, self.ana.ayar["makineler"], self.secim, bos_goster=self.ana.ayar.get("idle_makineleri_goster", False))
+            cizim.makine_grafigi(p, rect, s, self.ana.ayar["makineler"], self.secim, bos_goster=not self.ana.ayar.get("calismayanlari_gizle", True))
 
     # ---------------------------------------------------------------- yenile
     def yenile(self):
