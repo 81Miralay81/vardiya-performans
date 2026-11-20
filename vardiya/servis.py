@@ -57,7 +57,9 @@ def supheli_hesabi(con, a: dict, gun_listesi: List[date]) -> dict:
     if not gun_listesi or not any((ms.get(str(v)) or {}).get(k) for v in (1, 2, 3) for k in ("cay", "yemek")):
         return {}
     kayit = vt.kayitlari_getir_operatorlu(con, min(gun_listesi), max(gun_listesi), kirp=True)
-    return supheli_ozet(supheli_molalar(kayit, gun_listesi, ms), kayit, gun_listesi)
+    from .kirilim import VARSAYILAN_EN_KISA_MOLA_DK
+    en_kisa = a.get("supheli_en_kisa_mola_dk", VARSAYILAN_EN_KISA_MOLA_DK)
+    return supheli_ozet(supheli_molalar(kayit, gun_listesi, ms, en_kisa), kayit, gun_listesi)
 
 
 def mola_pastasi(s, seflar: dict, supheli: dict, m: str) -> list:

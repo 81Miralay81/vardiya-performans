@@ -108,11 +108,17 @@ class SupheliMola:
                 "bloklar": [[a.strftime(f), b.strftime(f), d, t] for a, b, d, t in self.bloklar]}
 
 
+VARSAYILAN_EN_KISA_MOLA_DK = 2.0      # Ayarlar'da değiştirilir: makine bundan kısa molada kaldıysa olay sayılmaz
+
+
 def supheli_molalar(kayitlar: Iterable[Tuple[str, str, str, datetime, datetime]], gunler: Iterable[date],
-                    mola_saatleri: dict) -> List[SupheliMola]:
+                    mola_saatleri: dict, en_kisa_mola_dk: float = VARSAYILAN_EN_KISA_MOLA_DK) -> List[SupheliMola]:
     """kayitlar: (operatör, makine, tür, başlangıç, bitiş). Şüpheli: mola saati içinde makine bir MOLA kaydındayken
     (duruşta iken otomatik molaya geçmiş ya da çalışmayı bitirip molaya alınmış) moladan çıkıp mola saati bitmeden
-    ÇALIŞMAYA geçmesi. Mola saatinde zaten çalışan ve çalışmaya devam eden makine şüpheli değildir."""
+    ÇALIŞMAYA geçmesi. Mola saatinde zaten çalışan ve çalışmaya devam eden makine şüpheli değildir.
+    en_kisa_mola_dk: makine çalışmaya geçmeden önce en az bu kadar molada kalmış olmalı (Cormind'in mola saati gelince
+    birkaç saniyeliğine yazdığı otomatik mola kayıtları sayılmaz). Art arda gelen mola kayıtları tek mola sayılır."""
+    en_kisa = timedelta(minutes=max(0.0, float(en_kisa_mola_dk or 0)))
     pencereler = mola_pencereleri(mola_saatleri, gunler)
     if not pencereler:
         return []
@@ -143,6 +149,14 @@ def supheli_molalar(kayitlar: Iterable[Tuple[str, str, str, datetime, datetime]]
                 onceki = next((x for x in reversed(liste[:i]) if x[1] >= a - BOSLUK and x[0] < a), None)
                 if onceki is not None and statu_bul(onceki[2]) == CALISIYOR and b - a < KISA_MOLA:
                     continue                    # çalışan makine çalışmaya devam ediyor: arada birkaç saniyelik mola kaydı
+                mola_bas = a                    # art arda mola kayıtları: molanın gerçek başlangıcı
+                for x in reversed(liste[:i]):
+                    if statu_bul(x[2]) == MOLA and x[1] >= mola_bas - BOSLUK and x[0] < mola_bas:
+                        mola_bas = x[0]
+                    elif x[1] > mola_bas - BOSLUK:
+                        break
+                if b - max(mola_bas, pb - CEVRE) < en_kisa:
+                    continue                    # makine gerçekten molada kalmadı (birkaç saniyelik otomatik mola kaydı)
                 if (min(cs, ps) - cb).total_seconds() < EN_AZ_SUPHELI_SN:
                     continue
                 g0, g1 = pb - CEVRE, ps + CEVRE

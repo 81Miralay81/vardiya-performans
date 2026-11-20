@@ -118,9 +118,20 @@ class AyarSayfasi(QWidget):
                 mg.addWidget(e, i + 1, j + 1)
         mg.setColumnStretch(5, 1)
         f.addRow("Mola saatleri (şüpheli mola için)", mw)
+        self.sup_min = QDoubleSpinBox()
+        self.sup_min.setRange(0, 30)
+        self.sup_min.setDecimals(1)
+        self.sup_min.setSingleStep(0.5)
+        self.sup_min.setSuffix(" dk")
+        self.sup_min.setMaximumWidth(150)
+        self.sup_min.setButtonSymbols(QAbstractSpinBox.PlusMinus)
+        self.sup_min.setToolTip("Makine çalışmaya geçmeden önce bundan kısa süre molada kaldıysa şüpheli sayılmaz. Cormind mola saati "
+                                "gelince makineye birkaç saniyelik otomatik mola kaydı yazabilir; bu sınır onları ayıklar.")
+        f.addRow("Şüpheli mola: en kısa mola süresi", self.sup_min)
         f.addRow("", etiket("Şüpheli mola: mola saati içinde makine moladan çıkıp çalışmaya geçerse (ör. duruştaki tezgahın mola saatinde "
                             "çalıştırılması) Performans'ta makinenin altında ⚠ çıkar. Mola saatinde zaten çalışıp çalışmaya devam eden "
-                            "makine şüpheli sayılmaz. Saatleri yazıp Kaydet'e basın.", "AltBaslik"))
+                            "makine şüpheli sayılmaz. Makine 'en kısa mola süresi'nden kısa molada kaldıysa da sayılmaz. "
+                            "Saatleri yazıp Kaydet'e basın.", "AltBaslik"))
         for w in (self.esik, self.vardiya_dk, self.yemek_dk, self.cay_dk):
             w.setMaximumWidth(150)
             w.setButtonSymbols(QAbstractSpinBox.PlusMinus)
@@ -533,6 +544,8 @@ class AyarSayfasi(QWidget):
         self.vardiya_dk.setValue(a["vardiya_dk"])
         self.yemek_dk.setValue(a["yemek_dk"])
         self.cay_dk.setValue(a["cay_dk"])
+        from .kirilim import VARSAYILAN_EN_KISA_MOLA_DK
+        self.sup_min.setValue(float(a.get("supheli_en_kisa_mola_dk", VARSAYILAN_EN_KISA_MOLA_DK)))
         ms = a.get("mola_saatleri") or {}
         for (v, anahtar), e in self.mola_saat.items():
             tur, uc = anahtar.split("_")
@@ -562,6 +575,7 @@ class AyarSayfasi(QWidget):
                 if b and s:
                     ms.setdefault(str(v), {})[tur] = [b, s]
         vt.ayar_yaz(con, "mola_saatleri", ms)
+        vt.ayar_yaz(con, "supheli_en_kisa_mola_dk", self.sup_min.value())
         vt.ayar_yaz(con, "idle_makineleri_goster", self.idle.isChecked())
         vt.ayar_yaz(con, "makineler", self._adlar(self.mak_liste))
         vt.ayar_yaz(con, "sefler", self._adlar(self.sef_liste))

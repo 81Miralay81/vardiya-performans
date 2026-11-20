@@ -47,3 +47,18 @@ def test_durus_kirilimi_vardiya_ve_operator(tmp_path):
     o = dict(k["operator"])
     assert round(o["Ali Veli"], 2) == 1.0 and round(o[OPERATOR_YOK], 2) == 1.5    # 2. vardiyada Ali kayıt başlatmadı
     assert k["operator"][-1][0] == OPERATOR_YOK
+
+
+def test_en_kisa_mola_altindaki_olay_sayilmaz():
+    k = [("Ali", "IM21", "Kısa Duruş", d(12, 20), d(12, 30)),           # duruştayken mola saati geldi
+         ("Ali", "IM21", "YEMEK MOLASI", d(12, 30), d(12, 30, 20)),     # 20 sn otomatik mola kaydı
+         ("Ali", "IM21", "Çalışma", d(12, 30, 20), d(13, 30))]
+    assert supheli_molalar(k, [date(2026, 11, 18)], MS, 2) == []          # 2 dk altı: sayılmaz
+    assert len(supheli_molalar(k, [date(2026, 11, 18)], MS, 0)) == 1      # sınır 0: sayılır
+
+
+def test_art_arda_mola_kayitlari_tek_mola_sayilir():
+    k = [("Ali", "IM21", "ÇAY MOLASI", d(12, 30), d(12, 31, 30)),
+         ("Ali", "IM21", "YEMEK MOLASI", d(12, 31, 30), d(12, 33)),
+         ("Ali", "IM21", "Çalışma", d(12, 33), d(13, 30))]
+    assert len(supheli_molalar(k, [date(2026, 11, 18)], MS, 2.5)) == 1    # 1,5 + 1,5 = 3 dk mola
