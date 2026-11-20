@@ -336,6 +336,10 @@ class CormindKarti(QFrame):
 
 
 class VeriSayfasi(QWidget):
+    def _meyer_ac(self):
+        from . import meyer
+        self._meyer = meyer.ac(self)
+
     def __init__(self, ana):
         super().__init__()
         self.ana = ana
@@ -347,6 +351,14 @@ class VeriSayfasi(QWidget):
                              "formül hatası olan satırlar atlanır.", "AltBaslik"))
         self.cormind = CormindKarti(ana)
         kok.addWidget(self.cormind)
+        mey = QHBoxLayout()                     # Meyer (PDKS) deneme: program içinde açılır, veriler yakalanır
+        mey.addWidget(etiket("MEYER (PDKS) – deneme: personel giriş-çıkış, izin, rapor, gelmeyen", "AltBaslik"))
+        mey.addStretch(1)
+        b_mey = QPushButton("Meyer'i aç")
+        b_mey.setToolTip("Meyer program içinde açılır; giriş bilgileri yalnızca bu bilgisayarda saklanır.")
+        b_mey.clicked.connect(self._meyer_ac)
+        mey.addWidget(b_mey)
+        kok.addLayout(mey)
         self.alan = BirakAlani(self.dosya_sec, self.yukle)
         kok.addWidget(self.alan)
         self.alan.hide()                        # veri artık Cormind'den doğrudan çekiliyor; Excel ile yükleme gizli
