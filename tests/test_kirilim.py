@@ -62,3 +62,10 @@ def test_art_arda_mola_kayitlari_tek_mola_sayilir():
          ("Ali", "IM21", "YEMEK MOLASI", d(12, 31, 30), d(12, 33)),
          ("Ali", "IM21", "Çalışma", d(12, 33), d(13, 30))]
     assert len(supheli_molalar(k, [date(2026, 11, 18)], MS, 2.5)) == 1    # 1,5 + 1,5 = 3 dk mola
+
+
+def test_alt_sinir_calisma_suresine_de_uygulanir():
+    k = [("Ali", "IM21", "YEMEK MOLASI", d(12, 30), d(12, 58, 30)),      # 28,5 dk gerçek mola
+         ("Ali", "IM21", "Çalışma", d(12, 58, 30), d(13, 30))]          # mola bitimine 1,5 dk kala çalışma
+    assert supheli_molalar(k, [date(2026, 11, 18)], MS, 2) == []          # 1,5 dk < 2 dk: sayılmaz
+    assert len(supheli_molalar(k, [date(2026, 11, 18)], MS, 1)) == 1

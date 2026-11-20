@@ -116,8 +116,9 @@ def supheli_molalar(kayitlar: Iterable[Tuple[str, str, str, datetime, datetime]]
     """kayitlar: (operatör, makine, tür, başlangıç, bitiş). Şüpheli: mola saati içinde makine bir MOLA kaydındayken
     (duruşta iken otomatik molaya geçmiş ya da çalışmayı bitirip molaya alınmış) moladan çıkıp mola saati bitmeden
     ÇALIŞMAYA geçmesi. Mola saatinde zaten çalışan ve çalışmaya devam eden makine şüpheli değildir.
-    en_kisa_mola_dk: makine çalışmaya geçmeden önce en az bu kadar molada kalmış olmalı (Cormind'in mola saati gelince
-    birkaç saniyeliğine yazdığı otomatik mola kayıtları sayılmaz). Art arda gelen mola kayıtları tek mola sayılır."""
+    en_kisa_mola_dk (alt sınır): makine çalışmaya geçmeden önce en az bu kadar molada kalmış olmalı (Cormind'in mola saati
+    gelince birkaç saniyeliğine yazdığı otomatik mola kayıtları sayılmaz) ve mola saatindeki çalışma da en az bu kadar
+    sürmüş olmalı (mola bitimine birkaç dakika kala başlayan çalışma sayılmaz). Art arda gelen mola kayıtları tek mola sayılır."""
     en_kisa = timedelta(minutes=max(0.0, float(en_kisa_mola_dk or 0)))
     pencereler = mola_pencereleri(mola_saatleri, gunler)
     if not pencereler:
@@ -157,8 +158,8 @@ def supheli_molalar(kayitlar: Iterable[Tuple[str, str, str, datetime, datetime]]
                         break
                 if b - max(mola_bas, pb - CEVRE) < en_kisa:
                     continue                    # makine gerçekten molada kalmadı (birkaç saniyelik otomatik mola kaydı)
-                if (min(cs, ps) - cb).total_seconds() < EN_AZ_SUPHELI_SN:
-                    continue
+                if (min(cs, ps) - cb).total_seconds() < max(EN_AZ_SUPHELI_SN, en_kisa.total_seconds()):
+                    continue                    # mola saatindeki çalışma da alt sınırdan kısaysa sayılmaz
                 g0, g1 = pb - CEVRE, ps + CEVRE
                 bloklar = [(max(x[0], g0), min(x[1], g1), statu_bul(x[2]), x[2]) for x in liste if x[0] < g1 and x[1] > g0]
                 sonuc.append(SupheliMola(m, gun, v, tur, pb, ps, a, b, cb, cs,

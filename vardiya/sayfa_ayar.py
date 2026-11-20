@@ -125,12 +125,13 @@ class AyarSayfasi(QWidget):
         self.sup_min.setSuffix(" dk")
         self.sup_min.setMaximumWidth(150)
         self.sup_min.setButtonSymbols(QAbstractSpinBox.PlusMinus)
-        self.sup_min.setToolTip("Makine çalışmaya geçmeden önce bundan kısa süre molada kaldıysa şüpheli sayılmaz. Cormind mola saati "
-                                "gelince makineye birkaç saniyelik otomatik mola kaydı yazabilir; bu sınır onları ayıklar.")
-        f.addRow("Şüpheli mola: en kısa mola süresi", self.sup_min)
+        self.sup_min.setToolTip("Alt sınır: makine çalışmaya geçmeden önce bundan kısa süre molada kaldıysa ya da mola saatindeki "
+                                "çalışma bundan kısa sürdüyse şüpheli sayılmaz. Cormind'in mola saati gelince yazdığı birkaç saniyelik "
+                                "otomatik mola kayıtlarını ve mola bitimine birkaç dakika kala başlayan çalışmaları ayıklar.")
+        f.addRow("Şüpheli mola: alt sınır (mola ve çalışma)", self.sup_min)
         f.addRow("", etiket("Şüpheli mola: mola saati içinde makine moladan çıkıp çalışmaya geçerse (ör. duruştaki tezgahın mola saatinde "
                             "çalıştırılması) Performans'ta makinenin altında ⚠ çıkar. Mola saatinde zaten çalışıp çalışmaya devam eden "
-                            "makine şüpheli sayılmaz. Makine 'en kısa mola süresi'nden kısa molada kaldıysa da sayılmaz. "
+                            "makine şüpheli sayılmaz. Makine alt sınırdan kısa molada kaldıysa ya da mola saatindeki çalışma alt sınırdan kısa sürdüyse de sayılmaz. "
                             "Saatleri yazıp Kaydet'e basın.", "AltBaslik"))
         for w in (self.esik, self.vardiya_dk, self.yemek_dk, self.cay_dk):
             w.setMaximumWidth(150)
