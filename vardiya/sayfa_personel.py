@@ -87,7 +87,8 @@ class CubukListesi(QWidget):
             p.drawText(QRectF(8, 34, r.width() - 16, 22), Qt.AlignLeft, "Seçilen dönemde yok")
             return
         enb = max(v[2] for v in self.veri) or 1
-        ad_w, yazi_w = 150, 250
+        ad_w = 150
+        yazi_w = min(250, int(r.width() * 0.3))
         cubuk_w = max(40, r.width() - ad_w - yazi_w - 24)
         for i, (sid, ad, deger, yazi, parcalar) in enumerate(self.veri):
             y = 34 + i * 24
@@ -142,8 +143,22 @@ class PersonelSayfasi(QWidget):
         self.aralik = AralikSecici()
         ilk = date(bugun.year, bugun.month, 1)
         self.aralik.goster(ilk, max(ilk, bugun - timedelta(days=1)))
-        self.aralik.secildi.connect(lambda *_: self.yenile())
+        self.aralik.secildi.connect(lambda *_: (self._kisayol_temizle(), self.yenile()))
         ust.addWidget(self.aralik)
+        from PySide6.QtWidgets import QButtonGroup
+        self._kisayollar = QButtonGroup(self)
+        self._kisayollar.setExclusive(True)
+        kisa = QHBoxLayout()
+        kisa.addWidget(QLabel("Hızlı seçim"))
+        for kod, ad in (("dun", "Dün"), ("bh", "Bu hafta"), ("gh", "Geçen hafta"), ("ba", "Bu ay"), ("ga", "Geçen ay"), ("by", "Bu yıl")):
+            b = QPushButton(ad)
+            b.setObjectName("Hizli")
+            b.setCheckable(True)
+            b.setCursor(Qt.PointingHandCursor)
+            b.clicked.connect(lambda _=False, k=kod: self._kisayol(k))
+            self._kisayollar.addButton(b)
+            kisa.addWidget(b)
+        kisa.addStretch(1)
         ust.addWidget(QLabel("Vardiya"))
         self.f_vardiya = QComboBox()
         self.f_vardiya.addItem("Tümü", "")
@@ -153,18 +168,22 @@ class PersonelSayfasi(QWidget):
         ust.addWidget(self.f_vardiya)
         ust.addWidget(QLabel("Pozisyon"))
         self.f_poz = QComboBox()
-        self.f_poz.setMinimumWidth(200)
+        self.f_poz.setMinimumWidth(220)
+        self.aralik.setMinimumWidth(240)
         self.f_poz.currentIndexChanged.connect(lambda *_: self._ciz())
         ust.addWidget(self.f_poz)
         ust.addStretch(1)
         b_al = QPushButton("Personel verisini al")
         b_al.setToolTip("Personel veri ekranı program içinde açılır; listelediğiniz ay kaydedilir.")
         b_al.clicked.connect(self._veri_al)
-        ust.addWidget(b_al)
+        self._b_al = b_al
         b_xl = QPushButton("Excel'e aktar")
         b_xl.clicked.connect(self._excel)
-        ust.addWidget(b_xl)
+        self._b_xl = b_xl
+        kisa.addWidget(b_al)
+        kisa.addWidget(b_xl)
         kok.addLayout(ust)
+        kok.addLayout(kisa)
 
         self.sekme = QTabWidget()
         self.sekme.setDocumentMode(True)
@@ -347,6 +366,40 @@ class PersonelSayfasi(QWidget):
         h.setSectionResizeMode(QHeaderView.ResizeToContents)
         h.setStretchLastSection(True)
         tablo_menusu(t)
+
+    # ================================================================ dönem kısayolları
+    @staticmethod
+    def kisayol_araligi(kod: str, bugun: Optional[date] = None):
+        """Bugün henüz bitmediği için 'bu' dönemler dünde biter."""
+        bugun = bugun or date.today()
+        dun = bugun - timedelta(days=1)
+        pzt = bugun - timedelta(days=bugun.weekday())
+        ay1 = date(bugun.year, bugun.month, 1)
+        if kod == "dun":
+            return dun, dun
+        if kod == "bh":
+            return pzt, max(pzt, dun)
+        if kod == "gh":
+            return pzt - timedelta(days=7), pzt - timedelta(days=1)
+        if kod == "ba":
+            return ay1, max(ay1, dun)
+        if kod == "ga":
+            son = ay1 - timedelta(days=1)
+            return date(son.year, son.month, 1), son
+        if kod == "by":
+            y1 = date(bugun.year, 1, 1)
+            return y1, max(y1, dun)
+        raise ValueError(kod)
+
+    def _kisayol(self, kod: str):
+        self.aralik.goster(*self.kisayol_araligi(kod))
+        self.yenile()
+
+    def _kisayol_temizle(self):
+        self._kisayollar.setExclusive(False)
+        for b in self._kisayollar.buttons():
+            b.setChecked(False)
+        self._kisayollar.setExclusive(True)
 
     # ================================================================ veri
     def _yetki(self, anahtar: str) -> bool:
