@@ -165,11 +165,21 @@ def genel_performans_grafigi(a: dict) -> dict:
              "emphasis": {"focus": "none", "itemStyle": {"shadowBlur": 12, "shadowColor": "rgba(21,9,88,0.35)"}}} for ad, d in seriler.items()]
     import math
     alt = -10 * max(1, math.ceil((mola_pay + 0.5) / 10))     # eksen 0'dan onar onar: ..., 10%, 0%, -10%
+    egik = len(veri) > 18
+    sup = a.get("supheli") or set()
+    if egik and sup:                           # çok makine: adlar çapraz; ⚠ çubuğun altında düz ve büyük (tıklanır)
+        alt -= 10                              # ⚠ için çubukların altında boş bir şerit
+        seri.append({"type": "scatter", "name": "Şüpheli mola", "symbolSize": 22, "itemStyle": {"color": "rgba(0,0,0,0)"},
+                     "label": {"show": True, "formatter": "⚠", "fontSize": 18, "color": "#D35400", "fontWeight": 700},
+                     "z": 10, "tooltip": {"show": True},
+                     "data": [{"value": [v[0], alt + 5], "anahtar": v[0], "kisim": "supheli",
+                               "tip": f"<b>{v[0]}</b><br>Şüpheli mola var · tıklayın: mola ayrıntısı"} for v in veri if v[0] in sup]})
     return {"title": _baslik(baslik), "tooltip": _ipucu(),
-            "legend": {"bottom": 0, "itemWidth": 14, "itemHeight": 10, "textStyle": {"color": SOLUK}},
+            "legend": {"bottom": 0, "itemWidth": 14, "itemHeight": 10, "textStyle": {"color": SOLUK},
+                       "data": ["Çalışma", "Duruş", "Mola yapılan", "Molada çalışılan"]},
             "grid": {"left": 50, "right": 30, "top": 46 if baslik else 16, "bottom": 88 if a.get("supheli") else 70},
             "xAxis": _eksen_x([v[0] + ("\n👤" if v[0] in (a.get("isaretli") or set()) else "")
-                               + ("\n{u|⚠}" if v[0] in (a.get("supheli") or set()) else "") for v in veri],
+                               + ("\n{u|⚠}" if v[0] in (a.get("supheli") or set()) and len(veri) <= 18 else "") for v in veri],
                               axisLine={"onZero": True, "lineStyle": {"color": "#9AA3B8"}}, position="bottom", triggerEvent=True,
                               axisLabel={"color": YAZI, "fontWeight": 600, "interval": 0, "fontSize": 11, "lineHeight": 16,
                                          "rotate": 45 if len(veri) > 18 else 0,

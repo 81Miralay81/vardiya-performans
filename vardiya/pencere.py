@@ -19,13 +19,14 @@ from .sayfa_gecmis import GecmisSayfasi
 from .sayfa_kayitlar import KayitlarSayfasi
 from .sayfa_operator import OperatorSayfasi
 from .sayfa_performans import PerformansSayfasi
+from .sayfa_personel import PersonelSayfasi
 from .sayfa_rapor import RaporSayfasi
 from .sayfa_veri import VeriSayfasi
 from .surum import SURUM
 from . import guncelleme
 
 MENU = (("veri", "Veri Aktar"), ("kayitlar", "Kayıtlar"), ("performans", "Performans"), ("calisma", "Çalışma"), ("durus", "Genel Duruş"), ("mola", "Mola"),
-        ("operator", "Operatör"), ("rapor", "Raporlar"), ("gecmis", "Geçmiş"), ("ayar", "Ayarlar"))
+        ("operator", "Operatör"), ("personel", "Personel Durum"), ("rapor", "Raporlar"), ("gecmis", "Geçmiş"), ("ayar", "Ayarlar"))
 DONEMLI = {"performans", "calisma", "durus", "mola", "operator"}
 
 
@@ -41,6 +42,7 @@ class AnaPencere(QMainWindow):
         self.sonuc = None
         self.kayit = []
         self.seflar = {}
+        self.kullanici = None                       # giriş yapan kullanıcı (kullanıcı sistemi kapalıysa None)
         self.setWindowTitle("Vardiya Performans")
         self.setWindowIcon(QIcon(tema.kaynak_yolu("assets", "uygulama.ico")))
         self.resize(1500, 920)
@@ -83,6 +85,16 @@ class AnaPencere(QMainWindow):
             self.menu[anahtar] = b
             yl.addWidget(b)
         yl.addStretch(1)
+        self.k_etiket = QLabel("")
+        self.k_etiket.setObjectName("AltBaslik")
+        self.k_etiket.setWordWrap(True)
+        yl.addWidget(self.k_etiket)
+        self.k_cikis = QPushButton("Çıkış yap")
+        self.k_cikis.setObjectName("Hizli")
+        self.k_cikis.setCursor(Qt.PointingHandCursor)
+        self.k_cikis.clicked.connect(self.cikis)
+        self.k_cikis.hide()
+        yl.addWidget(self.k_cikis)
         self.alt_bilgi = QLabel("")
         self.alt_bilgi.setObjectName("AltBaslik")
         self.alt_bilgi.setWordWrap(True)
@@ -120,6 +132,7 @@ class AnaPencere(QMainWindow):
             "durus": AnalizSayfasi(self, 1),
             "mola": AnalizSayfasi(self, 2),
             "operator": OperatorSayfasi(self),
+            "personel": PersonelSayfasi(self),
             "rapor": RaporSayfasi(self),
             "gecmis": GecmisSayfasi(self),
             "ayar": AyarSayfasi(self),
@@ -156,6 +169,56 @@ class AnaPencere(QMainWindow):
         self._guncelleme = None
         if guncelleme.calisan_exe() and not os.environ.get("VARDIYA_GUNCELLEME_YOK"):
             QTimer.singleShot(2500, lambda: self._guncelleme_baslat(elle=False))
+
+    # ------------------------------------------------ kullanıcı girişi ve yetkiler
+    def yetkili(self, anahtar: str) -> bool:
+        from .kullanici import yetkili
+        return yetkili(self.kullanici, anahtar)
+
+    def giris(self) -> bool:
+        """Kullanıcı sistemi açıksa giriş ister. False: vazgeçildi (program kapanır)."""
+        from . import kullanici as ku
+        if not ku.var_mi(self.con):
+            self.kullanici = None
+        else:
+            k = ku.giris_penceresi(self.con, None)
+            if not k:
+                return False
+            self.kullanici = k
+            teshis.adim(f"giriş: {k['ad']}")
+        self.yetki_uygula()
+        return True
+
+    def yetki_uygula(self):
+        from .kullanici import MENU_YETKI
+        for a, b in self.menu.items():
+            b.setVisible(self.yetkili(MENU_YETKI.get(a, a)))
+        if self.kullanici:
+            self.k_etiket.setText(f"Kullanıcı: {self.kullanici['ad']}" + (" (yönetici)" if self.kullanici.get("yonetici") else ""))
+            self.k_cikis.show()
+        else:
+            self.k_etiket.setText("")
+            self.k_cikis.hide()
+        izinli = [a for a in self.sira if self.yetkili(MENU_YETKI.get(a, a))]   # pencere henüz gösterilmemiş olabilir: isVisible kullanılmaz
+        for a in self.sira:
+            self.sayfalar[a].setEnabled(a in izinli)
+        acik = self.sira[self.yigin.currentIndex()]
+        if acik not in izinli:
+            if izinli:
+                self.sayfa_ac(izinli[0])
+            else:
+                self.menu[acik].setChecked(False)
+        if hasattr(self.sayfalar.get("ayar"), "kullanici_yenile"):
+            self.sayfalar["ayar"].kullanici_yenile()
+
+    def cikis(self):
+        from . import kullanici as ku
+        ku.cikis_yap(self.con)
+        self.hide()
+        if not self.giris():
+            QApplication.quit()
+            return
+        self.show()
 
     def closeEvent(self, e):
         try:
@@ -219,6 +282,9 @@ class AnaPencere(QMainWindow):
         self._mesaj_zamanlayici.start(7000)
 
     def sayfa_ac(self, anahtar: str):
+        from .kullanici import MENU_YETKI
+        if not self.yetkili(MENU_YETKI.get(anahtar, anahtar)):
+            return
         self.menu[anahtar].setChecked(True)
         self.yigin.setCurrentIndex(self.sira.index(anahtar))
         self.donem.setVisible(anahtar in DONEMLI)

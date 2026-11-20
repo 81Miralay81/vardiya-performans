@@ -142,6 +142,16 @@ class Sunucu:
                 return self._dosya(h, yol[3:])
             if yol == "/logo.png":
                 return self._gonder(h, open(tema.kaynak_yolu("assets", "logo.png"), "rb").read(), "image/png")
+            if yol == "/api/oturum":
+                return self.api_oturum(h)
+            if yol == "/api/giris" and yontem == "POST":
+                return self.api_giris(h)
+            if yol == "/api/cikis":
+                return self.api_cikis(h)
+            if yol.startswith("/api/"):
+                durum = self._yetki_denetle(h, yol)
+                if durum:
+                    return self._json(h, {"hata": durum[1], "giris_gerekli": durum[0] == 401}, durum[0])
             f = {"/api/durum": self.api_durum, "/api/performans": self.api_performans, "/api/tablo.png": self.api_tablo,
                  "/api/rapor/bilgi": self.api_rapor_bilgi, "/api/rapor/sayfa.png": self.api_rapor_sayfa,
                  "/api/rapor.pdf": self.api_rapor_pdf, "/api/operator": self.api_operator, "/api/operator/ayrinti": self.api_operator_ayrinti, "/api/operator/cakisma": self.api_operator_cakisma, "/api/duran": self.api_duran, "/api/kirilim": self.api_kirilim,
@@ -164,6 +174,111 @@ class Sunucu:
                 self._json(h, {"hata": f"{type(ex).__name__}: {ex}"}, 500)
             except Exception:  # noqa: BLE001
                 pass
+
+    # -------------------------------------------------------------- kullanıcı oturumu (Ayarlar'da kullanıcı varsa zorunlu)
+    YETKI = {"/api/performans": "performans", "/api/tablo.png": "performans", "/api/kirilim": "performans", "/api/duran": "performans",
+             "/api/rapor/bilgi": "rapor", "/api/rapor/sayfa.png": "rapor", "/api/rapor.pdf": "rapor", "/api/outlook": "rapor",
+             "/api/operator": "operator", "/api/operator/ayrinti": "operator", "/api/operator/cakisma": "operator",
+             "/api/kayitlar": "kayitlar", "/api/cormind/cek": "veri", "/api/cormind/durum": "veri", "/api/cormind/durdur": "veri"}
+    OTURUM_SN = 12 * 3600
+
+    def _oturumlar(self) -> dict:
+        if not hasattr(self, "_oturum"):
+            self._oturum = {}
+        return self._oturum
+
+    def _sistem_acik(self) -> bool:
+        """Kullanıcı sistemi açık mı (10 sn önbellek; her istekte veri tabanına gitmesin)."""
+        import time as _t
+        on = getattr(self, "_sistem_onbellek", None)
+        if on and _t.time() - on[0] < 10:
+            return on[1]
+        from . import kullanici as ku
+        con = self._con()
+        try:
+            v = ku.var_mi(con)
+        finally:
+            con.close()
+        self._sistem_onbellek = (_t.time(), v)
+        return v
+
+    def _oturum_kullanici(self, h) -> Optional[dict]:
+        import time as _t
+        from http.cookies import SimpleCookie
+        c = SimpleCookie()
+        try:
+            c.load(h.headers.get("Cookie") or "")
+        except Exception:  # noqa: BLE001
+            return None
+        j = c.get("vp_oturum")
+        if not j:
+            return None
+        o = self._oturumlar().get(j.value)
+        if not o or _t.time() - o[1] > self.OTURUM_SN:
+            return None
+        from . import kullanici as ku
+        con = self._con()
+        try:
+            k = ku.getir(con, o[0])
+        finally:
+            con.close()
+        if not k or not k["aktif"]:
+            return None
+        self._oturumlar()[j.value] = (o[0], _t.time())
+        return k
+
+    def _yetki_denetle(self, h, yol: str):
+        if not self._sistem_acik():
+            return None
+        k = self._oturum_kullanici(h)
+        if not k:
+            return 401, "Giriş gerekli"
+        from . import kullanici as ku
+        gerek = self.YETKI.get(yol)
+        if gerek and not ku.yetkili(k, gerek):
+            return 403, "Bu sayfayı görme yetkiniz yok"
+        return None
+
+    def api_oturum(self, h):
+        if not self._sistem_acik():
+            return self._json(h, {"gerekli": False})
+        k = self._oturum_kullanici(h)
+        if not k:
+            return self._json(h, {"gerekli": True})
+        return self._json(h, {"gerekli": True, "ad": k["ad"], "yonetici": k["yonetici"], "yetkiler": k["yetkiler"]})
+
+    def api_giris(self, h):
+        import secrets
+        import time as _t
+        from . import kullanici as ku
+        n = int(h.headers.get("Content-Length") or 0)
+        try:
+            v = json.loads(h.rfile.read(n) or b"{}") if n else {}
+        except ValueError:
+            v = {}
+        con = self._con()
+        try:
+            k = ku.dogrula(con, str(v.get("ad") or ""), str(v.get("sifre") or ""))
+        finally:
+            con.close()
+        if not k:
+            _t.sleep(1.0)                               # deneme-yanılmayı yavaşlatır
+            return self._json(h, {"hata": "Kullanıcı adı ya da şifre hatalı"}, 401)
+        j = secrets.token_urlsafe(32)
+        self._oturumlar()[j] = (k["ad"], _t.time())
+        govde = json.dumps({"tamam": True}).encode()
+        self._gonder(h, govde, ek={"Set-Cookie": f"vp_oturum={j}; HttpOnly; SameSite=Strict; Path=/"})
+
+    def api_cikis(self, h):
+        from http.cookies import SimpleCookie
+        c = SimpleCookie()
+        try:
+            c.load(h.headers.get("Cookie") or "")
+            if c.get("vp_oturum"):
+                self._oturumlar().pop(c["vp_oturum"].value, None)
+        except Exception:  # noqa: BLE001
+            pass
+        self._gonder(h, b'{"tamam": true}', ek={"Set-Cookie": "vp_oturum=; Max-Age=0; Path=/"})
 
     def _dosya(self, h, ad: str):
         ad = os.path.normpath(ad).replace("\\", "/")

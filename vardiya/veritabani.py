@@ -142,12 +142,40 @@ def ayar_oku(con: sqlite3.Connection) -> dict:
     return sonuc
 
 
+GECMISSIZ = {"kapat_istegi"}               # sık değişen, geçmişe yazılmayan ayarlar
+
+
 def ayar_yaz(con: sqlite3.Connection, anahtar: str, deger) -> None:
+    yeni = json.dumps(deger, ensure_ascii=False)
+    if anahtar not in GECMISSIZ:
+        try:                                    # değişiklik geçmişi: kim (bilgisayar, sürüm), ne zaman, eski -> yeni
+            r = con.execute("SELECT deger FROM ayar WHERE anahtar=?", (anahtar,)).fetchone()
+            eski = r[0] if r else None
+            if eski != yeni:
+                import socket
+                from .surum import SURUM
+                con.execute("CREATE TABLE IF NOT EXISTS ayar_gecmis (zaman TEXT, pc TEXT, surum TEXT, anahtar TEXT, eski TEXT, yeni TEXT)")
+                con.execute("INSERT INTO ayar_gecmis VALUES(?,?,?,?,?,?)", (datetime.now().strftime(BICIM), socket.gethostname(), SURUM,
+                                                                           anahtar, eski, yeni))
+        except Exception:  # noqa: BLE001  (geçmiş yazılamasa da ayar kaydedilir)
+            pass
     con.execute(
         "INSERT INTO ayar(anahtar, deger) VALUES(?, ?) ON CONFLICT(anahtar) DO UPDATE SET deger=excluded.deger",
-        (anahtar, json.dumps(deger, ensure_ascii=False)),
+        (anahtar, yeni),
     )
     con.commit()
+
+
+def son_dolu_ayar(con: sqlite3.Connection, anahtar: str):
+    """Ayar geçmişinde bu anahtarın boş olmayan son değeri (yoksa None)."""
+    try:
+        for r in con.execute("SELECT yeni, eski FROM ayar_gecmis WHERE anahtar=? ORDER BY zaman DESC", (anahtar,)):
+            for v in (r[0], r[1]):
+                if v and json.loads(v):
+                    return json.loads(v)
+    except Exception:  # noqa: BLE001
+        pass
+    return None
 
 
 # ------------------------------------------------------------------ kayıtlar

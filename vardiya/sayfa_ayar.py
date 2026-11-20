@@ -1,6 +1,8 @@
 """Ayarlar sayfası: eşik, süreler, makine listesi, grup liderleri."""
 from __future__ import annotations
 
+import json
+
 import os
 
 from PySide6.QtCore import Qt, QUrl
@@ -118,6 +120,11 @@ class AyarSayfasi(QWidget):
                 mg.addWidget(e, i + 1, j + 1)
         mg.setColumnStretch(5, 1)
         f.addRow("Mola saatleri (şüpheli mola için)", mw)
+        self.mola_geri = QPushButton("Kayıtlı mola saatleri boş: son dolu halini geri yükle")
+        self.mola_geri.setObjectName("Hizli")
+        self.mola_geri.clicked.connect(self._mola_geri_yukle)
+        self.mola_geri.hide()
+        f.addRow("", self.mola_geri)
         self.sup_min = QDoubleSpinBox()
         self.sup_min.setRange(0, 30)
         self.sup_min.setDecimals(1)
@@ -146,6 +153,52 @@ class AyarSayfasi(QWidget):
                               "Cormind rapor sistemi bu seçenekten etkilenmez.")
         k.layout().addWidget(self.gizle)
         ic.addWidget(k)
+
+        # ------------------------------------------------ personel veri
+        kp = kart()
+        kp.layout().addWidget(etiket("PERSONEL VERİ", "KartBaslik"))
+        fp = QFormLayout()
+        self.pv_tol = QSpinBox()
+        self.pv_tol.setRange(0, 60)
+        self.pv_tol.setSuffix(" dk")
+        self.pv_tol.setToolTip("Vardiya başlangıcından bu kadar sonra giriş 'geç gelme', bitişinden bu kadar önce çıkış 'erken çıkma' sayılır")
+        self.pv_fazla = QSpinBox()
+        self.pv_fazla.setRange(0, 240)
+        self.pv_fazla.setSuffix(" dk")
+        self.pv_fazla.setToolTip("Vardiya bitişinden en az bu kadar sonra çıkış fazla çalışma sayılır (tatil günü çalışması her zaman sayılır)")
+        for w in (self.pv_tol, self.pv_fazla):
+            w.setMaximumWidth(150)
+            w.setButtonSymbols(QAbstractSpinBox.PlusMinus)
+        fp.addRow("Geç gelme / erken çıkma toleransı", self.pv_tol)
+        fp.addRow("Fazla çalışma için en az", self.pv_fazla)
+        kp.layout().addLayout(fp)
+        ic.addWidget(kp)
+
+        # ------------------------------------------------ kullanıcılar (yalnızca yönetici; hiç kullanıcı yokken herkes)
+        self.k_kart = kart()
+        self.k_kart.layout().addWidget(etiket("KULLANICILAR VE YETKİLER", "KartBaslik"))
+        self.k_kart.layout().addWidget(etiket("Kullanıcı yokken program girişsiz açılır. İlk kullanıcıyı (yönetici) açtığınız anda programda ve "
+                                              "tarayıcıda kullanıcı adı ve şifre sorulur; her kullanıcının hangi sayfaları göreceğini siz seçersiniz. "
+                                              "Şifreler açık olarak saklanmaz.", "AltBaslik"))
+        from PySide6.QtWidgets import QTableWidget, QHeaderView, QAbstractItemView
+        self.k_tablo = QTableWidget(0, 4)
+        self.k_tablo.setHorizontalHeaderLabels(["Kullanıcı", "Yetki", "Durum", "Son giriş"])
+        self.k_tablo.verticalHeader().hide()
+        self.k_tablo.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.k_tablo.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.k_tablo.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.k_tablo.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.k_tablo.setMinimumHeight(140)
+        self.k_tablo.cellDoubleClicked.connect(lambda *_: self._k_duzenle())
+        self.k_kart.layout().addWidget(self.k_tablo)
+        ks_ = QHBoxLayout()
+        for ad, fn in (("Yeni kullanıcı", self._k_ekle), ("Düzenle", self._k_duzenle), ("Sil", self._k_sil)):
+            b = QPushButton(ad)
+            b.clicked.connect(fn)
+            ks_.addWidget(b)
+        ks_.addStretch(1)
+        self.k_kart.layout().addLayout(ks_)
+        ic.addWidget(self.k_kart)
 
         # ------------------------------------------------ makineler + şefler
         satir = QHBoxLayout()
@@ -604,7 +657,13 @@ class AyarSayfasi(QWidget):
             tur, uc = anahtar.split("_")
             ab = (ms.get(str(v)) or {}).get(tur) or ["", ""]
             e.setText(ab[0] if uc == "bas" else ab[1])
+        self._mola_yedek = None if ms else self._mola_yedegi()
+        self.mola_geri.setVisible(bool(self._mola_yedek))
         self.gizle.setChecked(bool(a.get("calismayanlari_gizle", True)))
+        from .personel_veri import VARSAYILAN_FAZLA_EN_AZ_DK, VARSAYILAN_TOLERANS_DK
+        self.pv_tol.setValue(int(a.get("pv_tolerans_dk", VARSAYILAN_TOLERANS_DK)))
+        self.pv_fazla.setValue(int(a.get("pv_fazla_en_az_dk", VARSAYILAN_FAZLA_EN_AZ_DK)))
+        self.kullanici_yenile()
         self.mak_liste.clear()
         for m in a["makineler"]:
             self._ekle(self.mak_liste, m)
@@ -614,6 +673,94 @@ class AyarSayfasi(QWidget):
         self._varsayilan_doldur({v: a["vardiya_sef"].get(str(v), "") for v in VARDIYALAR})
         self.db_yolu.setText(self.ana.db_yolu)
         self._net_yaz()
+
+    def _mola_yedegi(self):
+        v = vt.son_dolu_ayar(self.ana.con, "mola_saatleri")
+        if not v:
+            from PySide6.QtCore import QSettings
+            try:
+                v = json.loads(str(QSettings("Teknorot", "VardiyaPerformans").value("yedek/mola_saatleri", "") or "null"))
+            except ValueError:
+                v = None
+        return v or None
+
+    def _mola_geri_yukle(self):
+        ms = self._mola_yedek or {}
+        for (v, anahtar), e in self.mola_saat.items():
+            tur, uc = anahtar.split("_")
+            ab = (ms.get(str(v)) or {}).get(tur) or ["", ""]
+            e.setText(ab[0] if uc == "bas" else ab[1])
+        self.mola_geri.hide()
+        self.ana.mesaj("Mola saatleri kutulara geri yüklendi; kalıcı olması için Kaydet'e basın.")
+
+    # ------------------------------------------------ kullanıcılar
+    def kullanici_yenile(self):
+        from . import kullanici as ku
+        k = getattr(self.ana, "kullanici", None)
+        yonetici = k is None or bool(k.get("yonetici"))
+        self.k_kart.setVisible(yonetici)
+        if not yonetici:
+            return
+        ad = dict(ku.SAYFALAR)
+        self.k_tablo.setRowCount(0)
+        for u in ku.liste(self.ana.con):
+            r = self.k_tablo.rowCount()
+            self.k_tablo.insertRow(r)
+            from PySide6.QtWidgets import QTableWidgetItem
+            self.k_tablo.setItem(r, 0, QTableWidgetItem(u["ad"]))
+            self.k_tablo.setItem(r, 1, QTableWidgetItem("Yönetici (tümü)" if u["yonetici"] else ", ".join(ad.get(x, x) for x in u["yetkiler"]) or "-"))
+            self.k_tablo.setItem(r, 2, QTableWidgetItem("etkin" if u["aktif"] else "kapalı"))
+            self.k_tablo.setItem(r, 3, QTableWidgetItem(str(u.get("son_giris") or "-")))
+
+    def _k_secili(self):
+        r = self.k_tablo.currentRow()
+        if r < 0 or not self.k_tablo.item(r, 0):
+            return None
+        from . import kullanici as ku
+        return ku.getir(self.ana.con, self.k_tablo.item(r, 0).text())
+
+    def _k_ekle(self):
+        from . import kullanici as ku
+        ilk = not ku.var_mi(self.ana.con)
+        if ku.KullaniciPenceresi.ac(self.ana.con, self):
+            if ilk:                              # ilk kullanıcı: artık giriş zorunlu; bu oturum yönetici olarak sürer
+                u = ku.liste(self.ana.con)
+                self.ana.kullanici = next((x for x in u if x["yonetici"]), None)
+                self.ana.yetki_uygula()
+                self.ana.mesaj("Kullanıcı sistemi açıldı: bundan sonra programda ve tarayıcıda giriş istenecek.")
+            self.kullanici_yenile()
+
+    def _k_duzenle(self):
+        from . import kullanici as ku
+        u = self._k_secili()
+        if u and ku.KullaniciPenceresi.ac(self.ana.con, self, u):
+            k = getattr(self.ana, "kullanici", None)
+            if k and k["ad"].lower() == u["ad"].lower():
+                yeni = ku.liste(self.ana.con)
+                self.ana.kullanici = next((x for x in yeni if x["ad"].lower() == k["ad"].lower()), k)
+                self.ana.yetki_uygula()
+            self.kullanici_yenile()
+
+    def _k_sil(self):
+        from PySide6.QtWidgets import QMessageBox
+        from . import kullanici as ku
+        u = self._k_secili()
+        if not u:
+            return
+        k = getattr(self.ana, "kullanici", None)
+        if k and k["ad"].lower() == u["ad"].lower():
+            QMessageBox.information(self, "Kullanıcı", "Giriş yaptığınız kullanıcıyı silemezsiniz.")
+            return
+        if QMessageBox.question(self, "Kullanıcı", f"'{u['ad']}' silinsin mi?") != QMessageBox.Yes:
+            return
+        try:
+            ku.sil(self.ana.con, u["ad"])
+        except ValueError as e:
+            QMessageBox.warning(self, "Kullanıcı", str(e))
+        if not ku.var_mi(self.ana.con):
+            self.ana.kullanici = None
+            self.ana.yetki_uygula()
+        self.kullanici_yenile()
 
     def kaydet(self):
         con = self.ana.con
@@ -627,7 +774,20 @@ class AyarSayfasi(QWidget):
                 b, s = self.mola_saat[(v, tur + "_bas")].text().strip(), self.mola_saat[(v, tur + "_bit")].text().strip()
                 if b and s:
                     ms.setdefault(str(v), {})[tur] = [b, s]
+        onceki = self.ana.ayar.get("mola_saatleri") or {}
+        if not ms and onceki:                   # dolu mola saatleri yanlışlıkla boş kaydedilmesin
+            from PySide6.QtWidgets import QMessageBox
+            c = QMessageBox.question(self, "Mola saatleri", "Mola saatleri kutuları boş. Kayıtlı mola saatleri silinsin mi?\n\n"
+                                     "'Hayır' derseniz kayıtlı saatler korunur (diğer ayarlar yine kaydedilir).",
+                                     QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if c != QMessageBox.Yes:
+                ms = onceki
         vt.ayar_yaz(con, "mola_saatleri", ms)
+        if ms:
+            from PySide6.QtCore import QSettings
+            QSettings("Teknorot", "VardiyaPerformans").setValue("yedek/mola_saatleri", json.dumps(ms))
+        vt.ayar_yaz(con, "pv_tolerans_dk", self.pv_tol.value())
+        vt.ayar_yaz(con, "pv_fazla_en_az_dk", self.pv_fazla.value())
         vt.ayar_yaz(con, "supheli_en_kisa_mola_dk", self.sup_min.value())
         vt.ayar_yaz(con, "calismayanlari_gizle", self.gizle.isChecked())
         vt.ayar_yaz(con, "makineler", self._adlar(self.mak_liste))

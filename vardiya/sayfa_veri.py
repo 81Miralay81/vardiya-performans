@@ -336,9 +336,10 @@ class CormindKarti(QFrame):
 
 
 class VeriSayfasi(QWidget):
-    def _meyer_ac(self):
-        from . import meyer
-        self._meyer = meyer.ac(self)
+    def _personel_veri_ac(self):
+        from . import personel_pencere
+        s = self.ana.sayfalar.get("personel")
+        self._pv_pencere = personel_pencere.ac(self.ana.db_yolu, self, kapaninca=(s.yenile if s is not None else None))
 
     def __init__(self, ana):
         super().__init__()
@@ -351,12 +352,12 @@ class VeriSayfasi(QWidget):
                              "formül hatası olan satırlar atlanır.", "AltBaslik"))
         self.cormind = CormindKarti(ana)
         kok.addWidget(self.cormind)
-        mey = QHBoxLayout()                     # Meyer (PDKS) deneme: program içinde açılır, veriler yakalanır
-        mey.addWidget(etiket("MEYER (PDKS) – deneme: personel giriş-çıkış, izin, rapor, gelmeyen", "AltBaslik"))
+        mey = QHBoxLayout()                     # personel veri: program içinde açılır, veriler kaydedilir
+        mey.addWidget(etiket("PERSONEL VERİ: giriş-çıkış, izin, gelmeyen, fazla çalışma", "AltBaslik"))
         mey.addStretch(1)
-        b_mey = QPushButton("Meyer'i aç")
-        b_mey.setToolTip("Meyer program içinde açılır; giriş bilgileri yalnızca bu bilgisayarda saklanır.")
-        b_mey.clicked.connect(self._meyer_ac)
+        b_mey = QPushButton("Personel verisini al")
+        b_mey.setToolTip("Personel veri ekranı program içinde açılır; giriş bilgileri yalnızca bu bilgisayarda saklanır.")
+        b_mey.clicked.connect(self._personel_veri_ac)
         mey.addWidget(b_mey)
         kok.addLayout(mey)
         self.alan = BirakAlani(self.dosya_sec, self.yukle)

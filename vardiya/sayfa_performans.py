@@ -482,8 +482,14 @@ class PerformansSayfasi(QWidget):
         try:
             from .servis import supheli_hesabi
             self._supheli = supheli_hesabi(self.ana.con, self.ana.ayar, sorted(gunler)) if s else {}
-        except Exception:  # noqa: BLE001  (şüpheli mola hesabı ana sayfayı hiçbir zaman bozmasın)
+        except Exception as e:  # noqa: BLE001  (şüpheli mola hesabı ana sayfayı hiçbir zaman bozmasın; hata teşhis kaydına)
             self._supheli = {}
+            try:
+                from . import teshis
+                import traceback
+                teshis.adim(f"HATA: şüpheli mola hesabı: {type(e).__name__}: {e} | {traceback.format_exc(limit=3)}")
+            except Exception:  # noqa: BLE001
+                pass
         self._kirilim_kapat()
         self._supheli_kapat()
         if self._secili and (not s or self._degerler(self._secili) is None):

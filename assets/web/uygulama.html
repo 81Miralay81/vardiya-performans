@@ -69,7 +69,17 @@ table.tikli tr[data-i]{cursor:pointer}table.tikli tr[data-i]:hover td{background
 .pencere .tablokutu{flex:1;max-height:none}
 .pencere .grafik{flex:1;height:auto;min-height:300px}
 @media (max-width:900px){.kok{grid-template-columns:1fr}nav{position:static;height:auto}.kpi{grid-template-columns:1fr 1fr}.ikili{grid-template-columns:1fr}}
+#giris{position:fixed;inset:0;background:rgba(21,9,88,.55);display:none;align-items:center;justify-content:center;z-index:200}
+#giris .kutu{background:#fff;border-radius:12px;padding:24px 26px;width:min(360px,92vw);box-shadow:0 20px 60px rgba(21,9,88,.35)}
+#giris .kutu img{display:block;margin:0 auto 12px;max-width:200px}
+#giris input{width:100%;box-sizing:border-box;margin:6px 0 10px;padding:8px 10px;border:1px solid var(--cizgi);border-radius:6px;font-size:14px}
+#giris .hata{color:#c0392b;min-height:18px;font-size:13px}
+nav a.cikis{margin-top:8px;font-size:12px;opacity:.8}
 </style></head><body>
+<div id="giris"><form class="kutu" id="girisform"><img src="/logo.png" alt=""><b>Vardiya Performans – Giriş</b>
+<div style="margin-top:10px">Kullanıcı adı</div><input id="g-ad" autocomplete="username">
+<div>Şifre</div><input id="g-sifre" type="password" autocomplete="current-password">
+<div class="hata" id="g-hata"></div><button class="ana" style="width:100%" type="submit">Giriş</button></form></div>
 <div class="kok">
 <nav>
   <img src="/logo.png" alt="">
@@ -80,6 +90,7 @@ table.tikli tr[data-i]{cursor:pointer}table.tikli tr[data-i]:hover td{background
   <a data-s="kayit">Kayıtlar</a>
   <a data-s="veri">Veri Aktar</a>
   <div class="alt" id="altbilgi"></div>
+  <div class="alt" id="kbilgi"></div>
 </nav>
 <main>
   <div class="kart donem">
@@ -671,9 +682,42 @@ function durumAl(){
     return d;
   });
 }
-durumAl().then(function(d){
-  var son = d.kapsam_son ? gun(d.kapsam_son) : new Date();
-  $('son').value = iso(son); $('ilk').value = iso(ekle(son, -6)); $('rgun').value = iso(son); yenile();
+// ------------------------------------------------------------------ kullanıcı girişi (Ayarlar'da kullanıcı varsa)
+var _fetch = window.fetch;
+window.fetch = function(){ return _fetch.apply(this, arguments).then(function(r){ if (r.status === 401) girisGoster(); return r; }); };
+function girisGoster(){ $('giris').style.display = 'flex'; setTimeout(function(){ $('g-ad').focus(); }, 50); }
+$('girisform').onsubmit = function(e){
+  e.preventDefault(); $('g-hata').textContent = '';
+  _fetch('/api/giris', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ad: $('g-ad').value, sifre: $('g-sifre').value})})
+    .then(function(r){ return r.json().then(function(d){ return [r.ok, d]; }); })
+    .then(function(x){ if (x[0]) location.reload(); else { $('g-hata').textContent = x[1].hata || 'Giriş yapılamadı'; $('g-sifre').value = ''; } });
+};
+var YETKI = {performans: 'performans', rapor: 'rapor', operator: 'operator', kayit: 'kayitlar', veri: 'veri'};
+function baslat(){
+  durumAl().then(function(d){
+    var son = d.kapsam_son ? gun(d.kapsam_son) : new Date();
+    $('son').value = iso(son); $('ilk').value = iso(ekle(son, -6)); $('rgun').value = iso(son); yenile();
+  });
+}
+_fetch('/api/oturum').then(function(r){ return r.json(); }).then(function(o){
+  if (o.gerekli && !o.ad) { girisGoster(); return; }
+  if (o.gerekli) {
+    var ilk = null;
+    document.querySelectorAll('nav a[data-s]').forEach(function(a){
+      var izin = o.yonetici || o.yetkiler.indexOf(YETKI[a.dataset.s]) >= 0;
+      a.style.display = izin ? '' : 'none'; if (izin && !ilk) ilk = a;
+    });
+    $('kbilgi').innerHTML = 'Kullanıcı: ' + esc(o.ad) + ' · <a class="cikis" href="#" id="cikisyap">Çıkış</a>';
+    $('cikisyap').onclick = function(e){ e.preventDefault(); _fetch('/api/cikis').then(function(){ location.reload(); }); };
+    var sec = document.querySelector('nav a.sec');
+    if (sec && sec.style.display === 'none' && ilk) {
+      document.querySelectorAll('nav a').forEach(function(x){ x.classList.toggle('sec', x === ilk); });
+      document.querySelectorAll('.sayfa').forEach(function(s){ s.classList.toggle('ac', s.id === 's-' + ilk.dataset.s); });
+      etkin = ilk.dataset.s;
+    }
+    if (!ilk) { document.querySelector('main').innerHTML = '<div class="kart">Bu kullanıcıya tarayıcıda açık sayfa verilmemiş.</div>'; return; }
+  }
+  baslat();
 });
 </script>
 </body></html>

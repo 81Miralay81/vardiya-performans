@@ -176,6 +176,11 @@ def main() -> int:
         QMessageBox.critical(None, "Vardiya Performans", f"Veri tabanı açılamadı:\n{yol}\n\n{ex}")
         return 1
     teshis.adim("ana pencere kuruldu")
+    from vardiya import kullanici as _ku
+    if _ku.var_mi(pencere.con):
+        acilis.hide()                                    # giriş penceresi açılış ekranının arkasında kalmasın
+    if not pencere.giris():
+        return 0
     from vardiya import veritabani as _vt
     _vt.sozluk_arkada_doldur(pencere.db_yolu)           # listeler için ad sözlüğü (bir defalık, arka planda)
     from vardiya import web_sunucu
