@@ -16,12 +16,34 @@ from typing import Dict, List, Optional
 BICIM = "%Y-%m-%d %H:%M:%S"
 TUR = 200_000
 
-SAYFALAR = (("performans", "Performans, Çalışma, Genel Duruş, Mola"), ("operator", "Operatör"),
-            ("personel", "Personel Durum"), ("personel_kimlik", "Personel kimlik bilgileri (fotoğraf, telefon)"),
-            ("rapor", "Raporlar ve Geçmiş"), ("kayitlar", "Kayıtlar"), ("veri", "Veri Aktar"), ("ayar", "Ayarlar"))
-MENU_YETKI = {"performans": "performans", "calisma": "performans", "durus": "performans", "mola": "performans",
-              "operator": "operator", "personel": "personel", "rapor": "rapor", "gecmis": "rapor", "kayitlar": "kayitlar",
+# Ekranlar (menüde görünen sayfalar) ve özellikler (sayfaların içindeki işlemler). Her biri kullanıcıya ayrı ayrı açılıp kapatılır.
+EKRANLAR = (("performans", "Performans"), ("calisma", "Çalışma"), ("durus", "Genel Duruş"), ("mola", "Mola"),
+            ("operator", "Operatör"), ("personel", "Personel Durum"), ("rapor", "Raporlar"), ("gecmis", "Geçmiş"),
+            ("kayitlar", "Kayıtlar"), ("veri", "Veri Aktar: Cormind'den veri çekme"), ("ayar", "Ayarlar"))
+OZELLIKLER = (("personel_veri", "Personel verisi çekme (Personel Veri penceresi)"),
+              ("personel_kimlik", "Personel kimlik bilgileri (fotoğraf, telefon)"),
+              ("grup_lideri", "Grup liderini düzeltme (Vardiya listesi)"),
+              ("excel", "Excel'e aktarma"))
+SAYFALAR = EKRANLAR + OZELLIKLER
+MENU_YETKI = {"performans": "performans", "calisma": "calisma", "durus": "durus", "mola": "mola",
+              "operator": "operator", "personel": "personel", "rapor": "rapor", "gecmis": "gecmis", "kayitlar": "kayitlar",
               "veri": "veri", "ayar": "ayar"}
+SURUM_ISARET = "_v2"     # bu işaret yoksa yetkiler eski (gruplu) düzende kaydedilmiştir
+_ESKI_ACILIM = {"performans": ("calisma", "durus", "mola"), "rapor": ("gecmis",), "veri": ("personel_veri",)}
+
+
+def etkin_yetkiler(ham: List[str]) -> List[str]:
+    """Eski düzende kaydedilmiş yetkileri yeni ayrıntılı düzene açar (eski kullanıcılar bir şey kaybetmesin)."""
+    y = set(ham or [])
+    if SURUM_ISARET not in y:
+        for k, ekler in _ESKI_ACILIM.items():
+            if k in y:
+                y.update(ekler)
+        if y:
+            y.update(("excel", "grup_lideri"))
+    y.discard(SURUM_ISARET)
+    return sorted(y)
+
 
 SEMA = """
 CREATE TABLE IF NOT EXISTS kullanici (ad TEXT PRIMARY KEY COLLATE NOCASE, tuz TEXT NOT NULL, ozet TEXT NOT NULL,
@@ -42,7 +64,7 @@ def _ozet(sifre: str, tuz: str) -> str:
 def _satir(r) -> dict:
     d = dict(r)
     try:
-        d["yetkiler"] = list(json.loads(d.get("yetkiler") or "[]"))
+        d["yetkiler"] = etkin_yetkiler(list(json.loads(d.get("yetkiler") or "[]")))
     except ValueError:
         d["yetkiler"] = []
     d.pop("tuz", None)
@@ -86,7 +108,7 @@ def kaydet(con, ad: str, sifre: Optional[str], yetkiler: List[str], yonetici: bo
         raise ValueError("Bu kullanıcı adı zaten var")
     if mevcut is None and con.execute("SELECT 1 FROM kullanici WHERE ad=?", (ad,)).fetchone():
         raise ValueError("Bu kullanıcı adı zaten var")
-    yet = json.dumps(sorted(set(yetkiler)), ensure_ascii=False)
+    yet = json.dumps(sorted(set(yetkiler) | {SURUM_ISARET}), ensure_ascii=False)
     if mevcut is None:
         tuz = secrets.token_hex(16)
         con.execute("INSERT INTO kullanici(ad, tuz, ozet, yetkiler, yonetici, aktif, olusturma) VALUES(?,?,?,?,?,?,?)",
@@ -237,7 +259,7 @@ class KullaniciPenceresi:
                                        QPushButton, QVBoxLayout, QHBoxLayout)
         d = QDialog(parent)
         d.setWindowTitle("Kullanıcı düzenle" if mevcut else "Yeni kullanıcı")
-        d.setMinimumWidth(460)
+        d.setMinimumWidth(720)
         l = QVBoxLayout(d)
         f = QFormLayout()
         ad = QLineEdit(mevcut["ad"] if mevcut else "")
@@ -257,15 +279,32 @@ class KullaniciPenceresi:
         aktif = QCheckBox("Etkin")
         aktif.setChecked(bool(mevcut["aktif"]) if mevcut else True)
         l.addWidget(yon)
-        g = QGroupBox("Görebileceği sayfalar")
-        gl = QVBoxLayout(g)
+        from PySide6.QtWidgets import QGridLayout, QWidget
+        g = QWidget()
+        gl = QHBoxLayout(g)
+        gl.setContentsMargins(0, 0, 0, 0)
         kutular = {}
-        for k, a in SAYFALAR:
-            c = QCheckBox(a)
-            c.setChecked(bool(mevcut and k in mevcut["yetkiler"]) or (not mevcut and k in ("performans", "operator")))
-            kutular[k] = c
-            gl.addWidget(c)
+        for baslik, liste_ in (("Görebileceği ekranlar", EKRANLAR), ("Kullanabileceği özellikler", OZELLIKLER)):
+            kutu = QGroupBox(baslik)
+            kl = QGridLayout(kutu)
+            for i, (k, a) in enumerate(liste_):
+                c = QCheckBox(a)
+                c.setChecked(bool(mevcut and k in mevcut["yetkiler"]) or (not mevcut and k in ("performans", "operator")))
+                kutular[k] = c
+                kl.addWidget(c, i, 0)
+            sat_ = QHBoxLayout()
+            for metin, deger in (("Tümünü seç", True), ("Hiçbiri", False)):
+                b = QPushButton(metin)
+                b.clicked.connect(lambda _=False, d_=deger, l_=liste_: [kutular[x].setChecked(d_) for x, _a in l_])
+                sat_.addWidget(b)
+            sat_.addStretch(1)
+            kl.addLayout(sat_, len(liste_), 0)
+            kl.setRowStretch(len(liste_) + 1, 1)
+            gl.addWidget(kutu, 1)
         l.addWidget(g)
+        not_ = QLabel("Personel verisi çekme verilen kişide 'Veri Aktar' ekranı açılır; Cormind çekme yetkisi yoksa o ekranda yalnızca personel bölümü görünür.")
+        not_.setWordWrap(True)
+        l.addWidget(not_)
         yon.toggled.connect(lambda v: g.setEnabled(not v))
         g.setEnabled(not yon.isChecked())
         l.addWidget(aktif)

@@ -352,14 +352,17 @@ class VeriSayfasi(QWidget):
                              "formül hatası olan satırlar atlanır.", "AltBaslik"))
         self.cormind = CormindKarti(ana)
         kok.addWidget(self.cormind)
-        mey = QHBoxLayout()                     # personel veri: program içinde açılır, veriler kaydedilir
+        from PySide6.QtWidgets import QWidget as _W
+        self.pv_satir = _W()
+        mey = QHBoxLayout(self.pv_satir)        # personel veri: program içinde açılır, veriler kaydedilir
+        mey.setContentsMargins(0, 0, 0, 0)
         mey.addWidget(etiket("PERSONEL VERİ: giriş-çıkış, izin, gelmeyen, fazla çalışma", "AltBaslik"))
         mey.addStretch(1)
         b_mey = QPushButton("Personel verisini al")
         b_mey.setToolTip("Personel veri ekranı program içinde açılır; giriş bilgileri yalnızca bu bilgisayarda saklanır.")
         b_mey.clicked.connect(self._personel_veri_ac)
         mey.addWidget(b_mey)
-        kok.addLayout(mey)
+        kok.addWidget(self.pv_satir)
         self.alan = BirakAlani(self.dosya_sec, self.yukle)
         kok.addWidget(self.alan)
         self.alan.hide()                        # veri artık Cormind'den doğrudan çekiliyor; Excel ile yükleme gizli
@@ -387,6 +390,11 @@ class VeriSayfasi(QWidget):
         alt.addWidget(sag, 3)
         kok.addLayout(alt, 1)
         self.yenile()
+
+    def yetki_uygula(self, yetkili):
+        """Cormind çekme ve personel verisi çekme ayrı yetkilerdir; yalnızca verilen bölüm görünür."""
+        self.cormind.setVisible(yetkili("veri"))
+        self.pv_satir.setVisible(yetkili("personel_veri"))
 
     @staticmethod
     def _tablo(basliklar):

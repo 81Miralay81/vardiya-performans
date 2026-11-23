@@ -140,3 +140,17 @@ def test_cekim_saati_hedef():
     assert OtoCekim.pv_saat_coz("17:30") == (17, 30) and OtoCekim.pv_saat_coz("bozuk") == (20, 0)
     assert OtoCekim.pv_hedef(datetime(2026, 11, 23, 17, 29), (17, 30)) == date(2026, 11, 21)
     assert OtoCekim.pv_hedef(datetime(2026, 11, 23, 17, 30), (17, 30)) == date(2026, 11, 22)
+
+
+def test_yetki_eski_kayit_acilir_yeni_kayit_aynen_kalir():
+    import sqlite3
+    from vardiya import kullanici as ku
+    assert set(ku.etkin_yetkiler(["performans", "rapor"])) >= {"calisma", "durus", "mola", "gecmis", "excel", "grup_lideri"}
+    assert ku.etkin_yetkiler(["performans", ku.SURUM_ISARET]) == ["performans"]
+    assert ku.etkin_yetkiler([]) == []
+    con = sqlite3.connect(":memory:"); con.row_factory = sqlite3.Row
+    ku.kaydet(con, "yonet", "1234", [], True)
+    ku.kaydet(con, "ali", "1234", ["personel_veri"], False)
+    a = [u for u in ku.liste(con) if u["ad"] == "ali"][0]
+    assert a["yetkiler"] == ["personel_veri"]
+    assert ku.yetkili(a, "personel_veri") and not ku.yetkili(a, "veri") and not ku.yetkili(a, "excel")

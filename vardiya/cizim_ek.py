@@ -73,10 +73,18 @@ def kirilim_grafigi(p: QPainter, rect: QRectF, liste: List[tuple], baslik: Optio
             p.drawRect(QRectF(cx - gen / 2, alan.bottom() - h, gen, h))
         if bolgeler is not None and kisim:
             bolgeler.append((QRectF(cx - slot / 2, alan.top(), slot, alan.height() + 36 * s), ad, kisim))
-        _yaz(p, QRectF(cx - slot / 2, alan.bottom() - h - 32 * s, slot, 30 * s), f"{_saat_dk(saat)} sa\n%{saat / toplam * 100:.0f}",
-             10.5 * s, True, ORTA, tema.YAZI)
-        _yaz(p, QRectF(cx - slot / 2, alan.bottom() + 3 * s, slot, 34 * s), etiket_iki_satir(ad), (10.5 if slot > 80 * s else 9.5) * s,
-             True, ORTA, tema.YAZI)
+        if slot >= 34 * s:                       # dar sütunlarda değer yazılmaz (üst üste biner)
+            _yaz(p, QRectF(cx - slot / 2, alan.bottom() - h - 32 * s, slot, 30 * s), f"{_saat_dk(saat)} sa\n%{saat / toplam * 100:.0f}",
+                 10.5 * s, True, ORTA, tema.YAZI)
+        if slot >= 34 * s:
+            _yaz(p, QRectF(cx - slot / 2, alan.bottom() + 3 * s, slot, 34 * s), etiket_iki_satir(ad), (10.5 if slot > 80 * s else 9.5) * s,
+                 True, ORTA, tema.YAZI)
+        else:                                    # dar sütun: ad dikey yazılır
+            p.save()
+            p.translate(cx, alan.bottom() + 4 * s)
+            p.rotate(-90)
+            _yaz(p, QRectF(-34 * s, -slot / 2, 32 * s, slot), ad, 8.5 * s, True, Qt.AlignRight | Qt.AlignVCenter, tema.YAZI)
+            p.restore()
     p.setPen(QPen(QColor("#9AA3B8"), max(1, s)))
     p.drawLine(alan.bottomLeft(), alan.bottomRight())
     p.restore()

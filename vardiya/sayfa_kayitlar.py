@@ -106,6 +106,9 @@ class KayitlarSayfasi(QWidget):
         self._ilk_kez = True
 
     # ------------------------------------------------------------------ veri
+    def yetki_uygula(self, yetkili):
+        self.b_excel.setVisible(yetkili("excel"))
+
     def yenile(self):
         kap = self.ana.kapsam()
         if self._ilk_kez and kap:

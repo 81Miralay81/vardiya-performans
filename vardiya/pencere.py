@@ -175,6 +175,13 @@ class AnaPencere(QMainWindow):
         from .kullanici import yetkili
         return yetkili(self.kullanici, anahtar)
 
+    def menu_izinli(self, sayfa: str) -> bool:
+        """Menüdeki bir ekran bu kullanıcıya açık mı (Veri Aktar: Cormind ya da personel verisi çekme yetkisinden biri yeter)."""
+        from .kullanici import MENU_YETKI
+        if sayfa == "veri":
+            return self.yetkili("veri") or self.yetkili("personel_veri")
+        return self.yetkili(MENU_YETKI.get(sayfa, sayfa))
+
     def giris(self) -> bool:
         """Kullanıcı sistemi açıksa giriş ister. False: vazgeçildi (program kapanır)."""
         from . import kullanici as ku
@@ -190,16 +197,15 @@ class AnaPencere(QMainWindow):
         return True
 
     def yetki_uygula(self):
-        from .kullanici import MENU_YETKI
         for a, b in self.menu.items():
-            b.setVisible(self.yetkili(MENU_YETKI.get(a, a)))
+            b.setVisible(self.menu_izinli(a))
         if self.kullanici:
             self.k_etiket.setText(f"Kullanıcı: {self.kullanici['ad']}" + (" (yönetici)" if self.kullanici.get("yonetici") else ""))
             self.k_cikis.show()
         else:
             self.k_etiket.setText("")
             self.k_cikis.hide()
-        izinli = [a for a in self.sira if self.yetkili(MENU_YETKI.get(a, a))]   # pencere henüz gösterilmemiş olabilir: isVisible kullanılmaz
+        izinli = [a for a in self.sira if self.menu_izinli(a)]   # pencere henüz gösterilmemiş olabilir: isVisible kullanılmaz
         for a in self.sira:
             self.sayfalar[a].setEnabled(a in izinli)
         acik = self.sira[self.yigin.currentIndex()]
@@ -208,6 +214,12 @@ class AnaPencere(QMainWindow):
                 self.sayfa_ac(izinli[0])
             else:
                 self.menu[acik].setChecked(False)
+        for sf in self.sayfalar.values():                 # sayfaların içindeki özellikler (Excel, personel verisi çekme…)
+            if hasattr(sf, "yetki_uygula"):
+                try:
+                    sf.yetki_uygula(self.yetkili)
+                except Exception as ex:  # noqa: BLE001
+                    teshis.adim(f"yetki uygulanamadı: {type(sf).__name__}: {ex}")
         if hasattr(self.sayfalar.get("ayar"), "kullanici_yenile"):
             self.sayfalar["ayar"].kullanici_yenile()
 
@@ -282,8 +294,7 @@ class AnaPencere(QMainWindow):
         self._mesaj_zamanlayici.start(7000)
 
     def sayfa_ac(self, anahtar: str):
-        from .kullanici import MENU_YETKI
-        if not self.yetkili(MENU_YETKI.get(anahtar, anahtar)):
+        if not self.menu_izinli(anahtar):
             return
         self.menu[anahtar].setChecked(True)
         self.yigin.setCurrentIndex(self.sira.index(anahtar))

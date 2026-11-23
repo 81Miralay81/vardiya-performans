@@ -156,7 +156,7 @@ class Sunucu:
                  "/api/rapor/bilgi": self.api_rapor_bilgi, "/api/rapor/sayfa.png": self.api_rapor_sayfa,
                  "/api/rapor.pdf": self.api_rapor_pdf, "/api/operator": self.api_operator, "/api/operator/ayrinti": self.api_operator_ayrinti, "/api/operator/cakisma": self.api_operator_cakisma, "/api/duran": self.api_duran, "/api/kirilim": self.api_kirilim,
                  "/api/kayitlar": self.api_kayitlar, "/api/personel": self.api_personel,
-                 "/api/personel/hafta": self.api_personel_hafta, "/api/personel/kart": self.api_personel_kart, "/api/personel/foto": self.api_personel_foto, "/api/cormind/cek": self.api_cek, "/api/cormind/durum": self.api_cek_durum,
+                 "/api/kirilim/operator": self.api_kirilim_operator, "/api/personel/hafta": self.api_personel_hafta, "/api/personel/kart": self.api_personel_kart, "/api/personel/foto": self.api_personel_foto, "/api/cormind/cek": self.api_cek, "/api/cormind/durum": self.api_cek_durum,
                  "/api/cormind/durdur": self.api_cek_durdur, "/api/outlook": self.api_outlook}.get(yol)
             if f is None:
                 return self._gonder(h, b"Bulunamadi", "text/plain; charset=utf-8", 404)
@@ -177,7 +177,7 @@ class Sunucu:
                 pass
 
     # -------------------------------------------------------------- kullanıcı oturumu (Ayarlar'da kullanıcı varsa zorunlu)
-    YETKI = {"/api/performans": "performans", "/api/tablo.png": "performans", "/api/kirilim": "performans", "/api/duran": "performans",
+    YETKI = {"/api/performans": "performans", "/api/tablo.png": "performans", "/api/kirilim": "performans", "/api/kirilim/operator": "performans", "/api/duran": "performans",
              "/api/rapor/bilgi": "rapor", "/api/rapor/sayfa.png": "rapor", "/api/rapor.pdf": "rapor", "/api/outlook": "rapor",
              "/api/operator": "operator", "/api/operator/ayrinti": "operator", "/api/operator/cakisma": "operator",
              "/api/kayitlar": "kayitlar", "/api/personel": "personel", "/api/personel/hafta": "personel",
@@ -514,6 +514,31 @@ class Sunucu:
         finally:
             con.close()
         self._json(h, {"vardiya": [[a, round(x, 4)] for a, x in k["vardiya"]], "operator": [[a, round(x, 4)] for a, x in k["operator"]]})
+
+    def api_kirilim_operator(self, h, q):
+        """Performans 4. ve 5. kırılım: bir operatörün (ya da 'Operatör yok') bir duruş türünde makineye ve zamana göre
+        dağılımı, zaman çizelgesi için o makinelerin kayıtları. Dönem kayıtları 2 dk önbellekte (her tıklamada yeniden okunmaz)."""
+        import time as _t
+        from .kirilim import donem_kayitlari, operator_ayrinti
+        con = self._con()
+        try:
+            ilk, son = self._aralik(q, con)
+            on = getattr(self, "_donem_onbellek", None)
+            if on and on[0] == (ilk, son) and _t.time() - on[1] < 120:
+                kayit = on[2]
+            else:
+                kayit = donem_kayitlari(con, ilk, son)
+                self._donem_onbellek = ((ilk, son), _t.time(), kayit)
+        finally:
+            con.close()
+        v = operator_ayrinti(kayit, ilk, son, (q.get("tip") or [""])[0], (q.get("op") or [""])[0])
+        ms = lambda d: d.strftime("%Y-%m-%d %H:%M:%S")  # noqa: E731  (tarayıcı yerel saat olarak okur)
+        from .hesap import durus_adi
+        self._json(h, {"ilk": ilk.isoformat(), "son": son.isoformat(),
+                       "makine": [[m, round(x, 4)] for m, x in v["makine"]],
+                       "gun": [[g.isoformat(), [round(x, 4) for x in l]] for g, l in v["gun"]],
+                       "bloklar": {m: [[ms(a), ms(b), (durus_adi(t, a, b) if st == "Duruş" else st), st, op, 1 if vu else 0]
+                                       for a, b, t, st, op, vu in lst] for m, lst in v["bloklar"].items()}})
 
     def api_duran(self, h, q):
         from . import operatorlu_durus, servis

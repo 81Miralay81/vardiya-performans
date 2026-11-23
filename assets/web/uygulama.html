@@ -135,6 +135,23 @@ nav a.cikis{margin-top:8px;font-size:12px;opacity:.8}
         <div class="kart"><button class="buyut" title="Büyüt">🔍</button><h3>Operatöre göre <span class="not">gri: duruş sürerken makinede operatör kayıtlı değil</span></h3><div class="grafik" id="g-ko" style="height:320px"></div></div>
       </div>
     </div>
+    <div id="opk" style="display:none">
+      <h3 style="margin:4px 0 8px;color:var(--lac)"><span id="opk-baslik"></span> <button class="kapat" id="opk-kapat" title="Kapat" style="position:static;margin-left:8px">✕</button></h3>
+      <div class="ikili" style="grid-template-columns:1fr 1.4fr">
+        <div class="kart"><button class="buyut" title="Büyüt">🔍</button><h3>Makineye göre <span class="not">tıklayın: zaman çizelgesi (tüm dönem)</span></h3><div class="grafik" id="g-om" style="height:320px"></div></div>
+        <div class="kart"><button class="buyut" title="Büyüt">🔍</button><h3>Zamana göre <span class="not">çubuğa tıklayın: o gün / vardiya</span></h3>
+          <div class="sekmeler" id="oz-mod"><button data-m="gun" class="sec">Gün</button><button data-m="vardiya">Vardiya</button><button data-m="gunv">Gün × vardiya</button></div>
+          <div class="grafik" id="g-oz" style="height:282px"></div></div>
+      </div>
+      <div class="kart" id="gantt-kart" style="display:none"><button class="buyut" title="Büyüt">🔍</button><button class="kapat" id="gantt-kapat" title="Kapat">✕</button>
+        <h3 id="gantt-baslik"></h3>
+        <div class="sekmeler" id="gantt-arac"><button data-g="ay">Ay</button><button data-g="hafta">Hafta</button><button data-g="gun">Gün</button><button data-g="saat">Saat</button>
+          <button data-g="geri">◀</button><button data-g="ileri">▶</button><button data-g="tum">Tümünü göster</button>
+          <span class="not" id="gantt-aralik" style="align-self:center;margin-left:8px"></span></div>
+        <div class="grafik" id="g-gantt" style="height:420px"></div>
+        <div class="not">Fare tekerleği: yakınlaştır · sürükle: kaydır · alttaki çubukla ya da sağ üstteki büyüteçle alan seçip yakınlaştırın · koyu bloklar: bu operatör ve bu duruş</div>
+      </div>
+    </div>
     <div class="kart" id="supheli" style="display:none"><button class="kapat" id="supheli-kapat" title="Kapat">✕</button>
       <h3 id="supheli-baslik"></h3><div id="supheli-icerik" style="overflow-x:auto"></div></div>
     <div style="margin-bottom:14px"><button class="ana" id="cormind-dug">Cormind rapor sistemi</button></div>
@@ -332,10 +349,10 @@ function ayrintiTik(anahtar, kisim){
 }
 // 3. kırılım: duruşun vardiya ve operatör dağılımı
 var secTip = null;
-function kirilimKapat(){ secTip = null; $('kirilim').style.display = 'none'; if (secili && secMod === 'durus' && son_perf) ciz('g-ayrinti', dokumSecenek(son_perf.dokum[secili] || []), ayrintiTik); }
+function kirilimKapat(){ opKapat(); secTip = null; $('kirilim').style.display = 'none'; if (secili && secMod === 'durus' && son_perf) ciz('g-ayrinti', dokumSecenek(son_perf.dokum[secili] || []), ayrintiTik); }
 function kirilimGoster(tip){
   if (secTip === tip && $('kirilim').style.display !== 'none') { kirilimKapat(); return; }
-  secTip = tip; var m = secili;
+  opKapat(); secTip = tip; var m = secili;
   ciz('g-ayrinti', dokumSecenek(son_perf.dokum[m] || []), ayrintiTik);
   $('kirilim').style.display = 'block';
   $('kirilim-baslik').innerHTML = esc(m) + ' · ' + esc(tip) + ' – vardiya ve operatör kırılımı <span class="not">hesaplanıyor…</span>';
@@ -344,20 +361,131 @@ function kirilimGoster(tip){
     var top = d.vardiya.reduce(function(s, x){ return s + x[1]; }, 0), rk = renk(tip, 0);
     $('kirilim-baslik').innerHTML = esc(m) + ' · ' + esc(tip) + ' – vardiya ve operatör kırılımı <span class="not">toplam ' + saat(top) + ' saat · aynı duruşa yeniden tıklarsanız kapanır</span>';
     ciz('g-kv', kirilimSecenek(d.vardiya.map(function(x){ return [x[0], x[1], '#150958']; })));
-    ciz('g-ko', kirilimSecenek(d.operator.map(function(x){ return [x[0], x[1], x[0] === 'Operatör yok' ? '#B0B4C0' : rk]; })));
+    ciz('g-ko', kirilimSecenek(d.operator.map(function(x){ return [x[0], x[1], x[0] === 'Operatör yok' ? '#B0B4C0' : rk]; })), opGoster);
     setTimeout(function(){ G['g-kv'].resize(); G['g-ko'].resize(); $('kirilim').scrollIntoView({behavior: 'smooth', block: 'nearest'}); }, 40);
   });
 }
 $('kirilim-kapat').onclick = kirilimKapat;
 function kirilimSecenek(l){
-  var top = l.reduce(function(s, x){ return s + x[1]; }, 0) || 1;
-  return {tooltip: {trigger: 'item', ozel: true}, grid: {left: 56, right: 16, top: 34, bottom: 50},
-    xAxis: {type: 'category', data: l.map(function(x){ return x[0].length > 9 ? x[0].replace(' ', '\n') : x[0]; }), axisLabel: {interval: 0, fontWeight: 600, fontSize: 11, lineHeight: 14}},
+  var top = l.reduce(function(s, x){ return s + x[1]; }, 0) || 1, cok = l.length > 12;   // çok çubuk: ad eğik, değer ipucunda
+  return {tooltip: {trigger: 'item', ozel: true}, grid: {left: 56, right: 16, top: 34, bottom: cok ? 62 : 50},
+    xAxis: {type: 'category', data: l.map(function(x){ return (!cok && x[0].length > 9) ? x[0].replace(' ', '\n') : x[0]; }), axisLabel: {interval: 0, fontWeight: 600, fontSize: cok ? 10 : 11, lineHeight: 14, rotate: cok ? 60 : 0}},
     yAxis: {type: 'value', axisLabel: {formatter: '{value} sa'}},
-    series: [{type: 'bar', barMaxWidth: 70, label: {show: true, position: 'top', fontWeight: 700},
-      data: l.map(function(x){ return {value: +x[1].toFixed(3), itemStyle: {color: x[2]}, tip: '<b>' + esc(x[0]) + '</b><br>' + saat(x[1]) + ' saat · %' + Math.round(100*x[1]/top),
+    series: [{type: 'bar', barMaxWidth: 70, label: {show: !cok, position: 'top', fontWeight: 700},
+      data: l.map(function(x){ return {value: +x[1].toFixed(3), anahtar: x[0], kisim: x[3] || '', itemStyle: x[4] ? {color: x[2], borderColor: '#150958', borderWidth: 3} : {color: x[2]}, tip: '<b>' + esc(x[0]) + '</b><br>' + saat(x[1]) + ' saat · %' + Math.round(100*x[1]/top),
         label: {formatter: saat(x[1]) + ' sa\n%' + Math.round(100*x[1]/top)}}; })}]};
 }
+// 4. ve 5. kırılım: operatörün bu duruştaki süresi (makineye / zamana göre) ve zaman çizelgesi
+var OP = {ad: null, veri: null, mod: 'gun', om: null, oz: null, t0: 0, t1: 0};
+var GUNK = ['Paz','Pzt','Sal','Çar','Per','Cum','Cmt'], VRENK = ['#150958', '#2a7f9e', '#e0a100'];
+function opKapat(){ OP.ad = null; OP.veri = null; $('opk').style.display = 'none'; $('gantt-kart').style.display = 'none'; }
+$('opk-kapat').onclick = function(){ opKapat(); kirilimYenidenCiz(); };
+$('gantt-kapat').onclick = function(){ $('gantt-kart').style.display = 'none'; OP.om = OP.oz = null; opCiz(); };
+function kirilimYenidenCiz(){ if (G['g-ko']) G['g-ko'].dispatchAction({type: 'downplay'}); }
+function opGoster(op){
+  if (!secTip || !secili) return;
+  if (OP.ad === op && $('opk').style.display !== 'none') { opKapat(); return; }
+  OP.ad = op; OP.veri = null; OP.om = OP.oz = null; var tip = secTip;
+  $('opk').style.display = 'block'; $('gantt-kart').style.display = 'none';
+  $('opk-baslik').innerHTML = esc(op) + ' · ' + esc(tip) + ' – makineye ve zamana göre <span class="not">hesaplanıyor…</span>';
+  api('/api/kirilim/operator', 'tip=' + encodeURIComponent(tip) + '&op=' + encodeURIComponent(op)).then(function(d){
+    if (OP.ad !== op || secTip !== tip) return;
+    OP.veri = d; OP.t0 = gun(d.ilk).getTime(); OP.t1 = ekle(gun(d.son), 1).getTime();
+    var top = d.makine.reduce(function(s, x){ return s + x[1]; }, 0);
+    $('opk-baslik').innerHTML = esc(op) + ' · ' + esc(tip) + ' – makineye ve zamana göre <span class="not">toplam ' + saat(top) + ' saat · ' + d.makine.length + ' makine · aynı operatöre yeniden tıklarsanız kapanır</span>';
+    opCiz();
+    setTimeout(function(){ G['g-om'].resize(); G['g-oz'].resize(); $('opk').scrollIntoView({behavior: 'smooth', block: 'nearest'}); }, 40);
+  });
+}
+function opCiz(){
+  var d = OP.veri; if (!d) return; var rk = OP.ad === 'Operatör yok' ? '#B0B4C0' : renk(secTip, 0);
+  ciz('g-om', kirilimSecenek(d.makine.map(function(x){ return [x[0], x[1], rk, 'om', x[0] === OP.om]; })), opTik);
+  ciz('g-oz', ozSecenek(d.gun, OP.mod), opTik);
+}
+document.querySelectorAll('#oz-mod button').forEach(function(b){ b.onclick = function(){
+  OP.mod = b.dataset.m; document.querySelectorAll('#oz-mod button').forEach(function(x){ x.classList.toggle('sec', x === b); }); OP.oz = null; opCiz(); }; });
+function ozSecenek(gl, mod){
+  var tip = function(a, x){ return '<b>' + a + '</b><br>' + saat(x) + ' saat'; }, kat, seri;
+  var etk = function(g){ var t = gun(g); return String(t.getDate()).padStart(2,'0') + '.' + String(t.getMonth()+1).padStart(2,'0') + '\n' + GUNK[t.getDay()]; };
+  if (mod === 'vardiya') {
+    kat = ['1. Vardiya', '2. Vardiya', '3. Vardiya'];
+    seri = [{type: 'bar', barMaxWidth: 70, label: {show: true, position: 'top', fontWeight: 700, formatter: function(p){ return p.value ? saat(p.value) : ''; }},
+      data: [0, 1, 2].map(function(v){ var x = gl.reduce(function(s, g){ return s + g[1][v]; }, 0);
+        return {value: +x.toFixed(3), anahtar: String(v + 1), kisim: 'oz_vardiya', tip: tip(kat[v], x),
+                itemStyle: OP.oz === String(v + 1) ? {color: VRENK[v], borderColor: '#d64541', borderWidth: 3} : {color: VRENK[v]}}; })}];
+  } else if (mod === 'gunv') {
+    kat = gl.map(function(g){ return etk(g[0]); });
+    seri = [0, 1, 2].map(function(v){ return {type: 'bar', name: (v + 1) + '. Vardiya', stack: 'v', barMaxWidth: 46,
+      data: gl.map(function(g){ var a = g[0] + '|' + (v + 1);
+        return {value: +g[1][v].toFixed(3), anahtar: a, kisim: 'oz_gunv', tip: tip(etk(g[0]).replace('\n', ' ') + ' · ' + (v + 1) + '. vardiya', g[1][v]),
+                itemStyle: OP.oz === a ? {color: VRENK[v], borderColor: '#d64541', borderWidth: 3} : {color: VRENK[v]}}; })}; });
+  } else {
+    kat = gl.map(function(g){ return etk(g[0]); });
+    seri = [{type: 'bar', barMaxWidth: 46, label: {show: true, position: 'top', fontSize: 10, formatter: function(p){ return p.value ? saat(p.value) : ''; }},
+      data: gl.map(function(g){ var x = g[1][0] + g[1][1] + g[1][2];
+        return {value: +x.toFixed(3), anahtar: g[0], kisim: 'oz_gun', tip: tip(etk(g[0]).replace('\n', ' '), x),
+                itemStyle: OP.oz === g[0] ? {color: '#150958', borderColor: '#d64541', borderWidth: 3} : {color: '#150958'}}; })}];
+  }
+  return {duz: true, tooltip: {trigger: 'item', ozel: true}, legend: mod === 'gunv' ? {top: 0} : undefined,
+    grid: {left: 52, right: 14, top: mod === 'gunv' ? 30 : 26, bottom: 44},
+    xAxis: {type: 'category', data: kat, axisLabel: {interval: 0, fontSize: 10, fontWeight: 600, lineHeight: 13}},
+    yAxis: {type: 'value', axisLabel: {formatter: '{value} sa'}}, series: seri};
+}
+function opTik(anahtar, kisim){
+  var d = OP.veri; if (!d || !anahtar) return;
+  var satir = d.makine.map(function(x){ return x[0]; }), vurguV = null, bas = OP.t0, bit = OP.t1, baslik;
+  if (kisim === 'om') { OP.om = anahtar; OP.oz = null; satir = [anahtar].concat(satir.filter(function(m){ return m !== anahtar; })); baslik = anahtar + ' seçili · tüm dönem'; }
+  else if (kisim === 'oz_gun') { OP.oz = anahtar; OP.om = null; bas = gun(anahtar).getTime(); bit = bas + 864e5; baslik = trT(anahtar); }
+  else if (kisim === 'oz_gunv') { OP.oz = anahtar; OP.om = null; var p = anahtar.split('|'), v = +p[1]; bas = gun(p[0]).getTime() + (v - 1) * 8 * 36e5; bit = bas + 8 * 36e5; baslik = trT(p[0]) + ' · ' + v + '. vardiya'; }
+  else if (kisim === 'oz_vardiya') { OP.oz = anahtar; OP.om = null; vurguV = +anahtar; baslik = 'yalnızca ' + anahtar + '. vardiya vurgulu · tüm dönem'; }
+  else return;
+  opCiz();
+  $('gantt-kart').style.display = 'block';
+  $('gantt-baslik').innerHTML = esc(OP.ad) + ' · ' + esc(secTip) + ' · zaman çizelgesi <span class="not">' + esc(baslik) + ' · satırlar: bu duruşun görüldüğü makineler</span>';
+  ganttCiz(satir, vurguV, bas, bit);
+  setTimeout(function(){ G['g-gantt'].resize(); $('gantt-kart').scrollIntoView({behavior: 'smooth', block: 'nearest'}); }, 40);
+}
+function trT(s){ var p = s.split('-'); return p[2] + '.' + p[1] + '.' + p[0]; }
+function bloKRenk(st, ad){ return st === 'Çalışıyor' ? '#3e9b2a' : st === 'Mola' ? '#f08c00' : renkAd(ad); }
+function ganttCiz(satir, vurguV, bas, bit){
+  var d = OP.veri, veri = [], n = satir.length, rk = renk(secTip, 0);
+  satir.forEach(function(m, i){ (d.bloklar[m] || []).forEach(function(b){
+    var a = zt(b[0]).getTime(), z = zt(b[1]).getTime(), vu = b[5] === 1 && (vurguV === null || Math.floor(new Date(a).getHours() / 8) + 1 === vurguV);
+    veri.push({value: [i, a, z, b[2], b[3], b[4], vu ? 1 : 0], itemStyle: {color: vu ? rk : bloKRenk(b[3], b[2]), opacity: vu ? 1 : 0.35}});
+  }); });
+  var o = {duz: true, animation: false,
+    tooltip: {formatter: function(p){ var v = p.value; var f = function(t){ var x = new Date(t); return String(x.getDate()).padStart(2,'0') + '.' + String(x.getMonth()+1).padStart(2,'0') + ' ' + hhmm(x); };
+      return '<b>' + esc(satir[v[0]]) + '</b><br>' + esc(v[3]) + (v[6] ? ' <b>(bu operatör)</b>' : '') + '<br>' + f(v[1]) + ' – ' + f(v[2]) + ' · ' + saat((v[2] - v[1]) / 36e5) + ' saat<br>Operatör: ' + esc(v[5]); }},
+    toolbox: {right: 10, feature: {dataZoom: {yAxisIndex: 'none', title: {zoom: 'Alan seçip yakınlaştır', back: 'Geri al'}}}},
+    grid: {left: 70, right: 24, top: 30, bottom: 60},
+    xAxis: {type: 'time', min: OP.t0, max: OP.t1, axisLabel: {hideOverlap: true, formatter: {day: '{dd}.{MM}', hour: '{HH}:{mm}', minute: '{HH}:{mm}'}}, splitLine: {show: true, lineStyle: {color: '#e8ebf2'}}},
+    yAxis: {type: 'category', data: satir, inverse: true, axisLabel: {fontWeight: 600}},
+    dataZoom: [{type: 'inside', xAxisIndex: 0, filterMode: 'weakFilter', startValue: bas, endValue: bit, minValueSpan: 5 * 6e4},
+               {type: 'slider', xAxisIndex: 0, filterMode: 'weakFilter', startValue: bas, endValue: bit, height: 18, bottom: 10, labelFormatter: function(v){ var x = new Date(v); return String(x.getDate()).padStart(2,'0') + '.' + String(x.getMonth()+1).padStart(2,'0') + ' ' + hhmm(x); }}],
+    series: [{type: 'custom', encode: {x: [1, 2], y: 0}, data: veri, renderItem: function(params, api){
+      var y = api.value(0), a = api.coord([api.value(1), y]), z = api.coord([api.value(2), y]), h = api.size([0, 1])[1] * (api.value(6) ? 0.7 : 0.5);
+      var r = echarts.graphic.clipRectByRect({x: a[0], y: a[1] - h / 2, width: Math.max(z[0] - a[0], 1), height: h},
+        {x: params.coordSys.x, y: params.coordSys.y, width: params.coordSys.width, height: params.coordSys.height});
+      return r && {type: 'rect', transition: [], shape: r, style: api.style()}; }}]};
+  $('g-gantt').style.height = Math.max(220, 70 + n * 34) + 'px';
+  if (G['g-gantt']) G['g-gantt'].resize();
+  ciz('g-gantt', o);
+  if (!G['g-gantt'].__vpOlay) { G['g-gantt'].__vpOlay = true; G['g-gantt'].on('datazoom', ganttAralikYaz); }
+  ganttAralikYaz();
+}
+function ganttPencere(){ var o = G['g-gantt'].getOption().dataZoom[0]; var a = o.startValue, b = o.endValue;
+  if (a == null || typeof a !== 'number') { a = OP.t0 + (OP.t1 - OP.t0) * (o.start || 0) / 100; b = OP.t0 + (OP.t1 - OP.t0) * (o.end || 100) / 100; } return [a, b]; }
+function ganttAralikYaz(){ var w = ganttPencere(), f = function(t){ var x = new Date(t); return String(x.getDate()).padStart(2,'0') + '.' + String(x.getMonth()+1).padStart(2,'0') + '.' + x.getFullYear() + ' ' + hhmm(x); };
+  $('gantt-aralik').textContent = f(w[0]) + ' – ' + f(w[1]); }
+document.querySelectorAll('#gantt-arac button').forEach(function(b){ b.onclick = function(){
+  if (!G['g-gantt']) return; var w = ganttPencere(), orta = (w[0] + w[1]) / 2, gen = w[1] - w[0], k = b.dataset.g, a, z;
+  var gen2 = {ay: 31 * 864e5, hafta: 7 * 864e5, gun: 864e5, saat: 36e5}[k];
+  if (gen2) { a = orta - gen2 / 2; z = orta + gen2 / 2; }
+  else if (k === 'geri') { a = w[0] - gen; z = w[1] - gen; }
+  else if (k === 'ileri') { a = w[0] + gen; z = w[1] + gen; }
+  else { a = OP.t0; z = OP.t1; }
+  if (a < OP.t0) { z += OP.t0 - a; a = OP.t0; } if (z > OP.t1) { a -= z - OP.t1; z = OP.t1; } a = Math.max(a, OP.t0);
+  G['g-gantt'].dispatchAction({type: 'dataZoom', startValue: a, endValue: z}); }; });
 // şüpheli mola zaman çizelgesi (SVG)
 function supheliKapat(){ $('supheli').style.display = 'none'; }
 $('supheli-kapat').onclick = supheliKapat;

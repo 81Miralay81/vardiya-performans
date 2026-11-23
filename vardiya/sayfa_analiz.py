@@ -108,6 +108,9 @@ class AnalizSayfasi(QWidget):
         self.tablo_scroll = sc
 
     # ---------------------------------------------------------------- çizimler
+    def yetki_uygula(self, yetkili):
+        self.b_excel.setVisible(yetkili("excel"))
+
     def _tablo_ciz(self, p, rect):
         s = self.ana.sonuc
         if s:

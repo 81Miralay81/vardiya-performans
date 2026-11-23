@@ -346,10 +346,12 @@ def kirilim_grafigi(a: dict) -> dict:
           "tip": f"<b>{ad}</b><br>{_saat_dk(sa)} saat · %{sa / toplam * 100:.0f}" + ("<br><i>tıklayın: ayrıntı</i>" if kisim else ""),
           "anahtar": ad if kisim else None, "kisim": kisim,
           "label": {"formatter": f"{_saat_dk(sa)} sa\n%{sa / toplam * 100:.0f}"}} for ad, sa, r in liste]
-    return {"title": _baslik(baslik, 14), "tooltip": _ipucu(), "grid": {"left": 56, "right": 16, "top": 64 if baslik else 40, "bottom": 50},
-            "xAxis": _eksen_x([etiket_iki_satir(x[0]) for x in liste], axisLabel={"color": YAZI, "fontWeight": 600, "interval": 0, "fontSize": 11, "lineHeight": 14}),
+    cok = len(liste) > 12                      # çok çubuk: adlar eğik, değerler ipucunda (üst üste binmesin)
+    return {"title": _baslik(baslik, 14), "tooltip": _ipucu(), "grid": {"left": 56, "right": 16, "top": 64 if baslik else 40, "bottom": 62 if cok else 50},
+            "xAxis": _eksen_x([x[0] if cok else etiket_iki_satir(x[0]) for x in liste],
+                              axisLabel={"color": YAZI, "fontWeight": 600, "interval": 0, "fontSize": 10 if cok else 11, "lineHeight": 14, "rotate": 60 if cok else 0}),
             "yAxis": {"type": "value", "axisLabel": {"color": SOLUK, "formatter": "{value} sa"}, "splitLine": {"lineStyle": {"color": CIZGI}}},
-            "series": [{"type": "bar", "data": d, "barMaxWidth": 70, "label": {"show": True, "position": "top", "color": YAZI, "fontWeight": 700, "fontSize": 11}}]}
+            "series": [{"type": "bar", "data": d, "barMaxWidth": 70, "label": {"show": not cok, "position": "top", "color": YAZI, "fontWeight": 700, "fontSize": 11}}]}
 
 
 def zaman_grafigi(a: dict) -> dict:

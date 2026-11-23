@@ -522,6 +522,9 @@ class OperatorSayfasi(QWidget):
         kok.addWidget(self.orta_kutu, 1)
 
     # ------------------------------------------------------------------
+    def yetki_uygula(self, yetkili):
+        self.b_excel.setVisible(yetkili("excel"))
+
     def showEvent(self, e):
         super().showEvent(e)
         if self._kirli:

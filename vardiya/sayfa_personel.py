@@ -418,6 +418,15 @@ class PersonelSayfasi(QWidget):
         self._kisayollar.setExclusive(True)
 
     # ================================================================ veri
+    def yetki_uygula(self, yetkili):
+        from PySide6.QtWidgets import QAbstractItemView
+        self._b_al.setVisible(yetkili("personel_veri"))
+        self._b_xl.setVisible(yetkili("excel"))
+        self.t_lider.setEditTriggers(QAbstractItemView.DoubleClicked | QAbstractItemView.EditKeyPressed
+                                     if yetkili("grup_lideri") else QAbstractItemView.NoEditTriggers)
+        if getattr(self, "_kisi", None):
+            self._kart_ciz()
+
     def _yetki(self, anahtar: str) -> bool:
         f = getattr(self.ana, "yetkili", None)
         return True if f is None else f(anahtar)
