@@ -638,3 +638,13 @@ def baskin_vardiya(gl: Iterable[Gun]) -> Dict[int, str]:
 
 def lider_mi(kisi: dict) -> bool:
     return GRUP_LIDERI in str((kisi or {}).get("pozisyon") or "").upper()
+
+
+def tumunu_sil(con) -> int:
+    """Programın kendi veri tabanındaki tüm personel verisini siler (sistemdeki kayıtlara dokunmaz). Dönüş: silinen gün sayısı."""
+    kur(con)
+    n = con.execute("SELECT COUNT(*) FROM pv_gun").fetchone()[0]
+    for t in ("pv_gun", "pv_personel", "pv_bakiye", "pv_izin_tur"):
+        con.execute(f"DELETE FROM {t}")
+    con.commit()
+    return n

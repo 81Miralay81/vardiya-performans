@@ -178,6 +178,11 @@ class AyarSayfasi(QWidget):
         self.pv_saat.setToolTip("Her gün bu saatte bir önceki günün personel verisi otomatik çekilir (yalnızca 'Otomatik çek' işaretli "
                                 "bilgisayar). Düzeltmeler ertesi gün yapıldığı için öğleden sonra / akşam bir saat seçin.")
         fp.addRow("Otomatik çekim saati (bir önceki gün)", self.pv_saat)
+        b_pv_sil = QPushButton("Personel verilerini sil")
+        b_pv_sil.setToolTip("Bu programın veri tabanındaki tüm personel verisini (giriş-çıkış, personel listesi, izin bilgileri) siler. "
+                            "Personel sistemindeki kayıtlara dokunmaz; sonra yeniden çekebilirsiniz.")
+        b_pv_sil.clicked.connect(self._pv_sil)
+        fp.addRow("", b_pv_sil)
         kp.layout().addLayout(fp)
         ic.addWidget(kp)
 
@@ -706,6 +711,20 @@ class AyarSayfasi(QWidget):
             e.setText(ab[0] if uc == "bas" else ab[1])
         self.mola_geri.hide()
         self.ana.mesaj("Mola saatleri kutulara geri yüklendi; kalıcı olması için Kaydet'e basın.")
+
+    def _pv_sil(self):
+        from PySide6.QtCore import QSettings
+        from PySide6.QtWidgets import QMessageBox
+        from . import personel_veri as pv
+        if QMessageBox.question(self, "Personel verileri", "Bu programdaki TÜM personel verisi silinsin mi?\n\n(Personel sistemindeki kayıtlara "
+                                "dokunulmaz; otomatik çekim baştan çekecek.)", QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
+            return
+        n = pv.tumunu_sil(self.ana.con)
+        QSettings("Teknorot", "VardiyaPerformans").remove("pveri/son_tam")
+        self.ana.mesaj(f"Personel verileri silindi ({n} kişi-gün).")
+        s = self.ana.sayfalar.get("personel")
+        if s is not None:
+            s.yenile()
 
     # ------------------------------------------------ kullanıcılar
     def kullanici_yenile(self):

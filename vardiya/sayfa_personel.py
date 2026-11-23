@@ -706,6 +706,10 @@ class PersonelSayfasi(QWidget):
             satir.append(("Vardiya düzeni", p.get("periyot")))
         if p.get("cikis_tarih"):
             satir.append(("İşten çıkış", f"<b style='color:{tema.KIRMIZI}'>{pv._tr(p['cikis_tarih'])}</b>"))
+        b = self._bakiye.get(sid)
+        if b:                                          # yalnızca izin bakiyesi alınabildiyse (deneme)
+            satir.append(("Yıllık izin", f"hak {b.get('hak') or 0:g} · kullanılan {b.get('kullanilan') or 0:g} · devir {b.get('devir') or 0:g}"
+                                         f" · <b>kalan {b.get('kalan') or 0:g}</b> <span style='color:#6b7285'>({str(b.get('guncel') or '')[:10]})</span>"))
         self.k_bilgi.setText("<table cellpadding='3'>" + "".join(
             f"<tr><td style='color:#6b7285;padding-right:14px'>{a}</td><td>{d}</td></tr>" for a, d in satir) + "</table>")
         o = self._ozet.get(sid)

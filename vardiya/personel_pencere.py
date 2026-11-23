@@ -52,7 +52,7 @@ _YAKALA = r"""
       try {
         if (!x.responseType || x.responseType === 'text') gonder({m: (x.__vpM || {}).m, u: (x.__vpM || {}).u, b: x.__vpGovde, r: x.__vpTekrar || ''}, x.responseText);
       } catch(e) {}
-      if (x.__vpTekrar) console.log('VPPVT|' + x.__vpTekrar + '|' + x.status);
+      if (x.__vpTekrar) { var t = ''; try { t = x.responseText || ''; } catch(e) {} console.log('VPPVT|' + x.__vpTekrar + '|' + x.status + '|' + t.length + '|' + t.charAt(0)); }
     });
     return yolla.apply(this, arguments);
   };
@@ -74,7 +74,7 @@ _YAKALA = r"""
   };
   window.__vpDurum = function(){
     var e = document.querySelector('input[type=password]');
-    return {hazir: Object.keys(window.__vpB).length > 0, giris: !!(e && e.offsetParent !== null)};
+    return {hazir: Object.keys(window.__vpB).length > 0, giris: !!(e && e.offsetParent !== null), basliklar: Object.keys(window.__vpB)};
   };
 })();
 """
@@ -153,7 +153,7 @@ def kimlik_yaz(k: str, s: str):
 
 
 SABLON_TURLERI = {"giris_cikis": "Giriş-çıkış listesi (Planlanan + Gerçekleşen)", "liste_aktif": "Personel listesi (Sicil · Aktifler)",
-                  "liste_cikan": "İşten çıkanlar (Sicil · İşten Çıkanlar)"}
+                  "liste_cikan": "İşten çıkanlar (Sicil · İşten Çıkanlar)", "bakiye": "İzin bakiyesi (deneme · izin formu)"}
 
 
 def sablon_oku(tur: str) -> Optional[dict]:
@@ -261,6 +261,8 @@ class PersonelVeriPenceresi(QDialog):
         self._gorev_zaman = 0.0
         self._gorev_bitti_fn: Optional[Callable[[int, int], None]] = None
         self._gorev_say = [0, 0]                       # başarılı, toplam
+        self._tani: list = []
+        self._gorev_etiket = ""
         self.kaydedici = _Kaydedici(db_yolu)
         self.kaydedici.sonuc.connect(self._kaydedildi)
         l = QVBoxLayout(self)
@@ -287,12 +289,27 @@ class PersonelVeriPenceresi(QDialog):
         self.yil = QComboBox()
         for y in range(_d.today().year, _d.today().year - 4, -1):
             self.yil.addItem(str(y), y)
-        self.b_yil = QPushButton("Seçili yılı ay ay al")
-        self.b_yil.setToolTip("Bir ayı elle listeledikten sonra program aynı listeyi seçili yılın her ayı için kendisi alır.")
+        from PySide6.QtWidgets import QCheckBox
+        self.ogren = QCheckBox("1) Öğren")
+        self.ogren.setToolTip("İşaretliyken sizin ekranda yaptığınız listelemeler 'öğrenilir' (program isteği kaydeder). "
+                              "Öğrendikten sonra işareti kaldırıp '2) Otomatik çek' ile deneyin.")
+        self.ogren.setChecked(True)
+        self.ogren.toggled.connect(lambda v: self.tani("Öğrenme " + ("açık: ekranda listelediğiniz istekler kaydedilecek" if v else "kapalı")))
+        self.b_yil = QPushButton("2) Otomatik çek (seçili yıl, ay ay)")
+        self.b_yil.setObjectName("Ana")
+        self.b_yil.setToolTip("Öğrenilen istekle seçili yılın her ayını (düne kadar) program kendisi alır; ardından personel listeleri "
+                              "ve (öğrenildiyse) izin bakiyeleri. Ekranda hiçbir şeye tıklamaz.")
         self.b_yil.clicked.connect(self._yil_al)
-        for w in (QLabel("Yıl"), self.yil, self.b_yil):
+        b_sifirla = QPushButton("Öğrenilenleri sıfırla")
+        b_sifirla.clicked.connect(self._sifirla)
+        b_tani = QPushButton("Tanı kaydını kaydet")
+        b_tani.setToolTip("Bu penceredeki adımların kaydı (oturum ve şifre bilgisi içermez) bir dosyaya yazılır; bana gönderebilirsiniz.")
+        b_tani.clicked.connect(self._tani_kaydet)
+        for w in (self.ogren, QLabel("   Yıl"), self.yil, self.b_yil):
             ust2.addWidget(w)
         ust2.addStretch(1)
+        ust2.addWidget(b_sifirla)
+        ust2.addWidget(b_tani)
         l.addLayout(ust2)
         self.sablon_et = QLabel("")
         self.sablon_et.setObjectName("AltBaslik")
@@ -358,15 +375,70 @@ class PersonelVeriPenceresi(QDialog):
             p.append(("✓ " if sablon_oku(t) else "✗ ") + ad)
         self.sablon_et.setText("Otomatik çekim için öğrenilenler: " + " · ".join(p))
 
+    # ------------------------------------------------------------ tanı kaydı (oturum / şifre bilgisi içermez)
+    def tani(self, metin: str):
+        satir = f"{time.strftime('%H:%M:%S')}  {metin}"
+        self._tani.append(satir)
+        self.liste.insertItem(0, satir) if hasattr(self, "liste") else None
+        try:
+            from . import teshis
+            teshis.adim("personel veri: " + metin)
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _tani_kaydet(self):
+        yol = os.path.join(_kok(), "personel_veri_tani.txt")
+        try:
+            with open(yol, "w", encoding="utf-8") as f:
+                f.write("\n".join(self._tani))
+            self.bilgi.setText(f"Tanı kaydı yazıldı: {yol}")
+            if hasattr(os, "startfile"):
+                os.startfile(_kok())
+        except OSError as e:
+            self.bilgi.setText(f"Yazılamadı: {e}")
+
+    def _sifirla(self):
+        for t in SABLON_TURLERI:
+            QSettings(*_AYAR).remove(f"pveri/sablon/{t}")
+        QSettings(*_AYAR).remove("pveri/son_tam")
+        self.ogren.setChecked(True)
+        self._sablon_yaz()
+        self.tani("Öğrenilenler sıfırlandı")
+
+    @staticmethod
+    def _yol(u: str) -> str:
+        """Tanı kaydı için yalnızca adresin yolu (sorgu değerleri yazılmaz)."""
+        from urllib.parse import urlparse
+        try:
+            p = urlparse(u)
+            return p.path + (f" (+{len(p.query.split('&'))} sorgu alanı)" if p.query else "")
+        except Exception:  # noqa: BLE001
+            return "?"
+
     def _sablon_kaydet(self, tur: str, meta: dict):
         if tur not in SABLON_TURLERI or meta.get("r") or not meta.get("u"):
             return                                   # programın kendi tekrar istekleri şablonu değiştirmez
+        if not self.ogren.isChecked():
+            return
         v = {"m": meta.get("m") or "GET", "u": meta["u"], "b": meta.get("b")}
+        ek = ""
         if tur == "giris_cikis":
             if not meta.get("ilk") or not meta.get("son"):
                 return
             v.update(ilk=meta["ilk"], son=meta["son"])
+            from datetime import date as _d
+            from . import personel_veri as pv
+            a, b = _d.fromisoformat(meta["ilk"]), _d.fromisoformat(meta["son"])
+            _, ok_u = pv.tarih_degistir(v["u"], a, b, a, b)
+            _, ok_b = pv.tarih_degistir(v["b"] or "", a, b, a, b)
+            ek = (f" · dönem {a:%d.%m.%Y}–{b:%d.%m.%Y} · tarih " + ("adreste" if ok_u else "") + (" gövdede" if ok_b else "")
+                  + ("" if ok_u or ok_b else "BULUNAMADI (otomatik ay değiştirilemez)"))
+        if tur == "bakiye":
+            if meta.get("sid") is None:
+                return
+            v["sid"] = int(meta["sid"])
         sablon_yaz(tur, v)
+        self.tani(f"öğrenildi: {SABLON_TURLERI[tur]} · {v['m']} {self._yol(v['u'])}" + (" · gövdeli" if v["b"] else "") + ek)
         self._sablon_yaz()
 
     # ------------------------------------------------------------ giriş
@@ -422,7 +494,7 @@ class PersonelVeriPenceresi(QDialog):
             meta = json.loads(meta_s)
         except ValueError:
             meta = {}
-        self.liste.insertItem(0, f"{time.strftime('%H:%M:%S')}  {aciklama}")
+        self.tani(("otomatik yanıt kaydedildi: " if meta.get("r") else "kaydedildi: ") + aciklama)
         self._sablon_kaydet(tur, meta)
         if tur == "giris_cikis" and not meta.get("r"):
             self._son_veri = time.time()
@@ -469,6 +541,7 @@ class PersonelVeriPenceresi(QDialog):
                 fn(*self._gorev_say)
             return
         etiket, m, u, b = self._gorevler.pop(0)
+        self._gorev_etiket = etiket
         self._gorev_id += 1
         self._gorev_bekle = self._gorev_id
         self._gorev_zaman = time.time()
@@ -478,11 +551,17 @@ class PersonelVeriPenceresi(QDialog):
 
     def _gorev_yanit(self, mesaj: str):
         try:
-            _, gid, durum = mesaj.split("|", 2)
-            gid, durum = int(gid), int(durum)
-        except ValueError:
+            p = mesaj.split("|")
+            gid, durum = int(p[1]), int(p[2])
+            uz, ilk = (int(p[3]) if len(p) > 3 and p[3] else 0), (p[4] if len(p) > 4 else "")
+        except (ValueError, IndexError):
             return
         if gid == self._gorev_bekle:
+            yorum = ("tamam" if 200 <= durum < 300 and ilk == "[" else
+                     "yanıt liste değil" if 200 <= durum < 300 else
+                     "oturum bilgisi istekle gitmedi (yetkisiz)" if durum in (401, 403) else
+                     "bağlantı hatası" if durum == 0 else "sunucu hatası")
+            self.tani(f"otomatik istek: {self._gorev_etiket} → durum {durum}, {uz} bayt · {yorum}")
             if 200 <= durum < 300:
                 self._gorev_say[0] += 1
             self._gorev_bekle = None
@@ -494,6 +573,7 @@ class PersonelVeriPenceresi(QDialog):
                 d = json.loads(d) if isinstance(d, str) else (d or {})
             except ValueError:
                 d = {}
+            self._son_basliklar = list(d.get("basliklar") or [])
             fn(bool(d.get("hazir")), bool(d.get("giris")))
         self.sayfa.runJavaScript("JSON.stringify(window.__vpDurum ? window.__vpDurum() : {hazir: false, giris: false})", 0, coz)
 
@@ -515,12 +595,26 @@ class PersonelVeriPenceresi(QDialog):
         return gorevler, ""
 
     def personel_gorevleri(self) -> list:
-        """Personel listesi ve işten çıkanlar (tek istek; kişi kişi istek yok)."""
+        """Personel listesi ve işten çıkanlar; izin bakiyesi öğrenildiyse (deneme) her aktif kişi için."""
+        from . import personel_veri as pv, veritabani as vt
         gorevler = []
         for t, ad in (("liste_aktif", "personel listesi"), ("liste_cikan", "işten çıkanlar")):
             s = sablon_oku(t)
             if s:
                 gorevler.append((ad, s["m"], s["u"], s.get("b")))
+        s = sablon_oku("bakiye")
+        if s and s.get("sid") is not None:
+            con = vt.ac(self.db_yolu)
+            try:
+                ad = {sid: p.get("ad") for sid, p in pv.personel(con).items()}
+                siciller = pv.aktif_siciller(con)
+            finally:
+                con.close()
+            for sid in siciller:
+                u, ok1 = pv.kimlik_degistir(s["u"], s["sid"], sid)
+                g, ok2 = pv.kimlik_degistir(s.get("b") or "", s["sid"], sid)
+                if ok1 or ok2:
+                    gorevler.append((f"izin bakiyesi: {pv.tr_baslik(ad.get(sid) or str(sid))}", s["m"], u, g if s.get("b") is not None else None))
         return gorevler
 
     def _yil_al(self):
@@ -531,15 +625,26 @@ class PersonelVeriPenceresi(QDialog):
             return
 
         def basla(hazir, giris):
+            self.tani(f"otomatik çekim isteği: {y} · oturum hazır: {'evet' if hazir and not giris else 'hayır'}"
+                      + (" (giriş ekranı açık)" if giris else "")
+                      + f" · sayfanın istek başlık adları: {', '.join(getattr(self, '_son_basliklar', [])) or 'yok'}")
             if not hazir or giris:
                 self.bilgi.setText("Önce giriş yapın (oturum açıkken program istekleri sayfanın kendi oturumuyla gönderir).")
                 return
             gorevler, hata = self.ay_gorevleri(_d(y, 1, 1), son)
             if hata:
+                self.tani("durdu: " + hata)
                 self.bilgi.setText(hata)
                 return
-            self._gorev_baslat(gorevler, lambda ok, n: self.bilgi.setText(
-                f"{y} yılı alındı: {ok}/{n} ay kaydedildi. Aynı gün ikinci kez gelirse çoğalmaz, yenisiyle güncellenir."))
+            n_ay = len(gorevler)
+            gorevler += self.personel_gorevleri()
+            self.tani(f"{n_ay} ay ve {len(gorevler) - n_ay} personel isteği gönderilecek")
+
+            def bitti(ok, n):
+                m = f"Otomatik çekim bitti: {ok}/{n} istek başarılı ({y}: {n_ay} ay). Aynı gün ikinci kez gelirse çoğalmaz, yenisiyle güncellenir."
+                self.tani(m)
+                self.bilgi.setText(m + " Sorun varsa 'Tanı kaydını kaydet' ile dosyayı bana gönderin.")
+            self._gorev_baslat(gorevler, bitti)
         self._hazir(basla)
 
     # ------------------------------------------------------------ otomatik çekim (her akşam)
