@@ -75,11 +75,9 @@ class _KirilimIs(QThread):
         from .kirilim import durus_kirilimi
         db_yolu, ilk, son, makine, tip = self.a
         try:
-            con = vt.ac(db_yolu)
-            try:
+            con, kilit = vt.okuma_baglantisi(db_yolu)       # sürekli açık okuma bağlantısı (önbellek sıcak kalır)
+            with kilit:
                 k = durus_kirilimi(con, ilk, son, makine, tip)
-            finally:
-                con.close()
         except Exception as e:  # noqa: BLE001
             k = {"hata": str(e)}
         self.bitti.emit(makine, tip, k)
@@ -351,12 +349,19 @@ class PerformansSayfasi(QWidget):
             return
         self._tip = tip
         self._kirilim = {}
+        anahtar = (min(gunler), max(gunler), m, tip)
+        onbellek = getattr(self, "_kirilim_bellek", None)
+        if onbellek is None or onbellek.get("_donem") != (min(gunler), max(gunler)):
+            onbellek = self._kirilim_bellek = {"_donem": (min(gunler), max(gunler))}
         self.k_baslik.setText(f"{m} · {tip} – vardiya ve operatör kırılımı")
         self.k_alt.setText("hesaplanıyor…")
         self.k_kirilim.show()
         for w in (self.g_detay, self.g_kv, self.g_ko):
             w.update()
         self._sc.ensureWidgetVisible(self.k_kirilim, 0, 30)
+        if anahtar in onbellek:                         # aynı dönemde daha önce hesaplandı: anında
+            self._kirilim_geldi(m, tip, onbellek[anahtar])
+            return
         is_ = _KirilimIs(self.ana.db_yolu, min(gunler), max(gunler), m, tip, self)
         is_.bitti.connect(self._kirilim_geldi)
         is_.finished.connect(is_.deleteLater)
@@ -369,6 +374,9 @@ class PerformansSayfasi(QWidget):
         if "hata" in k:
             self.k_alt.setText(f"Hesaplanamadı: {k['hata']}")
             return
+        gunler = self.ana.donem_gunleri()
+        if gunler and getattr(self, "_kirilim_bellek", None) is not None:
+            self._kirilim_bellek[(min(gunler), max(gunler), m, tip)] = k
         from .kirilim import OPERATOR_YOK
         renk = tema.durus_rengi(tip)
         self._kirilim = {"vardiya": [(a, x, tema.LACIVERT) for a, x in k["vardiya"]],
@@ -472,6 +480,7 @@ class PerformansSayfasi(QWidget):
             QTimer.singleShot(1500, lambda: [w.web_hazirla() for w in (self.g_detay, self.g_kv, self.g_ko)])
 
     def yenile(self):
+        self._kirilim_bellek = None                 # yeni veri / dönem: kırılım önbelleği sıfırlanır
         s, ayar = self.ana.sonuc, self.ana.hesap_ayar()
         self._mola_pay = 100.0 * ayar.mola_saat / ayar.net_saat
         self._mola_dk = ayar.mola_saat * 60.0

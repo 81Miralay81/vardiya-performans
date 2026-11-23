@@ -267,6 +267,26 @@ def sozluk_doldur(con: sqlite3.Connection) -> None:
 _SOZLUK_IS = None
 
 
+_OKUMA: dict = {}
+_OKUMA_KILIT = None
+
+
+def okuma_baglantisi(yol: str):
+    """Ayrıntı (kırılım) hesapları için arka planda tek, sürekli açık okuma bağlantısı: her tıklamada ağ diskinden yeni
+    bağlantı açılıp önbellek soğuk başlamasın, şema yeniden denetlenmesin. (bağlantı, kilit) döner; kilitle kullanın."""
+    import threading
+    global _OKUMA_KILIT
+    if _OKUMA_KILIT is None:
+        _OKUMA_KILIT = threading.Lock()
+    c = _OKUMA.get(yol)
+    if c is None:
+        c = sqlite3.connect(yol, timeout=30, check_same_thread=False)
+        c.row_factory = sqlite3.Row
+        c.execute("PRAGMA cache_size = -65536")
+        _OKUMA[yol] = c
+    return c, _OKUMA_KILIT
+
+
 def sozluk_arkada_doldur(yol: str) -> None:
     """Sözlüğü arka planda (kendi bağlantısıyla) hazırlar; program bu sırada donmadan kullanılabilir.
     Zaten çalışıyorsa ya da hazırsa bir şey yapmaz."""
