@@ -173,22 +173,68 @@ _EKRAN_DONEM = r"""
     try { e.dispatchEvent(new Event('blur', {bubbles: true})); } catch(err) {}
   };
   var v1 = bas.replace(/-/g, ayr), v2 = bit.replace(/-/g, ayr);
-  yaz(kutu[0], v1); kapat();
-  setTimeout(function(){
-    yaz(kutu[1], v2); kapat();
+  var gorunur = function(e){ return e && e.offsetParent !== null && e.getBoundingClientRect().width > 0; };
+  var r0 = kutu[0].getBoundingClientRect(), r1 = kutu[1].getBoundingClientRect(), cy = (r0.top + r0.bottom) / 2;
+  // sayfanın kendi ay seçimi: tarih kutularının yanındaki 'Ay' bağlantısı ve ◀ ▶ okları (iki tarihi de sayfa kendisi ayarlar)
+  var ayAc = Array.prototype.slice.call(document.querySelectorAll('a, span, label, button, li, div')).filter(function(e){
+    return gorunur(e) && e.children.length === 0 && (e.textContent || '').trim().toLocaleLowerCase('tr-TR') === 'ay'; })
+    .sort(function(a, b){ var ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect(); return Math.abs((ra.top + ra.bottom) / 2 - cy) + Math.abs(ra.left - r0.left) / 4 - (Math.abs((rb.top + rb.bottom) / 2 - cy) + Math.abs(rb.left - r0.left) / 4); })[0];
+  var okBul = function(sol){
+    var aday = Array.prototype.slice.call(document.querySelectorAll('a, button, i, span, svg, div, img')).filter(function(e){
+      if (!gorunur(e)) return false;
+      var r = e.getBoundingClientRect();
+      if (r.width > 60 || r.height > 60 || Math.abs((r.top + r.bottom) / 2 - cy) > 22) return false;
+      if (sol ? r.right > r0.left + 3 : r.left < r1.right - 3) return false;
+      var k = ((e.getAttribute && e.getAttribute('class')) || '') + ' ' + (e.textContent || '').trim();
+      return /chevron|angle|arrow|caret|prev|next|left|right|geri|ileri/i.test(k) || /^[<>‹›«»◀▶❮❯]$/.test((e.textContent || '').trim());
+    });
+    aday.sort(function(a, b){ var ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect(); return sol ? rb.right - ra.right : ra.left - rb.left; });
+    var e = aday[0];
+    return e ? (e.closest && e.closest('a, button, [ng-click], [onclick]')) || e : null;
+  };
+  var okSol = okBul(true), okSag = okBul(false);
+  var ayNo = function(v){ var p = v.trim().split(/[-.\/]/); return p.length === 3 ? (+p[2]) * 12 + (+p[1]) : null; };
+  var hedef = ayNo(v1), yol = 'yazma';
+  var bitir = function(){
+    var tanim = function(e){ var c = null; try { c = window.angular && angular.element(e).controller('ngModel'); } catch(err) {}
+      return [e.getAttribute('ng-model') || e.getAttribute('data-ng-model') || e.name || e.id || '?', (e.className || '').split(/\s+/).slice(0, 4).join('.'),
+              arac(e).join('+') || 'düz', c ? 'model=' + String(c.$modelValue).slice(0, 24) : 'modelsiz', (e.parentNode && e.parentNode.className || '').split(/\s+/).slice(0, 3).join('.')].join(' ; '); };
+    console.log('VPPVE|' + kutu[0].value + '|' + kutu[1].value + '|' + tanim(kutu[0]) + '|' + tanim(kutu[1]) + '|' + yol +
+                ' (Ay bağlantısı: ' + (ayAc ? 'var' : 'yok') + ', oklar: ' + (okSol ? 'var' : 'yok') + '/' + (okSag ? 'var' : 'yok') + ')');
+    dug[0].click();
+  };
+  var yazarak = function(){                     // yedek yol: kutulara yaz (önce başlangıç, sonra bitiş)
+    yol = 'yazma';
+    yaz(kutu[0], v1); kapat();
     setTimeout(function(){
-      if (kutu[0].value !== v1) yaz(kutu[0], v1);
-      if (kutu[1].value !== v2) yaz(kutu[1], v2);
-      kapat();
+      yaz(kutu[1], v2); kapat();
       setTimeout(function(){
-        var tanim = function(e){ var c = null; try { c = window.angular && angular.element(e).controller('ngModel'); } catch(err) {}
-          return [e.getAttribute('ng-model') || e.getAttribute('data-ng-model') || e.name || e.id || '?', (e.className || '').split(/\s+/).slice(0, 4).join('.'),
-                  arac(e).join('+') || 'düz', c ? 'model=' + String(c.$modelValue).slice(0, 24) : 'modelsiz', (e.parentNode && e.parentNode.className || '').split(/\s+/).slice(0, 3).join('.')].join(' ; '); };
-        console.log('VPPVE|' + kutu[0].value + '|' + kutu[1].value + '|' + tanim(kutu[0]) + '|' + tanim(kutu[1]));
-        dug[0].click();
-      }, 500);
+        if (kutu[0].value !== v1) yaz(kutu[0], v1);
+        if (kutu[1].value !== v2) yaz(kutu[1], v2);
+        kapat();
+        setTimeout(bitir, 500);
+      }, 900);
     }, 900);
-  }, 900);
+  };
+  if (!ayAc || !okSol || !okSag || hedef === null) { yazarak(); }
+  else {
+    ayAc.click();
+    setTimeout(function(){
+      var simdi = ayNo(kutu[0].value), fark = simdi === null ? null : hedef - simdi;
+      if (fark === null || Math.abs(fark) > 36) { yazarak(); return; }
+      var n = Math.abs(fark), ok = fark < 0 ? okSol : okSag;
+      var adim = function(){
+        if (n <= 0) {
+          setTimeout(function(){
+            if (kutu[0].value.trim() === v1) { yol = 'Ay + oklar'; bitir(); } else { yazarak(); }
+          }, 900);
+          return;
+        }
+        n--; ok.click(); setTimeout(adim, 800);
+      };
+      adim();
+    }, 1000);
+  }
   return JSON.stringify({kutu: kutu.length, dugme: dug.length, ayrac: ayr});
 })(%s, %s, %s);
 """
@@ -963,7 +1009,8 @@ class PersonelVeriPenceresi(QDialog):
     def _ekran_yazildi(self, mesaj: str):
         p = mesaj.split("|")
         if getattr(self, "_ekran_log", True) and self._ekran_bekle:
-            self.tani(f"ekran yolu {self._ekran_bekle[0]:%m.%Y}: kutularda okunan {p[1] if len(p) > 1 else '?'} / {p[2] if len(p) > 2 else '?'}; düğmeye basıldı")
+            self.tani(f"ekran yolu {self._ekran_bekle[0]:%m.%Y}: kutularda okunan {p[1] if len(p) > 1 else '?'} / {p[2] if len(p) > 2 else '?'}"
+                      f" ({p[5] if len(p) > 5 else 'yazma'}); düğmeye basıldı")
             if len(p) > 4 and not getattr(self, "_kutu_tanim_yazildi", False):
                 self._kutu_tanim_yazildi = True
                 self.tani(f"tarih kutusu 1: {p[3]}")
