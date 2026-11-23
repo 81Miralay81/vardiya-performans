@@ -17,7 +17,9 @@ from PySide6.QtCore import QObject, QSettings, QTimer, Signal
 from . import veritabani as vt
 
 GECE_SAATI = 1                             # her gece 01:00
-PV_SAATI = "20:00"                         # personel verisi varsayılan çekim saati (Ayarlar'dan değişir; dünün düzeltmeleri ertesi gün 18:00'e kadar yapılır)
+PV_SAATI = "20:00"                         # personel verisi akşam çekimi: dün yeniden çekilir ve teyit edilir (Ayarlar'dan değişir)
+PV_SABAH = "08:29"                         # personel verisi sabah çekimi: dün + bugün o ana kadar, eksikler tamamlanır
+PV_EN_ESKI = "2026-07-01"                  # kaynak sistemde bundan eski veri yok (Ayarlar'dan değişir)
 YENIDEN_DK = 30
 YARIM_SAAT = timedelta(minutes=30)         # Cormind gün sonu kayıtlarını kapatsın diye beklenen pay
 EN_GERI_GUN = 62                           # hiç geçmiş yoksa ya da çok eskiyse en fazla bu kadar geri gidilir
@@ -147,6 +149,42 @@ class OtoCekim(QObject):
         except ValueError:
             return None
 
+    def pv_sabah_saati(self) -> tuple:
+        return self.pv_saat_coz((getattr(self.ana, "ayar", {}) or {}).get("pv_sabah_saati", PV_SABAH))
+
+    def pv_en_eski(self) -> date:
+        try:
+            return date.fromisoformat(str((getattr(self.ana, "ayar", {}) or {}).get("pv_en_eski", PV_EN_ESKI)))
+        except ValueError:
+            return date.fromisoformat(PV_EN_ESKI)
+
+    @staticmethod
+    def pv_plan(simdi: datetime, sabah: tuple, aksam: tuple, son_sabah: Optional[date], son_aksam: Optional[date],
+                son_tam: Optional[date], en_eski: date) -> Optional[Tuple[str, date, date]]:
+        """Şimdi hangi çekim yapılmalı: ('aksam', ilk, son) dünü yeniden çeker ve teyit eder; ('sabah', ilk, son) dün + bugün
+        (o ana kadar) eksikleri tamamlar. Her biri günde bir kez. Arada kalmış günler (program kapalıyken) de eklenir."""
+        bugun = simdi.date()
+        dun = bugun - timedelta(days=1)
+        an = (simdi.hour, simdi.minute)
+        if an >= tuple(aksam) and son_aksam != bugun:
+            tur, son = "aksam", dun
+        elif an >= tuple(sabah) and son_sabah != bugun and son_aksam != bugun:
+            tur, son = "sabah", bugun
+        else:
+            return None
+        ilk = dun if son_tam is None else min(dun, son_tam + timedelta(days=1))
+        if son_tam is None:
+            ilk = min(dun, date(dun.year, dun.month, 1))
+        ilk = max(ilk, en_eski, dun - timedelta(days=EN_GERI_GUN))
+        return tur, ilk, max(son, ilk)
+
+    @staticmethod
+    def _pv_tarih(anahtar: str) -> Optional[date]:
+        try:
+            return date.fromisoformat(str(QSettings("Teknorot", "VardiyaPerformans").value(anahtar, "") or ""))
+        except ValueError:
+            return None
+
     def pv_kontrol(self):
         if not ayarda_acik() or self._pv_pencere is not None:
             return
@@ -156,27 +194,31 @@ class OtoCekim(QObject):
         if not sablon_oku("giris_cikis") or not all(kimlik_oku()):
             self._pv_yaz("hazır değil (Personel Veri penceresinde giriş yapıp bir ayı bir kez elle listeleyin)")
             return
-        saat = self.pv_saati()
-        saat_y = f"{saat[0]:02d}:{saat[1]:02d}"
-        hedef = self.pv_hedef(saat=saat)
-        son_tam = self.pv_son_tam()
-        if son_tam is not None and son_tam >= hedef:
+        sabah, aksam = self.pv_sabah_saati(), self.pv_saati()
+        sira_y = f"sabah {sabah[0]:02d}:{sabah[1]:02d} · akşam {aksam[0]:02d}:{aksam[1]:02d}"
+        plan = self.pv_plan(datetime.now(), sabah, aksam, self._pv_tarih("pveri/son_sabah"), self._pv_tarih("pveri/son_aksam"),
+                            self.pv_son_tam(), self.pv_en_eski())
+        if plan is None:
             if not self._pv_durum:
-                self._pv_yaz(f"{son_tam:%d.%m.%Y} dahil tam · sıradaki: {saat_y}")
+                st = self.pv_son_tam()
+                self._pv_yaz((f"{st:%d.%m.%Y} dahil teyitli · " if st else "") + f"sıradaki: {sira_y}")
             return
-        ay1 = date(hedef.year, hedef.month, 1)
-        ilk = ay1 if son_tam is None else min(son_tam + timedelta(days=1), ay1)
-        ilk = max(ilk, hedef - timedelta(days=EN_GERI_GUN))
-        self._pv_yaz(f"çekiliyor: {ilk:%d.%m.%Y} – {hedef:%d.%m.%Y} …")
+        tur, ilk, son = plan
+        ad = "sabah (eksikler tamamlanıyor)" if tur == "sabah" else "akşam (dün teyit ediliyor)"
+        self._pv_yaz(f"{ad}: {ilk:%d.%m.%Y} – {son:%d.%m.%Y} …")
 
-        def bitti(basarili: bool, metin: str, h=hedef):
+        def bitti(basarili: bool, metin: str, tur=tur, son=son):
             from . import teshis
             self._pv_pencere = None
-            teshis.adim(f"personel veri otomatik çekim: {metin}")
+            teshis.adim(f"personel veri otomatik çekim ({tur}): {metin}")
+            a = QSettings("Teknorot", "VardiyaPerformans")
             if basarili:
-                QSettings("Teknorot", "VardiyaPerformans").setValue("pveri/son_tam", h.isoformat())
+                bugun = datetime.now().date()
+                a.setValue("pveri/son_aksam" if tur == "aksam" else "pveri/son_sabah", bugun.isoformat())
+                if tur == "aksam":
+                    a.setValue("pveri/son_tam", son.isoformat())
                 self._pv_yeniden = None
-                self._pv_yaz(f"son çekim {datetime.now():%d.%m.%Y %H:%M}: {metin} · sıradaki: {saat_y}")
+                self._pv_yaz(f"son çekim ({'sabah' if tur == 'sabah' else 'akşam'}) {datetime.now():%d.%m.%Y %H:%M}: {metin} · sıradaki: {sira_y}")
                 try:
                     s = self.ana.sayfalar.get("personel")
                     if s is not None and s.isVisible():
@@ -185,7 +227,7 @@ class OtoCekim(QObject):
                     pass
             elif metin.startswith(ERTELENDI):
                 self._pv_yeniden = None
-                self._pv_yaz(f"{metin} · sıradaki: {saat_y}")
+                self._pv_yaz(f"{metin} · sıradaki: {sira_y}")
             else:
                 bugun = datetime.now().date()
                 if getattr(self, "_pv_hata_gun", None) != bugun:
@@ -197,7 +239,7 @@ class OtoCekim(QObject):
                 else:
                     self._pv_yeniden = datetime.now() + timedelta(minutes=YENIDEN_DK)
                     self._pv_yaz(f"hata ({datetime.now():%d.%m %H:%M}): {metin} · {self._pv_yeniden:%H:%M}'de yeniden denenecek")
-        self._pv_pencere = otomatik_calistir(self.ana.db_yolu, ilk, hedef, self.ana, bitti) or None
+        self._pv_pencere = otomatik_calistir(self.ana.db_yolu, ilk, son, self.ana, bitti) or None
 
     def _baska_cekim_var(self) -> bool:
         if self._is is not None and self._is.isRunning():

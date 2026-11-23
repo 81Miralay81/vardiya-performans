@@ -45,7 +45,16 @@ _YAKALA = r"""
     } catch(e) {}
   }
   var ac = XMLHttpRequest.prototype.open, yolla = XMLHttpRequest.prototype.send, baslik = XMLHttpRequest.prototype.setRequestHeader;
-  XMLHttpRequest.prototype.open = function(m, u){ this.__vpM = {m: m, u: u}; return ac.apply(this, arguments); };
+  XMLHttpRequest.prototype.open = function(m, u){
+    this.__vpM = {m: m, u: u};
+    try { if (/\/api\/(Dynamic|PersonD)/i.test(String(u)) && !(window.__vpYigin || {})[String(u).split('?')[0]]) {
+      var st = (new Error()).stack || '';
+      (window.__vpYigin = window.__vpYigin || {})[String(u).split('?')[0]] = 1;
+      var kare = st.split('\n').slice(2, 12).map(function(x){ return x.trim().replace(/\(?https?:\/\/[^)\s]*\/([^\/)\s?]+)(\?[^:)]*)?(:\d+:\d+)\)?/, '@$1$3'); });
+      console.log('VPPVS|' + String(u).split('?')[0] + '|' + kare.join(' <- '));
+    } } catch(e) {}
+    return ac.apply(this, arguments);
+  };
   function baslikUygun(k){ return !/^(content-length|x-signalr|x-requested-with$)/i.test(k); }
   XMLHttpRequest.prototype.setRequestHeader = function(k, v){ try { if (baslikUygun(k)) { (this.__vpH = this.__vpH || {})[k] = v; } } catch(e) {} return baslik.apply(this, arguments); };
   window.__vpBekleyen = 0;
@@ -237,6 +246,80 @@ _EKRAN_DONEM = r"""
   }
   return JSON.stringify({kutu: kutu.length, dugme: dug.length, ayrac: ayr});
 })(%s, %s, %s);
+"""
+
+# İzin formu yolu: Sicil Liste ekranında bir kişiyi tek başına işaretleyip 'İzin Talep Formu'nu açar (sayfa o kişinin izin
+# bakiyesini ve kişi kartını getirir), sonra pencereyi kapatıp işareti kaldırır. Forma hiçbir şey yazılmaz, Kaydet'e basılmaz.
+_FORM_ORTAK = r"""
+  var gor = function(e){ if (!e || !document.body.contains(e)) return false; var r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(e).visibility !== 'hidden'; };
+  var metin = function(e){ return ((e.textContent || e.value || '') + '').replace(/\s+/g, ' ').trim(); };
+  var kucuk = function(t){ return t.toLocaleLowerCase('tr-TR'); };
+  var modal = function(){ return Array.prototype.slice.call(document.querySelectorAll('.modal, [role=dialog], .ui-dialog, .k-window, .jqx-window, .modal-dialog')).filter(gor)
+      .filter(function(e){ return /izin talep/i.test(kucuk(metin(e)).slice(0, 400)); })[0] || null; };
+  var kapatDug = function(m){ var a = Array.prototype.slice.call((m || document).querySelectorAll('button, a, span, i, div')).filter(gor).filter(function(e){
+      var t = metin(e); return e.children.length < 2 && (t === '×' || t === 'x' || t === 'X' || kucuk(t) === 'kapat' || /close/.test((e.getAttribute('class') || '') + ' ' + (e.getAttribute('aria-label') || ''))); });
+    a.sort(function(x, y){ return (kucuk(metin(x)) === 'kapat') - (kucuk(metin(y)) === 'kapat'); }); return a[0] || null; };
+  var baslikID = function(){ return Array.prototype.slice.call(document.querySelectorAll('th, [role=columnheader], .jqx-grid-column-header, .k-header, div, span')).filter(gor)
+      .filter(function(e){ return e.children.length < 3 && metin(e) === 'ID'; })
+      .sort(function(a, b){ return a.getBoundingClientRect().top - b.getBoundingClientRect().top; })[0] || null; };
+  var secili = function(){ var m = /Selected Items:\s*(\d+)/i.exec(document.body.innerText || ''); return m ? +m[1] : null; };
+  var satirBul = function(id){
+    var h = baslikID(); if (!h) return null; var hr = h.getBoundingClientRect();
+    var hucre = Array.prototype.slice.call(document.querySelectorAll('td, [role=gridcell], .jqx-grid-cell, div, span')).filter(gor).filter(function(e){
+      if (e.children.length > 1 || metin(e) !== String(id)) return false; var r = e.getBoundingClientRect();
+      return r.top > hr.bottom && r.left < hr.right + 4 && r.right > hr.left - 4; })[0];
+    if (!hucre) return null;
+    var hy = hucre.getBoundingClientRect(), cy = (hy.top + hy.bottom) / 2;
+    var kutu = Array.prototype.slice.call(document.querySelectorAll('input[type=checkbox], [class*="checkbox"], [role=checkbox]')).filter(gor).filter(function(e){
+      var r = e.getBoundingClientRect(); return Math.abs((r.top + r.bottom) / 2 - cy) < Math.max(8, hy.height / 2) && r.right <= hy.left + 2; })
+      .sort(function(a, b){ return a.getBoundingClientRect().left - b.getBoundingClientRect().left; })[0] || null;
+    return {hucre: hucre, kutu: kutu};
+  };
+  var suzgec = function(){ var h = baslikID(); if (!h) return null; var hr = h.getBoundingClientRect();
+    return Array.prototype.slice.call(document.querySelectorAll('input[type=text], input:not([type])')).filter(gor).filter(function(e){
+      var r = e.getBoundingClientRect(); return r.top >= hr.top - 2 && r.top < hr.bottom + 60 && r.left < hr.right && r.right > hr.left; })[0] || null; };
+  var yazKutu = function(e, v){ var ata = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; e.focus(); ata.call(e, v);
+    ['input', 'change', 'keyup'].forEach(function(o){ e.dispatchEvent(new Event(o, {bubbles: true})); });
+    e.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', keyCode: 13, which: 13, bubbles: true}));
+    e.dispatchEvent(new KeyboardEvent('keyup', {key: 'Enter', keyCode: 13, which: 13, bubbles: true}));
+    try { if (window.angular) { var c = angular.element(e).controller('ngModel'); if (c) { c.$setViewValue(v); var sc = angular.element(e).scope(); if (sc && !sc.$root.$$phase) sc.$apply(); } } } catch(err) {} };
+  var tikla = function(e){ ['mousedown', 'mouseup', 'click'].forEach(function(o){ e.dispatchEvent(new MouseEvent(o, {bubbles: true, cancelable: true, view: window})); }); };
+"""
+
+_FORM_AC = r"""
+(function(id, sayfa){
+""" + _FORM_ORTAK + r"""
+  if (sayfa && location.hash !== sayfa) { location.hash = sayfa; return JSON.stringify({git: 1}); }
+  if (!sayfa && !baslikID()) {
+    var men = Array.prototype.slice.call(document.querySelectorAll('a, span, li')).filter(gor).filter(function(e){ return kucuk(metin(e)) === 'sicil liste'; })[0];
+    if (men) { tikla(men); return JSON.stringify({git: 1}); }
+  }
+  var m = modal(); if (m) { var k = kapatDug(m); if (k) tikla(k); return JSON.stringify({bekle: 'açık pencere kapatıldı'}); }
+  if (!baslikID()) return JSON.stringify({bekle: 'Sicil Liste tablosu bekleniyor'});
+  var sat = satirBul(id), s = suzgec(), not = [];
+  if (!sat && s) {
+    if (s.value !== String(id)) { yazKutu(s, String(id)); return JSON.stringify({bekle: 'ID süzgecine yazıldı'}); }
+  }
+  if (!sat) return JSON.stringify({yok: 'satır bulunamadı', suzgec: !!s});
+  var sc = secili();
+  if (sc !== null && sc > 1) return JSON.stringify({yok: 'birden çok kişi işaretli (' + sc + ')'});
+  if (sc === 0 || sc === null) { tikla(sat.kutu || sat.hucre); not.push(sat.kutu ? 'onay kutusu' : 'hücre'); }
+  var bag = Array.prototype.slice.call(document.querySelectorAll('a, button, span')).filter(gor).filter(function(e){ return e.children.length < 2 && kucuk(metin(e)) === 'izin talep formu'; })[0];
+  if (!bag) return JSON.stringify({yok: "'İzin Talep Formu' bağlantısı bulunamadı"});
+  setTimeout(function(){ var n = secili(); if (n === null || n === 1) tikla(bag); else console.log('VPPVF|' + id + ': işaretli kişi sayısı ' + n + ', form açılmadı'); }, 600);
+  return JSON.stringify({acildi: 1, suzgec: !!s, kutu: !!sat.kutu, secili: sc, not: not.join(',')});
+})(%s, %s);
+"""
+
+_FORM_KAPAT = r"""
+(function(id){
+""" + _FORM_ORTAK + r"""
+  var m = modal(); if (m) { var k = kapatDug(m); if (k) { tikla(k); return JSON.stringify({bekle: 'pencere kapatılıyor'}); } return JSON.stringify({yok: 'kapatma düğmesi bulunamadı'}); }
+  var sat = satirBul(id), sc = secili();
+  if (sat && sc && sc > 0) { tikla(sat.kutu || sat.hucre); return JSON.stringify({bekle: 'işaret kaldırılıyor'}); }
+  var s = suzgec(); if (s && s.value) { yazKutu(s, ''); return JSON.stringify({bekle: 'süzgeç temizleniyor'}); }
+  return JSON.stringify({tamam: 1});
+})(%s);
 """
 
 import weakref
@@ -496,6 +579,11 @@ class PersonelVeriPenceresi(QDialog):
                     ust_._gorev_yanit(mesaj)
                 elif mesaj.startswith("VPPVE|"):
                     ust_._ekran_yazildi(mesaj)
+                elif mesaj.startswith("VPPVS|"):
+                    p_ = mesaj.split("|", 2)
+                    ust_.tani(f"teşhis: {p_[1] if len(p_) > 1 else '?'} isteğini hazırlayan işlevler: {p_[2][:600] if len(p_) > 2 else '?'}")
+                elif mesaj.startswith("VPPVF|"):
+                    ust_.tani("izin formu yolu: " + mesaj[6:][:400])
         self.web = QWebEngineView()
         self.sayfa = _Sayfa(self.profil, self.web)
         self.web.setPage(self.sayfa)
@@ -579,7 +667,7 @@ class PersonelVeriPenceresi(QDialog):
             return                                   # programın kendi tekrar istekleri şablonu değiştirmez
         if not self.ogren.isChecked():
             return
-        v = {"m": meta.get("m") or "GET", "u": meta["u"], "b": meta.get("b"), "ct": meta.get("ct") or ""}
+        v = {"m": meta.get("m") or "GET", "u": meta["u"], "b": meta.get("b"), "ct": meta.get("ct") or "", "sayfa": meta.get("s") or ""}
         ek = ""
         if tur == "giris_cikis":
             if not meta.get("ilk") or not meta.get("son"):
@@ -657,6 +745,8 @@ class PersonelVeriPenceresi(QDialog):
             meta = {}
         self.tani(("uyarı: " if tur == "eksik_liste" else "otomatik yanıt kaydedildi: " if meta.get("r") else "kaydedildi: ") + aciklama)
         self._sablon_kaydet(tur, meta)
+        if tur in ("bakiye", "kisi_karti"):
+            self._form_yanit(tur, meta)
         if tur == "eksik_liste" and getattr(self, "_ekran_bekle", None):
             a, _b = self._ekran_bekle
             self.tani(f"ekran yolu {a:%m.%Y}: gelen liste eksik olduğu için bu ay alınmadı")
@@ -832,8 +922,26 @@ class PersonelVeriPenceresi(QDialog):
                 m = f"Otomatik çekim bitti ({y}): {aciklama}. Aynı gün ikinci kez gelirse çoğalmaz, yenisiyle güncellenir."
                 self.tani(m)
                 self.bilgi.setText(m + " Sorun varsa 'Tanı kaydını kaydet' ile dosyayı bana gönderin.")
-            self.donem_cek(_d(y, 1, 1), son, bitti)
+            ilk = max(_d(y, 1, 1), self._en_eski())
+            if ilk > son:
+                self.bilgi.setText(f"{y} için çekilecek gün yok (personel verisi en eski tarih: {self._en_eski():%d.%m.%Y}).")
+                return
+            self.donem_cek(ilk, son, bitti)
         self._hazir(basla)
+
+    def _en_eski(self):
+        """Personel sisteminde bundan eski veri yok (Ayarlar > Personel verisi en eski tarih)."""
+        from datetime import date as _d
+        from . import veritabani as vt
+        from .oto_cekim import PV_EN_ESKI
+        try:
+            con = vt.ac(self.db_yolu)
+            try:
+                return _d.fromisoformat(str(vt.ayar_oku(con).get("pv_en_eski", PV_EN_ESKI)))
+            finally:
+                con.close()
+        except Exception:  # noqa: BLE001
+            return _d.fromisoformat(PV_EN_ESKI)
 
     # ------------------------------------------------------------ otomatik çekim (her akşam)
     def _oto_hazir_mi(self):
@@ -852,7 +960,8 @@ class PersonelVeriPenceresi(QDialog):
         ilk, son = self._oto_aralik
 
         def bitti(ok, n, aciklama):
-            self._otomatik_bitir(ok > 0 or n == 0, f"{ilk:%d.%m.%Y} – {son:%d.%m.%Y}: {aciklama}")
+            eksik = getattr(self, "_form_eksik", [])           # yıllık izin / işe giriş eksik kişi varsa tamam denmez
+            self._otomatik_bitir((ok > 0 or n == 0) and not eksik, f"{ilk:%d.%m.%Y} – {son:%d.%m.%Y}: {aciklama}")
         self.donem_cek(ilk, son, bitti)
 
     # ------------------------------------------------------------ birleşik akış: aylar (istekle ya da ekran yoluyla) + personel
@@ -875,12 +984,30 @@ class PersonelVeriPenceresi(QDialog):
         pers = self.personel_gorevleri()
 
         def personel_sonra(ok_ay, n_ay, yol):
-            def son_(ok, n):
-                bitti(ok_ay + ok, n_ay + n, f"{ok_ay}/{n_ay} ay ({yol}), personel {ok}/{n} istek")
+            def form_sonra(ok, n):
+                from . import personel_veri as pv, veritabani as vt
+                con = vt.ac(self.db_yolu)
+                try:
+                    eksikler = pv.kisi_eksikleri(con, 7)          # bakiyesi / işe girişi yok ya da 7 günden eski
+                finally:
+                    con.close()
+
+                def bitti_form(eksik):
+                    self._form_eksik = eksik
+                    ad = getattr(self, "_form_ad", {})
+                    ek = (f" · izin formu: {len(eksikler) - len(eksik)}/{len(eksikler)} kişi tamam"
+                          + (f" · EKSİK ({len(eksik)} kişi, yıllık izin / işe giriş alınamadı): " + ", ".join(ad.get(x, str(x)) for x in eksik[:15])
+                             if eksik else "") if eksikler else " · yıllık izin ve işe giriş bilgileri güncel")
+                    bitti(ok_ay + ok, n_ay + n, f"{ok_ay}/{n_ay} ay ({yol}), personel {ok}/{n} istek" + ek)
+                if eksikler:
+                    self._form_baslat(eksikler, bitti_form)
+                else:
+                    bitti_form([])
+            self._form_eksik = []
             if pers:
-                self._gorev_baslat(pers, son_)
+                self._gorev_baslat(pers, form_sonra)
             else:
-                son_(0, 0)
+                form_sonra(0, 0)
         if hata == "TARIH_YOK":
             from . import personel_veri as pv
             aylar = pv.aylar(ilk, son)
@@ -1006,6 +1133,121 @@ class PersonelVeriPenceresi(QDialog):
         else:
             self.tani(f"ekran yolu {a:%m.%Y}: gelen dönem farklı ({gi:%d.%m.%Y} – {gs:%d.%m.%Y}); tarih kutuları değişmemiş olabilir")
 
+    # ------------------------------------------------------------ izin formu yolu (kişi kişi izin bakiyesi + kişi kartı)
+    def _form_baslat(self, siciller: list, bitince: Callable[[list], None]):
+        from . import personel_veri as pv, veritabani as vt
+        con = vt.ac(self.db_yolu)
+        try:
+            self._form_ad = {sid: pv.tr_baslik(p.get("ad") or str(sid)) for sid, p in pv.personel(con).items()}
+        finally:
+            con.close()
+        s = sablon_oku("liste_hepsi") or sablon_oku("liste_aktif") or {}
+        self._form_sayfa = s.get("sayfa") or ""
+        self._form_kuyruk = list(siciller)
+        self._form_toplam = len(siciller)
+        self._form_bitince = bitince
+        self._form_durum = None          # (sid, aşama, zaman, deneme)
+        self._form_gelen = {}            # sid -> {'bakiye': bool, 'kart': bool}
+        self._form_ilk_log = True
+        self.tani(f"izin formu yolu: {len(siciller)} kişi için izin bakiyesi ve kişi kartı alınacak (Sicil Liste ekranı"
+                  + (f" {self._form_sayfa}" if self._form_sayfa else "") + ")")
+        if not hasattr(self, "_form_zaman"):
+            self._form_zaman = QTimer(self)
+            self._form_zaman.timeout.connect(self._form_tik)
+        self._form_bos_kadar = time.time() + 2
+        self._form_js = False
+        self._form_zaman.start(700)
+
+    def _form_bitir(self):
+        self._form_zaman.stop()
+        from . import personel_veri as pv, veritabani as vt
+        con = vt.ac(self.db_yolu)
+        try:
+            eksik = [sid for sid in pv.kisi_eksikleri(con, 3650) if sid in self._form_gelen]   # tarananlardan hâlâ eksik olanlar
+        finally:
+            con.close()
+        fn, self._form_bitince = self._form_bitince, None
+        if fn:
+            fn(eksik)
+
+    def _form_tik(self):
+        if time.time() < getattr(self, "_form_bos_kadar", 0) or self._form_js:
+            return
+        if self._form_durum is None:
+            if not self._form_kuyruk:
+                self._form_bitir()
+                return
+            sid = self._form_kuyruk.pop(0)
+            self._form_durum = [sid, "ac", time.time(), 0]
+            self._form_gelen[sid] = {"bakiye": False, "kart": False}
+            sira = self._form_toplam - len(self._form_kuyruk)
+            self.bilgi.setText(f"İzin formu yoluyla alınıyor ({sira}/{self._form_toplam}): {self._form_ad.get(sid, sid)}")
+        sid, asama, t0, deneme = self._form_durum
+        gelen = self._form_gelen[sid]
+        if asama == "bekle":
+            if gelen["bakiye"] and (gelen["kart"] or time.time() - self._form_bakiye_t > 6):
+                self._form_durum = [sid, "kapat", time.time(), deneme]
+            elif time.time() - t0 > 40:
+                self.tani(f"izin formu yolu: {self._form_ad.get(sid, sid)} için 40 sn yanıt gelmedi")
+                self._form_durum = [sid, "kapat", time.time(), deneme + 1]
+            return
+        if time.time() - t0 > 90:
+            self.tani(f"izin formu yolu: {self._form_ad.get(sid, sid)} atlandı ({asama} aşaması 90 sn'de bitmedi)")
+            self._form_durum = None
+            return
+        self._form_js = True
+        if asama == "ac":
+            js = _FORM_AC % (json.dumps(sid), json.dumps(self._form_sayfa))
+        else:
+            js = _FORM_KAPAT % json.dumps(sid)
+
+        def sonuc(r, sid=sid, asama=asama):
+            self._form_js = False
+            try:
+                d = json.loads(r) if isinstance(r, str) else {}
+            except ValueError:
+                d = {}
+            if self._form_durum is None or self._form_durum[0] != sid:
+                return
+            if self._form_ilk_log or d.get("yok") or os.environ.get("VP_FORM_IZ"):
+                self.tani(f"izin formu yolu {self._form_ad.get(sid, sid)} ({asama}): " + ", ".join(f"{k}={v}" for k, v in d.items()))
+                self._form_ilk_log = False
+            if d.get("git"):
+                self._form_bos_kadar = time.time() + 6
+            elif d.get("bekle"):
+                self._form_bos_kadar = time.time() + 1.5
+            elif asama == "ac" and d.get("acildi"):
+                self._form_durum = [sid, "bekle", time.time(), self._form_durum[3]]
+            elif asama == "ac" and d.get("yok"):
+                self._form_durum = [sid, "kapat", time.time(), self._form_durum[3] + 1]
+            elif asama == "kapat" and d.get("tamam"):
+                g = self._form_gelen.get(sid, {})
+                if not g.get("bakiye") and self._form_durum[3] < 2:      # bir kez daha dene
+                    self._form_durum = [sid, "ac", time.time(), self._form_durum[3]]
+                else:
+                    self._form_durum = None
+                self._form_bos_kadar = time.time() + 1
+            elif asama == "kapat" and d.get("yok"):
+                self._form_durum = None
+        self.sayfa.runJavaScript(js, 0, sonuc)
+
+    def _form_yanit(self, tur: str, meta: dict):
+        d = getattr(self, "_form_durum", None)
+        if not d or d[2] is None:
+            return
+        try:
+            sid = int(meta.get("sid")) if meta.get("sid") is not None else None
+        except (TypeError, ValueError):
+            sid = None
+        if sid != d[0]:
+            return
+        g = self._form_gelen.setdefault(sid, {"bakiye": False, "kart": False})
+        if tur == "bakiye":
+            g["bakiye"] = True
+            self._form_bakiye_t = time.time()
+        elif tur == "kisi_karti":
+            g["kart"] = True
+
     def _ekran_yazildi(self, mesaj: str):
         p = mesaj.split("|")
         if getattr(self, "_ekran_log", True) and self._ekran_bekle:
@@ -1030,6 +1272,9 @@ class PersonelVeriPenceresi(QDialog):
             if hasattr(self, "_ekran_zamanlayici"):
                 self._ekran_zamanlayici.stop()
             self._ekran_bitince = None
+            if hasattr(self, "_form_zaman"):
+                self._form_zaman.stop()
+            self._form_bitince = None
             self.kaydedici.bitir()
             self.web.setPage(None)
             self.sayfa.deleteLater()

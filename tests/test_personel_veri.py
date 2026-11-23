@@ -196,3 +196,17 @@ def test_eksik_liste_kaydedilmez_ve_saatli_kayit_korunur():
     tek = [{"ysicilid": 100, "ysicilno": "0", "ypersonel": "K0", "ypozisyonad": "P", "y2026x10x05": "08:00-16:00<br>0800-1600 01<br>,white,0"}]
     pv.tani_ve_kaydet(con, json.dumps(tek))
     assert con.execute("SELECT giris FROM pv_gun WHERE sicilid=100 AND gun='2026-10-05'").fetchone()[0] == "07:50"
+
+
+def test_iki_vakit_otomatik_plan():
+    from datetime import datetime
+    from vardiya.oto_cekim import OtoCekim
+    p = lambda s, ss=None, sa=None, st=date(2026, 11, 22): OtoCekim.pv_plan(s, (8, 29), (20, 0), ss, sa, st, date(2026, 7, 1))  # noqa: E731
+    assert p(datetime(2026, 11, 24, 8, 0)) is None
+    assert p(datetime(2026, 11, 24, 8, 30)) == ("sabah", date(2026, 11, 23), date(2026, 11, 24))
+    assert p(datetime(2026, 11, 24, 12, 0), ss=date(2026, 11, 24)) is None
+    assert p(datetime(2026, 11, 24, 20, 0), ss=date(2026, 11, 24)) == ("aksam", date(2026, 11, 23), date(2026, 11, 23))
+    assert p(datetime(2026, 11, 24, 21, 0), ss=date(2026, 11, 24), sa=date(2026, 11, 24)) is None
+    # program birkaç gün kapalı kaldıysa arada kalan günler de çekilir, 01.07.2026'dan eskiye gidilmez
+    assert p(datetime(2026, 11, 24, 9, 0), st=date(2026, 11, 19))[1] == date(2026, 11, 20)
+    assert p(datetime(2026, 7, 3, 9, 0), st=None)[1] == date(2026, 7, 1)

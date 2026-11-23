@@ -243,11 +243,15 @@ def _tapivot(con, satirlar: List[dict]) -> str:
             if h.gercek:                          # saatsiz yeni kayıt, saatli eski kaydın üzerine yazmaz
                 con.execute("INSERT INTO pv_gun(sicilid, gun, plan, plan_kod, izin_kod, giris, cikis, g_dk, e_dk, renk, "
                             "gercek, guncel) VALUES(?,?,?,?,?,?,?,?,?,?,1,?) "
+                            # alan alan birleştir: yeni gelen saat boşsa eldeki kalır, doluysa yazılır (sabah eksikleri
+                            # tamamlar, akşam teyit eder; aynı gün için tek satır, mükerrer olmaz)
                             "ON CONFLICT(sicilid, gun) DO UPDATE SET plan=excluded.plan, plan_kod=excluded.plan_kod, "
-                            "izin_kod=excluded.izin_kod, giris=excluded.giris, cikis=excluded.cikis, g_dk=excluded.g_dk, "
-                            "e_dk=excluded.e_dk, renk=excluded.renk, gercek=1, guncel=excluded.guncel "
-                            "WHERE NOT ((COALESCE(excluded.giris,'') = '' AND COALESCE(excluded.cikis,'') = '') "
-                            "AND (COALESCE(pv_gun.giris,'') <> '' OR COALESCE(pv_gun.cikis,'') <> ''))",
+                            "izin_kod=CASE WHEN COALESCE(excluded.izin_kod,'')<>'' THEN excluded.izin_kod "
+                            "  WHEN COALESCE(excluded.giris,'')<>'' OR COALESCE(excluded.cikis,'')<>'' THEN '' ELSE pv_gun.izin_kod END, "
+                            "giris=CASE WHEN COALESCE(excluded.giris,'')<>'' THEN excluded.giris ELSE pv_gun.giris END, "
+                            "cikis=CASE WHEN COALESCE(excluded.cikis,'')<>'' THEN excluded.cikis ELSE pv_gun.cikis END, "
+                            "g_dk=COALESCE(excluded.g_dk, pv_gun.g_dk), e_dk=COALESCE(excluded.e_dk, pv_gun.e_dk), "
+                            "renk=excluded.renk, gercek=1, guncel=excluded.guncel",
                             (sid, g, h.plan, h.plan_kod, h.izin_kod, h.giris, h.cikis, h.g_dk, h.e_dk, h.renk, simdi))
             else:                                   # yalnız plan: gerçekleşen kayıt varsa üzerine yazılmaz
                 con.execute("INSERT INTO pv_gun(sicilid, gun, plan, renk, gercek, guncel) VALUES(?,?,?,?,0,?) "
@@ -285,6 +289,8 @@ def _bakiye(con, v) -> str:
             sid = int(r["SicilID"])
         except (KeyError, TypeError, ValueError):
             continue
+        if r.get("Kalan") is None:
+            continue                                   # yarım yanıt (sayfa ikinci kez boş gönderiyor): eldeki bakiye kalsın
         con.execute("INSERT OR REPLACE INTO pv_bakiye(sicilid, yil, hak, kullanilan, planlanan, devir, kalan, kidem, giris_tarih, guncel) "
                     "VALUES(?,?,?,?,?,?,?,?,?,?)",
                     (sid, r.get("Yil"), r.get("Hak"), r.get("KullanilanYillikIzin"), r.get("PlanlananIzin"), r.get("IzinDevir"),
@@ -293,6 +299,8 @@ def _bakiye(con, v) -> str:
                     (str(r.get("GirisTarih") or "")[:10], sid))
         n += 1
     con.commit()
+    if n == 0:
+        return ""                                      # yarım yanıt: kaydedilmedi, bildirilmez
     ad = v[0].get("Ad", "") + " " + v[0].get("Soyad", "") if n == 1 else f"{n} kişi"
     return f"izin bakiyesi: {ad.strip()} (kalan {v[0].get('Kalan')})" if n == 1 else f"izin bakiyesi: {ad}"
 
@@ -352,6 +360,17 @@ def izin_adlari(con) -> Dict[str, str]:
 def personel(con) -> Dict[int, dict]:
     kur(con)
     return {r["sicilid"]: dict(r) for r in con.execute("SELECT * FROM pv_personel ORDER BY ad")}
+
+
+def kisi_eksikleri(con, en_eski_gun: int = 7) -> List[int]:
+    """Aktif personelden izin bakiyesi ya da işe giriş tarihi eksik olanlar (ya da bakiyesi en_eski_gun'den eski)."""
+    kur(con)
+    sinir = (datetime.now() - timedelta(days=en_eski_gun)).strftime(BICIM)
+    return [r[0] for r in con.execute(
+        "SELECT p.sicilid FROM pv_personel p LEFT JOIN pv_bakiye b ON b.sicilid = p.sicilid "
+        "WHERE (p.cikis_tarih IS NULL OR p.cikis_tarih = '') AND (b.sicilid IS NULL OR b.kalan IS NULL OR "
+        "COALESCE(b.guncel, '') < ? OR COALESCE(NULLIF(p.giris_tarih, ''), NULLIF(b.giris_tarih, '')) IS NULL) ORDER BY p.ad",
+        (sinir,))]
 
 
 def bakiyeler(con) -> Dict[int, dict]:

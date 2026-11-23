@@ -175,9 +175,22 @@ class AyarSayfasi(QWidget):
         self.pv_saat = QTimeEdit()
         self.pv_saat.setDisplayFormat("HH:mm")
         self.pv_saat.setMaximumWidth(150)
-        self.pv_saat.setToolTip("Her gün bu saatte bir önceki günün personel verisi otomatik çekilir (yalnızca 'Otomatik çek' işaretli "
-                                "bilgisayar). Düzeltmeler ertesi gün yapıldığı için öğleden sonra / akşam bir saat seçin.")
-        fp.addRow("Otomatik çekim saati (bir önceki gün)", self.pv_saat)
+        self.pv_saat.setToolTip("Her akşam bu saatte bir önceki gün yeniden çekilir ve teyit edilir (yalnızca 'Otomatik çek' işaretli "
+                                "bilgisayar). Düzeltmeler ertesi gün yapıldığı için akşam bir saat seçin.")
+        self.pv_sabah = QTimeEdit()
+        self.pv_sabah.setDisplayFormat("HH:mm")
+        self.pv_sabah.setMaximumWidth(150)
+        self.pv_sabah.setToolTip("Her sabah bu saatte dün ve bugün (o ana kadar) çekilir; eldeki kayıtların üzerine yazılmaz, yalnızca eksikler "
+                                 "tamamlanır (ör. gece vardiyasının çıkışları, sabah vardiyasının girişleri).")
+        from PySide6.QtWidgets import QDateEdit
+        self.pv_en_eski = QDateEdit()
+        self.pv_en_eski.setDisplayFormat("dd.MM.yyyy")
+        self.pv_en_eski.setCalendarPopup(True)
+        self.pv_en_eski.setMaximumWidth(150)
+        self.pv_en_eski.setToolTip("Personel sisteminde bundan eski veri yok; yıl çekiminde ve otomatik çekimde daha eskiye gidilmez.")
+        fp.addRow("Sabah çekimi (dün + bugün, eksikleri tamamlar)", self.pv_sabah)
+        fp.addRow("Akşam çekimi (dünü teyit eder)", self.pv_saat)
+        fp.addRow("Personel verisi en eski tarih", self.pv_en_eski)
         b_pv_sil = QPushButton("Personel verilerini sil")
         b_pv_sil.setToolTip("Bu programın veri tabanındaki tüm personel verisini (giriş-çıkış, personel listesi, izin bilgileri) siler. "
                             "Personel sistemindeki kayıtlara dokunmaz; sonra yeniden çekebilirsiniz.")
@@ -682,6 +695,12 @@ class AyarSayfasi(QWidget):
         from .oto_cekim import OtoCekim, PV_SAATI
         h, m = OtoCekim.pv_saat_coz(a.get("pv_cekim_saati", PV_SAATI))
         self.pv_saat.setTime(QTime(h, m))
+        from PySide6.QtCore import QDate
+        from .oto_cekim import PV_EN_ESKI, PV_SABAH
+        h, m = OtoCekim.pv_saat_coz(a.get("pv_sabah_saati", PV_SABAH))
+        self.pv_sabah.setTime(QTime(h, m))
+        ee = QDate.fromString(str(a.get("pv_en_eski", PV_EN_ESKI)), "yyyy-MM-dd")
+        self.pv_en_eski.setDate(ee if ee.isValid() else QDate(2026, 7, 1))
         self.kullanici_yenile()
         self.mak_liste.clear()
         for m in a["makineler"]:
@@ -822,6 +841,8 @@ class AyarSayfasi(QWidget):
         vt.ayar_yaz(con, "pv_tolerans_dk", self.pv_tol.value())
         vt.ayar_yaz(con, "pv_fazla_en_az_dk", self.pv_fazla.value())
         vt.ayar_yaz(con, "pv_cekim_saati", self.pv_saat.time().toString("HH:mm"))
+        vt.ayar_yaz(con, "pv_sabah_saati", self.pv_sabah.time().toString("HH:mm"))
+        vt.ayar_yaz(con, "pv_en_eski", self.pv_en_eski.date().toString("yyyy-MM-dd"))
         vt.ayar_yaz(con, "supheli_en_kisa_mola_dk", self.sup_min.value())
         vt.ayar_yaz(con, "calismayanlari_gizle", self.gizle.isChecked())
         vt.ayar_yaz(con, "makineler", self._adlar(self.mak_liste))
