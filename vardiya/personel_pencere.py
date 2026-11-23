@@ -53,10 +53,12 @@ _YAKALA = r"""
     x.addEventListener('load', function(){
       try {
         var uu = (x.__vpM || {}).u || '';
-        if (!x.__vpTekrar && x.__vpH && x.status >= 200 && x.status < 300 && uu.indexOf('/api/') >= 0 && !/signalr|negotiate/i.test(uu)) window.__vpB = x.__vpH;
+        if (!x.__vpTekrar && x.__vpH && x.status >= 200 && x.status < 300 && uu.indexOf('/api/') >= 0 && !/signalr|negotiate/i.test(uu)) {
+          window.__vpB = x.__vpH; (window.__vpBY = window.__vpBY || {})[uu.split('?')[0].toLowerCase()] = x.__vpH; }
       } catch(e) {}
       try {
-        if (!x.responseType || x.responseType === 'text') gonder({m: (x.__vpM || {}).m, u: (x.__vpM || {}).u, b: x.__vpGovde, r: x.__vpTekrar || '', s: location.hash}, x.responseText);
+        var ct = ''; for (var hk in (x.__vpH || {})) if (/^content-type$/i.test(hk)) ct = x.__vpH[hk];
+        if (!x.responseType || x.responseType === 'text') gonder({m: (x.__vpM || {}).m, u: (x.__vpM || {}).u, b: x.__vpGovde, ct: ct, r: x.__vpTekrar || '', s: location.hash}, x.responseText);
       } catch(e) {}
       if (x.__vpTekrar) { var t = ''; try { t = x.responseText || ''; } catch(e) {} console.log('VPPVT|' + x.__vpTekrar + '|' + x.status + '|' + t.length + '|' + t.charAt(0)); }
     });
@@ -72,11 +74,15 @@ _YAKALA = r"""
       return f.apply(this, arguments).then(function(r){ try { r.clone().text().then(function(t){ gonder(meta, t); }); } catch(e) {} return r; });
     };
   }
-  window.__vpTekrar = function(id, m, u, b){
+  window.__vpTekrar = function(id, m, u, b, ct){
     var x = new XMLHttpRequest(); x.__vpTekrar = id; x.open(m || 'GET', u, true);
-    var tipVar = false;
-    for (var k in window.__vpB) { try { x.setRequestHeader(k, window.__vpB[k]); if (/^content-type$/i.test(k)) tipVar = true; } catch(e) {} }
-    if (b != null && !tipVar) { try { x.setRequestHeader('Content-Type', 'application/json;charset=UTF-8'); } catch(e) {} }
+    var hb = ((window.__vpBY || {})[String(u).split('?')[0].toLowerCase()]) || window.__vpB, tip = '';   // aynı adresin kendi başlıkları öncelikli
+    for (var k in hb) { if (/^content-type$/i.test(k)) { tip = hb[k]; continue; } try { x.setRequestHeader(k, hb[k]); } catch(e) {} }
+    if (ct) tip = ct;
+    if (b != null) {
+      if (!tip) tip = /^\s*[\[{]/.test(b) ? 'application/json;charset=UTF-8' : 'application/x-www-form-urlencoded; charset=UTF-8';
+      try { x.setRequestHeader('Content-Type', tip); } catch(e) {}
+    }
     x.onerror = function(){ console.log('VPPVT|' + id + '|0'); };
     x.send(b == null ? null : b); return true;
   };
@@ -498,7 +504,7 @@ class PersonelVeriPenceresi(QDialog):
             return                                   # programın kendi tekrar istekleri şablonu değiştirmez
         if not self.ogren.isChecked():
             return
-        v = {"m": meta.get("m") or "GET", "u": meta["u"], "b": meta.get("b")}
+        v = {"m": meta.get("m") or "GET", "u": meta["u"], "b": meta.get("b"), "ct": meta.get("ct") or ""}
         ek = ""
         if tur == "giris_cikis":
             if not meta.get("ilk") or not meta.get("son"):
@@ -621,14 +627,17 @@ class PersonelVeriPenceresi(QDialog):
             if fn:
                 fn(*self._gorev_say)
             return
-        etiket, m, u, b = self._gorevler.pop(0)
+        gorev = self._gorevler.pop(0)
+        etiket, m, u, b = gorev[:4]
+        ct = gorev[4] if len(gorev) > 4 else ""
         self._gorev_etiket = etiket
+        self._gorev_govde, self._gorev_ct = b, ct
         self._gorev_id += 1
         self._gorev_bekle = self._gorev_id
         self._gorev_zaman = time.time()
         sira = self._gorev_say[1] - len(self._gorevler)
         self.bilgi.setText(f"Alınıyor ({sira}/{self._gorev_say[1]}): {etiket}")
-        self.sayfa.runJavaScript(f"window.__vpTekrar && window.__vpTekrar({self._gorev_id}, {json.dumps(m)}, {json.dumps(u)}, {json.dumps(b)});")
+        self.sayfa.runJavaScript(f"window.__vpTekrar && window.__vpTekrar({self._gorev_id}, {json.dumps(m)}, {json.dumps(u)}, {json.dumps(b)}, {json.dumps(ct)});")
 
     def _gorev_yanit(self, mesaj: str):
         try:
@@ -638,15 +647,31 @@ class PersonelVeriPenceresi(QDialog):
         except (ValueError, IndexError):
             return
         if gid == self._gorev_bekle:
-            yorum = ("tamam" if 200 <= durum < 300 and ilk == "[" else
+            bos = 200 <= durum < 300 and ilk == "[" and uz <= 2
+            yorum = ("BOŞ LİSTE geldi (sunucu isteği tanımadı; " + self._govde_ozeti() + ")" if bos else
+                     "tamam" if 200 <= durum < 300 and ilk == "[" else
                      "yanıt liste değil" if 200 <= durum < 300 else
                      "oturum bilgisi istekle gitmedi (yetkisiz)" if durum in (401, 403) else
                      "bağlantı hatası" if durum == 0 else "sunucu hatası")
             self.tani(f"otomatik istek: {self._gorev_etiket} → durum {durum}, {uz} bayt · {yorum}")
-            if 200 <= durum < 300:
+            if 200 <= durum < 300 and not bos:
                 self._gorev_say[0] += 1
             self._gorev_bekle = None
             self._gorev_zaman = time.time()
+
+    def _govde_ozeti(self) -> str:
+        """Boş yanıtta teşhis için: gönderilen gövdenin yalnızca alan adları ve içerik türü (değerler yazılmaz)."""
+        b, ct = getattr(self, "_gorev_govde", None), getattr(self, "_gorev_ct", "")
+        if b is None:
+            return "gövdesiz istek"
+        try:
+            v = json.loads(b)
+            alan = ", ".join(list(v.keys())[:12]) if isinstance(v, dict) else f"{type(v).__name__}"
+            tur = "JSON"
+        except ValueError:
+            alan = ", ".join(x.split("=")[0] for x in b.split("&")[:12])
+            tur = "form"
+        return f"gövde {tur}, alanlar: {alan or '-'} · öğrenilen içerik türü: {ct or 'kayıtlı değil'}"
 
     def _hazir(self, fn: Callable[[bool, bool], None]):
         def coz(d):
@@ -683,9 +708,18 @@ class PersonelVeriPenceresi(QDialog):
                       ("liste_cikan", "işten çıkanlar")):
             s = sablon_oku(t)
             if s:
-                gorevler.append((ad, s["m"], s["u"], s.get("b")))
-        sablonlar = [(t, e, sablon_oku(t)) for t, e in (("bakiye", "izin bakiyesi"), ("kisi_karti", "kişi kartı"))]
-        sablonlar = [(t, e, x) for t, e, x in sablonlar if x and x.get("sid") is not None]
+                gorevler.append((ad, s["m"], s["u"], s.get("b"), s.get("ct") or ""))
+        sablonlar = []
+        for t, e in (("bakiye", "izin bakiyesi"), ("kisi_karti", "kişi kartı")):
+            x = sablon_oku(t)
+            if not x:
+                self.tani(f"{e}: öğrenilmemiş, kişi kişi alınmayacak")
+            elif x.get("sid") is None:
+                self.tani(f"{e}: öğrenilen istekte hangi kişi olduğu anlaşılamadı, kişi kişi alınmayacak")
+            elif not (pv.kimlik_degistir(x["u"], x["sid"], 0)[1] or pv.kimlik_degistir(x.get("b") or "", x["sid"], 0)[1]):
+                self.tani(f"{e}: kişi numarası istekte açık yazılmıyor (şifreli), kişi kişi istekle alınamıyor")
+            else:
+                sablonlar.append((t, e, x))
         if sablonlar:
             con = vt.ac(self.db_yolu)
             try:
@@ -698,7 +732,7 @@ class PersonelVeriPenceresi(QDialog):
                     u, ok1 = pv.kimlik_degistir(s["u"], s["sid"], sid)
                     g, ok2 = pv.kimlik_degistir(s.get("b") or "", s["sid"], sid)
                     if ok1 or ok2:
-                        gorevler.append((f"{etiket}: {pv.tr_baslik(ad.get(sid) or str(sid))}", s["m"], u, g if s.get("b") is not None else None))
+                        gorevler.append((f"{etiket}: {pv.tr_baslik(ad.get(sid) or str(sid))}", s["m"], u, g if s.get("b") is not None else None, s.get("ct") or ""))
         return gorevler
 
     def _yil_al(self):
