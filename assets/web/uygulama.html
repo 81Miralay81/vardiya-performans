@@ -961,8 +961,8 @@ function pvKart(){
     if (d.giris) b.push(['İşe giriş / kıdem', trT(d.giris) + (d.kidem != null ? ' · ' + d.kidem + ' yıl' : '')]);
     if (d.telefon) b.push(['Cep telefonu', esc(d.telefon)]);
     if (!d.giris) b.push(['İşe giriş / kıdem', '<span style="color:var(--soluk,#6b7285)">henüz alınmadı</span>']);
-    if (!d.izin) b.push(['Yıllık izin', '<span style="color:var(--soluk,#6b7285)">henüz alınmadı (otomatik çekimde gelecek)</span>']);
-    if (d.izin) b.push(['Yıllık izin', 'hak ' + (d.izin.hak || 0) + ' · kullanılan ' + (d.izin.kullanilan || 0) + ' · devir ' + (d.izin.devir || 0) + ' · <b>kalan ' + (d.izin.kalan || 0) + '</b>']);
+    if (d.izin_satir && d.izin_satir.length) d.izin_satir.forEach(function(x){ b.push([x[0], x[1]]); });
+    else b.push(['Yıllık izin', '<span style="color:var(--soluk,#6b7285)">henüz alınmadı (otomatik çekimde gelecek)</span>']);
     $('pv-bilgi').innerHTML = '<table>' + b.map(function(x){ return '<tr><td style="color:var(--soluk)">' + x[0] + '</td><td>' + x[1] + '</td></tr>'; }).join('') + '</table>';
     PV.gorsel = d.gorsel; if (PV.gorselSid !== d.sid) { PV.liste = ''; PV.gorselSid = d.sid; }
     ozetCiz();

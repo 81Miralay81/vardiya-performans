@@ -753,9 +753,8 @@ class PersonelSayfasi(QWidget):
             satir.append(("İşe giriş / kıdem", pv._tr(str(giris)[:10]) + (f" · {b['kidem']} yıl" if b.get("kidem") is not None else "")))
         if kimlik and p.get("telefon"):
             satir.append(("Cep telefonu", p.get("telefon")))
-        if b:
-            satir.append(("Yıllık izin", f"hak {b.get('hak') or 0:g} · kullanılan {b.get('kullanilan') or 0:g} · devir {b.get('devir') or 0:g}"
-                                         f" · <b>kalan {b.get('kalan') or 0:g}</b> <span style='color:#6b7285'>({str(b.get('guncel') or '')[:10]})</span>"))
+        if pv.izin_satirlari(b):
+            satir.extend(pv.izin_satirlari(b))
         else:
             satir.append(("Yıllık izin", "<span style='color:#6b7285'>henüz alınmadı (otomatik çekimde gelecek)</span>"))
         if not giris:

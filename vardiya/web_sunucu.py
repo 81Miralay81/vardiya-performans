@@ -654,6 +654,7 @@ class Sunucu:
                               "giris": str(b.get("giris_tarih") or p.get("giris_tarih") or "")[:10], "kidem": b.get("kidem"),
                               "telefon": (p.get("telefon") or "") if kimlik else "",
                               "izin": None if not b else {k2: b.get(k2) for k2 in ("hak", "kullanilan", "devir", "kalan", "guncel")},
+                              "izin_satir": pv.izin_satirlari(b),
                               "pozisyon": pv.tr_baslik(p.get("pozisyon") or ""), "yaka": pv.tr_baslik(p.get("yaka") or ""),
                               "periyot": p.get("periyot") or "", "cikis": p.get("cikis_tarih") or "",
                               "foto": bool(p.get("foto")) and ku.yetkili(k, "personel_kimlik"),

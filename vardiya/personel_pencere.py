@@ -275,9 +275,18 @@ _FORM_ORTAK = r"""
       .sort(function(a, b){ return a.getBoundingClientRect().left - b.getBoundingClientRect().left; })[0] || null;
     return {hucre: hucre, kutu: kutu};
   };
-  var suzgec = function(){ var h = baslikID(); if (!h) return null; var hr = h.getBoundingClientRect();
-    return Array.prototype.slice.call(document.querySelectorAll('input[type=text], input:not([type])')).filter(gor).filter(function(e){
-      var r = e.getBoundingClientRect(); return r.top >= hr.top - 2 && r.top < hr.bottom + 60 && r.left < hr.right && r.right > hr.left; })[0] || null; };
+  var kutuAlti = function(h){ if (!h) return null; var hr = h.getBoundingClientRect();
+    return Array.prototype.slice.call(document.querySelectorAll('input[type=text], input:not([type]), input[type=search]')).filter(gor).filter(function(e){
+      var r = e.getBoundingClientRect(); return r.top >= hr.top - 2 && r.top < hr.bottom + 60 && r.left < hr.right - 2 && r.right > hr.left + 2; })[0] || null; };
+  var baslik = function(desen){ return Array.prototype.slice.call(document.querySelectorAll('th, [role=columnheader], .jqx-grid-column-header, .k-header, div, span')).filter(gor)
+      .filter(function(e){ return e.children.length < 3 && desen.test(metin(e)); })
+      .sort(function(a, b){ return a.getBoundingClientRect().top - b.getBoundingClientRect().top; })[0] || null; };
+  // süzgeç: önce ID sütununun kutusu (ID ile), yoksa Sicil No sütununun kutusu (sicil numarasıyla), yoksa Ad sütunu
+  var suzgec = function(id, sicilno, ad){
+    var s = kutuAlti(baslikID()); if (s) return {kutu: s, deger: String(id), sutun: 'ID'};
+    s = kutuAlti(baslik(/^sicil\s*n/i)); if (s && sicilno) return {kutu: s, deger: String(sicilno), sutun: 'Sicil No'};
+    s = kutuAlti(baslik(/^ad\b/i)); if (s && ad) return {kutu: s, deger: String(ad), sutun: 'Ad'};
+    return null; };
   var yazKutu = function(e, v){ var ata = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; e.focus(); ata.call(e, v);
     ['input', 'change', 'keyup'].forEach(function(o){ e.dispatchEvent(new Event(o, {bubbles: true})); });
     e.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', keyCode: 13, which: 13, bubbles: true}));
@@ -287,7 +296,7 @@ _FORM_ORTAK = r"""
 """
 
 _FORM_AC = r"""
-(function(id, sayfa){
+(function(id, sayfa, sicilno, ad){
 """ + _FORM_ORTAK + r"""
   if (sayfa && location.hash !== sayfa) { location.hash = sayfa; return JSON.stringify({git: 1}); }
   if (!sayfa && !baslikID()) {
@@ -296,19 +305,25 @@ _FORM_AC = r"""
   }
   var m = modal(); if (m) { var k = kapatDug(m); if (k) tikla(k); return JSON.stringify({bekle: 'açık pencere kapatıldı'}); }
   if (!baslikID()) return JSON.stringify({bekle: 'Sicil Liste tablosu bekleniyor'});
-  var sat = satirBul(id), s = suzgec(), not = [];
-  if (!sat && s) {
-    if (s.value !== String(id)) { yazKutu(s, String(id)); return JSON.stringify({bekle: 'ID süzgecine yazıldı'}); }
+  var sat = satirBul(id), sz = suzgec(id, sicilno, ad), not = [];
+  if (!sat && sz) {
+    if (sz.kutu.value !== sz.deger) { yazKutu(sz.kutu, sz.deger); return JSON.stringify({bekle: sz.sutun + ' süzgecine yazıldı'}); }
   }
-  if (!sat) return JSON.stringify({yok: 'satır bulunamadı', suzgec: !!s});
+  if (!sat) {                                 // süzgeç yoksa ya da işe yaramadıysa: tabloyu aşağı kaydırıp ara
+    var kay = Array.prototype.slice.call(document.querySelectorAll('div, tbody')).filter(function(e){
+      return gor(e) && e.scrollHeight > e.clientHeight + 20 && e.clientHeight > 100 && /auto|scroll/.test(getComputedStyle(e).overflowY); })
+      .sort(function(a, b){ return b.clientHeight - a.clientHeight; })[0];
+    if (kay && kay.scrollTop + kay.clientHeight < kay.scrollHeight - 2) { kay.scrollTop += kay.clientHeight * 0.8; return JSON.stringify({bekle: 'tablo kaydırıldı'}); }
+    return JSON.stringify({yok: 'satır bulunamadı', suzgec: sz ? sz.sutun : 'yok'});
+  }
   var sc = secili();
   if (sc !== null && sc > 1) return JSON.stringify({yok: 'birden çok kişi işaretli (' + sc + ')'});
   if (sc === 0 || sc === null) { tikla(sat.kutu || sat.hucre); not.push(sat.kutu ? 'onay kutusu' : 'hücre'); }
   var bag = Array.prototype.slice.call(document.querySelectorAll('a, button, span')).filter(gor).filter(function(e){ return e.children.length < 2 && kucuk(metin(e)) === 'izin talep formu'; })[0];
   if (!bag) return JSON.stringify({yok: "'İzin Talep Formu' bağlantısı bulunamadı"});
   setTimeout(function(){ var n = secili(); if (n === null || n === 1) tikla(bag); else console.log('VPPVF|' + id + ': işaretli kişi sayısı ' + n + ', form açılmadı'); }, 600);
-  return JSON.stringify({acildi: 1, suzgec: !!s, kutu: !!sat.kutu, secili: sc, not: not.join(',')});
-})(%s, %s);
+  return JSON.stringify({acildi: 1, suzgec: sz ? sz.sutun : 'yok', kutu: !!sat.kutu, secili: sc, not: not.join(',')});
+})(%s, %s, %s, %s);
 """
 
 _FORM_KAPAT = r"""
@@ -317,7 +332,7 @@ _FORM_KAPAT = r"""
   var m = modal(); if (m) { var k = kapatDug(m); if (k) { tikla(k); return JSON.stringify({bekle: 'pencere kapatılıyor'}); } return JSON.stringify({yok: 'kapatma düğmesi bulunamadı'}); }
   var sat = satirBul(id), sc = secili();
   if (sat && sc && sc > 0) { tikla(sat.kutu || sat.hucre); return JSON.stringify({bekle: 'işaret kaldırılıyor'}); }
-  var s = suzgec(); if (s && s.value) { yazKutu(s, ''); return JSON.stringify({bekle: 'süzgeç temizleniyor'}); }
+  var sz = suzgec(id, 'x', 'x'); if (sz && sz.kutu.value) { yazKutu(sz.kutu, ''); return JSON.stringify({bekle: 'süzgeç temizleniyor'}); }
   return JSON.stringify({tamam: 1});
 })(%s);
 """
@@ -332,7 +347,7 @@ def elle_acik_mi() -> bool:
     return any(not w.otomatik for w in list(_PENCERELER))
 
 
-EKRAN_YANIT_SN = 150    # ekran yolunda bir ayın listesinin gelmesi için en uzun bekleme (büyük listeler yavaş gelebilir)
+EKRAN_YANIT_SN = 75     # ekran yolunda bir ayın listesinin gelmesi için en uzun bekleme (büyük listeler yavaş gelebilir)
 
 _GIRIS_VAR = "(function(){ var e = document.querySelector('input[type=password]'); return !!(e && e.offsetParent !== null); })();"
 
@@ -1138,7 +1153,8 @@ class PersonelVeriPenceresi(QDialog):
         from . import personel_veri as pv, veritabani as vt
         con = vt.ac(self.db_yolu)
         try:
-            self._form_ad = {sid: pv.tr_baslik(p.get("ad") or str(sid)) for sid, p in pv.personel(con).items()}
+            self._form_kisi = pv.personel(con)
+            self._form_ad = {sid: pv.tr_baslik(p.get("ad") or str(sid)) for sid, p in self._form_kisi.items()}
         finally:
             con.close()
         s = sablon_oku("liste_hepsi") or sablon_oku("liste_aktif") or {}
@@ -1197,7 +1213,9 @@ class PersonelVeriPenceresi(QDialog):
             return
         self._form_js = True
         if asama == "ac":
-            js = _FORM_AC % (json.dumps(sid), json.dumps(self._form_sayfa))
+            k = self._form_kisi.get(sid, {})
+            js = _FORM_AC % (json.dumps(sid), json.dumps(self._form_sayfa), json.dumps(k.get("sicilno") or ""),
+                             json.dumps((k.get("ad") or "").split(" ")[0]))
         else:
             js = _FORM_KAPAT % json.dumps(sid)
 

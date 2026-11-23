@@ -859,3 +859,21 @@ def kart_ozeti(gunler_: Iterable[Gun], o: Optional[Ozet], tum: Dict[int, Ozet], 
                        "ipucu": gun_ipucu(g, izin_ad)} for g in gl],
             "izinler": [{"ad": izin_kisa(izin_ad, k), "gun": n} for k, n in sorted(o.izin_tur.items(), key=lambda x: -x[1])],
             "listeler": listeler}
+
+
+def izin_satirlari(b: dict) -> List[Tuple[str, str]]:
+    """Yıllık izin bilgisinin anlaşılır satırları: toplam hak (bu yıl + devreden), kullanılan, kalan (exe ve tarayıcı)."""
+    if not b or b.get("kalan") is None:
+        return []
+    g = lambda x: f"{float(x or 0):g}"  # noqa: E731
+    hak, devir, kul, plan = (float(b.get("hak") or 0), float(b.get("devir") or 0), float(b.get("kullanilan") or 0),
+                             float(b.get("planlanan") or 0))
+    # Toplam hak, sistemin verdiği kalan + kullanılan (+ planlanan) üzerinden hesaplanır; 'devir' alanı her kişide dolu gelmiyor
+    toplam = float(b.get("kalan") or 0) + kul + plan
+    devir = max(0.0, toplam - hak)
+    tarih = str(b.get("guncel") or "")[:10]
+    tarih = f"{tarih[8:10]}.{tarih[5:7]}.{tarih[:4]}" if len(tarih) == 10 else tarih
+    satir = [("Toplam izin hakkı", f"{g(toplam)} gün <span style='color:#6b7285'>(bu yılın hakkı {g(hak)} + önceki yıllardan devreden {g(devir)})</span>"),
+             ("Kullanılan izin", f"{g(kul)} gün <span style='color:#6b7285'>(bu yıl)</span>" + (f" · planlanan {g(plan)} gün" if plan else "")),
+             ("Kalan izin", f"<b>{g(b.get('kalan'))} gün</b>" + (f" <span style='color:#6b7285'>({tarih} itibarıyla)</span>" if tarih else ""))]
+    return satir
