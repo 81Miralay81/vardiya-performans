@@ -89,6 +89,11 @@ class AnaPencere(QMainWindow):
         self.k_etiket.setObjectName("AltBaslik")
         self.k_etiket.setWordWrap(True)
         yl.addWidget(self.k_etiket)
+        self.kopru_etiket = QLabel("")            # GEÇİCİ geliştirici bağlantısı açıkken görünür
+        self.kopru_etiket.setWordWrap(True)
+        self.kopru_etiket.setStyleSheet("color:#fff; background:#c0392b; border-radius:6px; padding:5px; font-weight:600;")
+        self.kopru_etiket.hide()
+        yl.addWidget(self.kopru_etiket)
         self.k_cikis = QPushButton("Çıkış yap")
         self.k_cikis.setObjectName("Hizli")
         self.k_cikis.setCursor(Qt.PointingHandCursor)
@@ -160,6 +165,11 @@ class AnaPencere(QMainWindow):
         self.yenile()
         acilis.ilerle(90, "Grafikler hazırlanıyor")
         self.sayfa_ac("performans" if self.kapsam() else "veri")
+        from .kopru import Kopru                        # GEÇİCİ geliştirici bağlantısı (yalnızca Ayarlar'dan açılınca çalışır)
+        self.kopru = Kopru(self)
+        self.kopru.durum_degisti.connect(lambda m: (self.kopru_etiket.setText(m), self.kopru_etiket.setVisible(bool(m))))
+        if hasattr(self.sayfalar.get("ayar"), "kopru_durum"):
+            self.kopru.durum_degisti.connect(self.sayfalar["ayar"].kopru_durum.setText)
         from .oto_cekim import OtoCekim                 # otomatik Cormind çekimi (yalnızca ayarda açık bilgisayarda)
         self.oto = OtoCekim(self)
         self.sayfalar["ayar"].oto_bagla(self.oto)

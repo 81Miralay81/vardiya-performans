@@ -199,6 +199,30 @@ class AyarSayfasi(QWidget):
         kp.layout().addLayout(fp)
         ic.addWidget(kp)
 
+        # ------------------------------------------------ GEÇİCİ geliştirici bağlantısı (iş bitince kaldırılacak)
+        kk = kart()
+        kk.layout().addWidget(etiket("GELİŞTİRİCİ BAĞLANTISI (GEÇİCİ)", "KartBaslik"))
+        kk.layout().addWidget(etiket("Açıkken geliştirici (Claude), GitHub'daki özel 'vp-kopru' deposu üzerinden programa sınırlı komutlar "
+                                     "gönderebilir: tanı kaydı, ekran görüntüsü, Personel Veri sayfasını inceleme, veri tabanını yalnızca okuma, "
+                                     "çekimi başlatma. Bilgisayarda komut çalıştıramaz, dosyalara dokunamaz. 8 saat sonra kendiliğinden kapanır. "
+                                     "Anahtar yalnızca bu bilgisayarda saklanır.", "AltBaslik"))
+        sk = QHBoxLayout()
+        self.kopru_jeton = QLineEdit()
+        self.kopru_jeton.setEchoMode(QLineEdit.Password)
+        self.kopru_jeton.setPlaceholderText("GitHub erişim anahtarı (yalnızca vp-kopru deposu, içerik okuma-yazma)")
+        b_ac, b_kapa, b_sil = QPushButton("Bağlantıyı aç (8 saat)"), QPushButton("Kapat"), QPushButton("Anahtarı sil")
+        b_ac.setObjectName("Ana")
+        b_ac.clicked.connect(self._kopru_ac)
+        b_kapa.clicked.connect(lambda: self.ana.kopru.kapat())
+        b_sil.clicked.connect(lambda: (self.ana.kopru.kapat(anahtari_sil=True), self.kopru_jeton.clear()))
+        sk.addWidget(self.kopru_jeton, 1)
+        for b in (b_ac, b_kapa, b_sil):
+            sk.addWidget(b)
+        kk.layout().addLayout(sk)
+        self.kopru_durum = etiket("", "AltBaslik")
+        kk.layout().addWidget(self.kopru_durum)
+        ic.addWidget(kk)
+
         # ------------------------------------------------ kullanıcılar (yalnızca yönetici; hiç kullanıcı yokken herkes)
         self.k_kart = kart()
         self.k_kart.layout().addWidget(etiket("KULLANICILAR VE YETKİLER", "KartBaslik"))
@@ -730,6 +754,17 @@ class AyarSayfasi(QWidget):
             e.setText(ab[0] if uc == "bas" else ab[1])
         self.mola_geri.hide()
         self.ana.mesaj("Mola saatleri kutulara geri yüklendi; kalıcı olması için Kaydet'e basın.")
+
+    def _kopru_ac(self):
+        from . import kopru
+        j = self.kopru_jeton.text().strip()
+        if not j and not kopru.jeton_oku():
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.information(self, "Geliştirici bağlantısı", "Önce GitHub erişim anahtarını yapıştırın.")
+            return
+        self.ana.kopru.ac(j)
+        self.kopru_jeton.clear()
+        self.kopru_jeton.setPlaceholderText("anahtar kayıtlı (değiştirmek için yenisini yapıştırın)")
 
     def _pv_sil(self):
         from PySide6.QtCore import QSettings
