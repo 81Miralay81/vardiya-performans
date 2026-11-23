@@ -152,8 +152,12 @@ def kimlik_yaz(k: str, s: str):
     a.sync()
 
 
-SABLON_TURLERI = {"giris_cikis": "Giriş-çıkış listesi (Planlanan + Gerçekleşen)", "liste_aktif": "Personel listesi (Sicil · Aktifler)",
-                  "liste_cikan": "İşten çıkanlar (Sicil · İşten Çıkanlar)", "bakiye": "İzin bakiyesi (deneme · izin formu)"}
+# Öğrenme sırası (ekranlar): 1) Sicil Liste · Hepsi  2) İzin Talep Formu (bir kişi, kaydetmeden)  3) Pdks Pivot · Planlanan + Gerçekleşen
+SABLON_TURLERI = {"liste_hepsi": "1. Sicil Liste · Hepsi (personel listesi ve ayrılanlar)",
+                  "bakiye": "2. İzin Talep Formu (bir kişi seçip açın, kaydetmeyin): izin hakkı",
+                  "giris_cikis": "3. Pdks Pivot · Planlanan + Gerçekleşen (bir ay listeleyin)",
+                  "liste_aktif": "Sicil Liste · Aktifler", "liste_cikan": "Sicil Liste · İşten Çıkanlar"}
+ADIMLAR = ("liste_hepsi", "bakiye", "giris_cikis")
 
 
 def sablon_oku(tur: str) -> Optional[dict]:
@@ -315,9 +319,9 @@ class PersonelVeriPenceresi(QDialog):
         self.sablon_et.setObjectName("AltBaslik")
         self.sablon_et.setWordWrap(True)
         l.addWidget(self.sablon_et)
-        self.bilgi = QLabel("Giriş yapın; sonra 'Planlanan + Gerçekleşen' ekranını açıp bir ayı listeleyin. Program o isteği öğrenir: "
-                            "sonra 'Seçili yılı ay ay al' ile bütün yılı kendisi alır ve her gün Ayarlar'daki saatte dünü kendisi çeker. "
-                            "Sicil ekranında Aktifler ve İşten Çıkanlar sekmelerini bir kez açarsanız personel listesi ve işten çıkışlar da güncellenir.")
+        self.bilgi = QLabel("Giriş yapın. '1) Öğren' işaretliyken sırayla: Sicil Liste'de 'Hepsi' sekmesi · bir kişiyi seçip İzin Talep Formu'nu "
+                            "açın ve Kapat (kaydetmeyin) · Pdks Pivot'ta 'Planlanan + Gerçekleşen' ile bir ay listeleyin. Üç adım ✓ olunca "
+                            "'1) Öğren' işaretini kaldırıp '2) Otomatik çek' ile deneyin.")
         self.bilgi.setWordWrap(True)
         self.bilgi.setObjectName("AltBaslik")
         l.addWidget(self.bilgi)
@@ -371,9 +375,12 @@ class PersonelVeriPenceresi(QDialog):
     # ------------------------------------------------------------ öğrenilen istekler
     def _sablon_yaz(self):
         p = []
-        for t, ad in SABLON_TURLERI.items():
-            p.append(("✓ " if sablon_oku(t) else "✗ ") + ad)
-        self.sablon_et.setText("Otomatik çekim için öğrenilenler: " + " · ".join(p))
+        for t in ADIMLAR:
+            ok = bool(sablon_oku(t)) or (t == "liste_hepsi" and bool(sablon_oku("liste_aktif")))
+            p.append(("✓ " if ok else "✗ ") + SABLON_TURLERI[t])
+        ek = [SABLON_TURLERI[t] for t in ("liste_aktif", "liste_cikan") if sablon_oku(t)]
+        self.sablon_et.setText("Öğrenme adımları (1) Öğren işaretliyken sırayla açın):  " + "   ".join(p)
+                               + (f"   (ayrıca öğrenilen: {', '.join(ek)})" if ek else ""))
 
     # ------------------------------------------------------------ tanı kaydı (oturum / şifre bilgisi içermez)
     def tani(self, metin: str):
@@ -598,7 +605,8 @@ class PersonelVeriPenceresi(QDialog):
         """Personel listesi ve işten çıkanlar; izin bakiyesi öğrenildiyse (deneme) her aktif kişi için."""
         from . import personel_veri as pv, veritabani as vt
         gorevler = []
-        for t, ad in (("liste_aktif", "personel listesi"), ("liste_cikan", "işten çıkanlar")):
+        for t, ad in (("liste_hepsi", "personel listesi (hepsi)"), ("liste_aktif", "personel listesi (aktifler)"),
+                      ("liste_cikan", "işten çıkanlar")):
             s = sablon_oku(t)
             if s:
                 gorevler.append((ad, s["m"], s["u"], s.get("b")))
