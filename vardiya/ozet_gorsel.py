@@ -62,11 +62,12 @@ class OzetGorsel(QWidget):
         # --- kutular (tıklanabilir)
         x0 = hr.right() + 16
         n = len(v["kutular"])
-        sutun = n if (w - x0 - 6 * (n - 1)) / n >= 104 else 1    # dar alanda kutular alt alta dizilir
+        sutun = max(1, min(n, int((w - x0 + 6) // (96 + 6))))   # sığdığı kadar yan yana, kalanı alt satıra
         kg = (w - x0 - 6 * (sutun - 1)) / sutun
         satir_ = (n + sutun - 1) // sutun
-        kh = 62.0 if satir_ == 1 else min(50.0, (R + 10 - 6 * (satir_ - 1)) / satir_)
-        ky = hr.center().y() - (satir_ * kh + 6 * (satir_ - 1)) / 2
+        kh = 62.0 if satir_ == 1 else max(32.0, min(50.0, (R + 10 - 6 * (satir_ - 1)) / satir_))
+        kutu_boy = satir_ * kh + 6 * (satir_ - 1)
+        ky = max(hr.top(), hr.center().y() - kutu_boy / 2)
         for i, k in enumerate(v["kutular"]):
             sat_, sut_ = divmod(i, sutun)
             r = QRectF(x0 + sut_ * (kg + 6), ky + sat_ * (kh + 6), kg, kh)
@@ -80,18 +81,18 @@ class OzetGorsel(QWidget):
                 p.setBrush(Qt.NoBrush)
                 p.drawRoundedRect(r.adjusted(1, 1, -1, -1), 9, 9)
             sayi = str(k["deger"])
-            renk = QColor(k["renk"]) if (k["k"] == "gelmedi" and k["deger"]) else YAZI
+            renk = QColor(k["renk"]) if (k["k"] in ("gelmedi", "gec", "erken") and k["deger"]) else YAZI
             if satir_ == 1:                                  # yan yana: ad üstte, sayı altta
                 self._yaz(p, QRectF(r.left() + 11, r.top() + 6, r.width() - 14, 16), k["ad"], 11, renk=SOLUK)
                 self._yaz(p, QRectF(r.left() + 11, r.top() + 23, r.width() - 14, 28), sayi + k["ek"], 20, True, renk)
-            else:                                            # alt alta: ad solda, sayı sağda, tek satır
-                self._yaz(p, QRectF(r.left() + 11, r.top(), r.width() * 0.5, r.height()), k["ad"], 12, renk=SOLUK)
-                self._yaz(p, QRectF(r.left(), r.top(), r.width() - 10, r.height()), sayi + k["ek"], 18, True, renk,
+            else:                                            # birkaç satır: ad solda, sayı sağda, tek satır
+                self._yaz(p, QRectF(r.left() + 11, r.top(), r.width() * 0.62, r.height()), k["ad"], 11.5, renk=SOLUK)
+                self._yaz(p, QRectF(r.left(), r.top(), r.width() - 10, r.height()), sayi + k["ek"], 17, True, renk,
                           Qt.AlignRight | Qt.AlignVCenter)
             self._kutular.append((r, k["k"]))
         # --- çubuklar (bölümde en yüksek değere göre)
-        y = hr.bottom() + 14
-        etk, sag = 104.0, 112.0
+        y = max(hr.bottom(), ky + kutu_boy) + 14
+        etk, sag = 100.0, 134.0
         for c in v["cubuk"]:
             self._yaz(p, QRectF(0, y, etk, 18), c["ad"], 12)
             yol = QRectF(etk + 6, y + 5, w - etk - sag - 12, 8)
@@ -165,7 +166,9 @@ class OzetGorsel(QWidget):
         for r, _k in self._kutular:
             if r.contains(pt):
                 self.setCursor(Qt.PointingHandCursor)
-                QToolTip.showText(e.globalPosition().toPoint(), "tıklayın: bu günleri aşağıda listeler", self)
+                k = next((x for x in (self.veri or {}).get("kutular", []) if x["k"] == _k), {})
+                ek = f"\ntoplam {k['sure']}" if k.get("sure") else ""
+                QToolTip.showText(e.globalPosition().toPoint(), f"{k.get('ad', '')}: {k.get('deger', '')}{ek}\ntıklayın: bu günleri aşağıda listeler", self)
                 return
         self.unsetCursor()
         QToolTip.hideText()

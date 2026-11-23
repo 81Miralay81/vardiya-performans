@@ -775,9 +775,10 @@ class PersonelSayfasi(QWidget):
         if not anahtar or not v:
             self.k_liste_kart.hide()
             return
-        ad = {k["k"]: k["ad"] for k in v["kutular"]}.get(anahtar, anahtar)
+        kutu = next((k for k in v["kutular"] if k["k"] == anahtar), {})
+        ad = kutu.get("ad", anahtar)
         satirlar = v["listeler"].get(anahtar) or []
-        self.k_liste_baslik.setText(f"{ad}: {len(satirlar)} gün" + ("  ·  satıra tıklayın: takvim o aya gider" if satirlar else "  ·  bu dönemde yok"))
+        self.k_liste_baslik.setText(f"{ad}: {len(satirlar)} gün" + (f" · toplam {kutu['sure']}" if kutu.get("sure") and satirlar else "") + ("  ·  satıra tıklayın: takvim o aya gider" if satirlar else "  ·  bu dönemde yok"))
         t = self.k_liste
         t.setRowCount(len(satirlar))
         for i, s in enumerate(satirlar):

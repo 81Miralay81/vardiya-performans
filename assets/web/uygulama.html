@@ -88,7 +88,7 @@ table.tikli tr[data-i]{cursor:pointer}table.tikli tr[data-i]:hover td{background
 nav a.cikis{margin-top:8px;font-size:12px;opacity:.8}
 .og-ust{display:flex;gap:16px;align-items:center;flex-wrap:wrap}.og-halka{position:relative;width:112px;height:112px;flex:none}
 .og-halka .o{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}.og-halka b{font-size:22px;color:var(--lac)}.og-halka span{font-size:11px;color:var(--soluk)}
-.og-tas{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;flex:1;min-width:220px}@media (max-width:760px){.og-tas{grid-template-columns:1fr}}
+.og-tas{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:7px;flex:1;min-width:220px}
 .og-t{border-radius:10px;padding:7px 10px;border-left:4px solid;cursor:pointer;border-top:2px solid transparent;border-right:2px solid transparent;border-bottom:2px solid transparent}
 .og-t:hover{filter:brightness(.97)}.og-t.sec{border-top-color:var(--lac);border-right-color:var(--lac);border-bottom-color:var(--lac)}
 .og-t .s{font-size:11px;color:var(--soluk)}.og-t .d{font-size:20px;font-weight:700}.og-t .d small{font-size:12px;color:var(--soluk)}
@@ -990,8 +990,8 @@ function ozetCiz(){
     '<circle cx="56" cy="56" r="48" fill="none" stroke="#eef0f4" stroke-width="12"/><circle cx="56" cy="56" r="48" fill="none" stroke="' + v.devam_renk + '" stroke-width="12" stroke-linecap="round" stroke-dasharray="' + dolu + ' ' + cevre + '" transform="rotate(-90 56 56)"/></svg>' +
     '<div class="o"><b>' + dv + '</b><span>devam</span></div></div><div class="og-tas">';
   v.kutular.forEach(function(k){
-    var kr = (k.k === 'gelmedi' || k.k === 'eksik') && k.deger ? k.renk : 'inherit';
-    h += '<div class="og-t' + (PV.liste === k.k ? ' sec' : '') + '" data-k="' + k.k + '" title="tıklayın: bu günleri aşağıda listeler" style="border-left-color:' + k.renk + ';background:' + k.zemin + '"><div class="s">' + esc(k.ad) + '</div><div class="d" style="color:' + kr + '">' + k.deger + (k.ek ? '<small>' + esc(k.ek) + '</small>' : '') + '</div></div>';
+    var kr = (k.k === 'gelmedi' || k.k === 'gec' || k.k === 'erken') && k.deger ? k.renk : 'inherit';
+    h += '<div class="og-t' + (PV.liste === k.k ? ' sec' : '') + '" data-k="' + k.k + '" title="' + (k.sure ? 'toplam ' + esc(k.sure) + ' · ' : '') + 'tıklayın: bu günleri aşağıda listeler" style="border-left-color:' + k.renk + ';background:' + k.zemin + '"><div class="s">' + esc(k.ad) + '</div><div class="d" style="color:' + kr + '">' + k.deger + (k.ek ? '<small>' + esc(k.ek) + '</small>' : '') + '</div></div>';
   });
   h += '</div></div><div class="og-cub">';
   v.cubuk.forEach(function(c){ h += '<span>' + esc(c.ad) + '</span><div class="og-yol"><i style="width:' + (c.oran > 0 ? Math.max(3, c.oran * 100) : 0) + '%;background:' + c.renk + '"></i></div><b style="text-align:right">' + esc(c.metin) + '</b>'; });
@@ -1008,9 +1008,10 @@ function ozetCiz(){
 function ozetListe(){
   var v = PV.gorsel, k = PV.liste, el = $('pv-liste');
   if (!v || !k) { el.style.display = 'none'; return; }
-  var ad = (v.kutular.filter(function(x){ return x.k === k; })[0] || {}).ad || k, l = v.listeler[k] || [];
+  var kt = v.kutular.filter(function(x){ return x.k === k; })[0] || {}, ad = (kt.ad || k) + '', l = v.listeler[k] || [];
+  var top = (kt.sure && l.length) ? ' · toplam ' + kt.sure : '';
   var renk = {}; SERIT_AD.forEach(function(x){ renk[x[0]] = x[2]; });
-  el.innerHTML = '<div class="kart" style="margin:0"><h3 style="margin:0 0 8px">' + esc(ad) + ': ' + l.length + ' gün <span class="not">' + (l.length ? 'satıra tıklayın: takvim o aya gider · aynı kutuya yeniden tıklayınca kapanır' : 'bu dönemde yok') + '</span></h3>' +
+  el.innerHTML = '<div class="kart" style="margin:0"><h3 style="margin:0 0 8px">' + esc(ad) + ': ' + l.length + ' gün' + esc(top) + ' <span class="not">' + (l.length ? 'satıra tıklayın: takvim o aya gider · aynı kutuya yeniden tıklayınca kapanır' : 'bu dönemde yok') + '</span></h3>' +
     (l.length ? '<div class="tablokutu" style="max-height:360px"><table><thead><tr><th>Tarih</th><th>Vardiya</th><th>Giriş – çıkış</th><th>Açıklama</th></tr></thead><tbody>' +
     l.map(function(x){ var r = (x.tur !== 'geldi' && x.tur !== 'plan') ? renk[x.tur] : 'inherit';
       return '<tr data-g="' + x.gun + '"><td style="color:' + r + ';font-weight:600;white-space:nowrap">' + esc(x.tarih) + '</td><td>' + esc(x.plan) + '</td><td style="white-space:nowrap">' + esc(x.saat) + '</td><td>' + esc(x.aciklama) + '</td></tr>'; }).join('') +

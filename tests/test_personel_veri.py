@@ -168,7 +168,8 @@ def test_kart_ozeti_listeler_ve_cubuk_orani():
     assert [s["gun"] for s in v["listeler"]["gelmedi"]] == ["2026-11-03"]
     assert v["listeler"]["izin"][0]["aciklama"] == "Yıllık İzin"
     assert abs(v["cubuk"][0]["oran"] - 0.5) < 1e-9          # 10 dk geç, bölümde en çok 20 dk
-    assert [k["deger"] for k in v["kutular"]] == [1, 1, 1]
+    assert [k["deger"] for k in v["kutular"]] == [1, 1, 1, 1, 0]          # geldi, gelmedi, izin, geç, erken
+    assert [s["gun"] for s in v["listeler"]["gec"]] == ["2026-11-02"]
     assert pv.kart_ozeti([], None, oz, {}) is None
 
 

@@ -814,7 +814,7 @@ def kart_ozeti(gunler_: Iterable[Gun], o: Optional[Ozet], tum: Dict[int, Ozet], 
                 "Fazla çalışma": lambda x: x.fazla_dk, "Tatilde çalıştı": lambda x: x.tatil_calisti}[ad]
         m = en(alan)
         cubuk.append({"ad": ad, "metin": metin, "oran": (deger / m) if m else 0.0, "renk": renk})
-    listeler = {"geldi": [], "gelmedi": [], "izin": []}
+    listeler = {"geldi": [], "gelmedi": [], "izin": [], "gec": [], "erken": []}
     for g in gl:
         s = _gun_satiri(g, izin_ad)
         if g.durum in (GELDI, IZIN_SAAT, EKSIK):
@@ -823,10 +823,18 @@ def kart_ozeti(gunler_: Iterable[Gun], o: Optional[Ozet], tum: Dict[int, Ozet], 
             listeler["gelmedi"].append(s)
         if g.durum in (IZIN_TAM, IZIN_SAAT):
             listeler["izin"].append(s)
+        if g.gec_dk:
+            listeler["gec"].append(s)
+        if g.erken_dk:
+            listeler["erken"].append(s)
     return {"devam": o.devam, "devam_renk": devam_rengi(o.devam), "planli": o.planli,
             "kutular": [{"k": "geldi", "ad": "Geldi", "deger": o.geldi, "ek": f" / {o.planli}", "renk": "#3e9b2a", "zemin": "#eef8ec"},
                         {"k": "gelmedi", "ad": "Gelmedi", "deger": o.gelmedi, "ek": "", "renk": "#d64541", "zemin": "#fdeeee"},
-                        {"k": "izin", "ad": "İzinli gün", "deger": len(listeler["izin"]), "ek": "", "renk": "#2a7fd1", "zemin": "#e9f2fc"}],
+                        {"k": "izin", "ad": "İzinli gün", "deger": len(listeler["izin"]), "ek": "", "renk": "#2a7fd1", "zemin": "#e9f2fc"},
+                        {"k": "gec", "ad": "Geç geldi", "deger": o.gec_adet, "ek": "", "renk": "#e0a100", "zemin": "#fdf6e3",
+                         "sure": sure_yaz(o.gec_dk)},
+                        {"k": "erken", "ad": "Erken çıktı", "deger": o.erken_adet, "ek": "", "renk": "#e0702a", "zemin": "#fdeee3",
+                         "sure": sure_yaz(o.erken_dk)}],
             "cubuk": cubuk,
             "serit": [{"gun": g.gun.isoformat(), "tur": _serit_turu(g), "renk": SERIT_RENK[_serit_turu(g)],
                        "ipucu": gun_ipucu(g, izin_ad)} for g in gl],
