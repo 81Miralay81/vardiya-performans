@@ -182,8 +182,16 @@ class OtoCekim(QObject):
                 except Exception:  # noqa: BLE001
                     pass
             else:
-                self._pv_yeniden = datetime.now() + timedelta(minutes=YENIDEN_DK)
-                self._pv_yaz(f"hata ({datetime.now():%d.%m %H:%M}): {metin} · {self._pv_yeniden:%H:%M}'de yeniden denenecek")
+                bugun = datetime.now().date()
+                if getattr(self, "_pv_hata_gun", None) != bugun:
+                    self._pv_hata_gun, self._pv_hata_sayi = bugun, 0
+                self._pv_hata_sayi += 1
+                if self._pv_hata_sayi >= 3:              # aynı gün 3 başarısız denemeden sonra ertesi güne kadar bekle
+                    self._pv_yeniden = datetime.combine(bugun + timedelta(days=1), datetime.min.time())
+                    self._pv_yaz(f"hata ({datetime.now():%d.%m %H:%M}): {metin} · bugün 3 kez denendi, yarın yeniden denenecek")
+                else:
+                    self._pv_yeniden = datetime.now() + timedelta(minutes=YENIDEN_DK)
+                    self._pv_yaz(f"hata ({datetime.now():%d.%m %H:%M}): {metin} · {self._pv_yeniden:%H:%M}'de yeniden denenecek")
         self._pv_pencere = otomatik_calistir(self.ana.db_yolu, ilk, hedef, self.ana, bitti) or None
 
     def _baska_cekim_var(self) -> bool:
