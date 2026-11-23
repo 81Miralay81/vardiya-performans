@@ -48,8 +48,10 @@ _YAKALA = r"""
   XMLHttpRequest.prototype.open = function(m, u){ this.__vpM = {m: m, u: u}; return ac.apply(this, arguments); };
   function baslikUygun(k){ return !/^(content-length|x-signalr|x-requested-with$)/i.test(k); }
   XMLHttpRequest.prototype.setRequestHeader = function(k, v){ try { if (baslikUygun(k)) { (this.__vpH = this.__vpH || {})[k] = v; } } catch(e) {} return baslik.apply(this, arguments); };
+  window.__vpBekleyen = 0;
   XMLHttpRequest.prototype.send = function(b){
     var x = this; x.__vpGovde = (typeof b === 'string') ? b : null;
+    if (!x.__vpTekrar && !/signalr|negotiate|poll|hub|connect/i.test((x.__vpM || {}).u || '')) { window.__vpBekleyen++; x.addEventListener('loadend', function(){ window.__vpBekleyen = Math.max(0, window.__vpBekleyen - 1); }); }
     x.addEventListener('load', function(){
       try {
         var uu = (x.__vpM || {}).u || '';
@@ -123,6 +125,9 @@ _DOLDUR = r"""
 _EKRAN_DONEM = r"""
 (function(bas, bit, sayfa){
   if (sayfa && location.hash !== sayfa) { location.hash = sayfa; return JSON.stringify({git: 1}); }
+  var yukleniyor = Array.prototype.slice.call(document.querySelectorAll('[class*="loading"],[class*="spinner"],[class*="blockUI"],[class*="loader"],.k-loading-mask,.dx-loadpanel')).some(function(e){
+    return e.offsetParent !== null && e.offsetWidth > 20 && e.offsetHeight > 20; });
+  if ((window.__vpBekleyen || 0) > 0 || yukleniyor) return JSON.stringify({mesgul: 1, istek: window.__vpBekleyen || 0, yukleniyor: yukleniyor});
   var gor = function(e){ return e && document.body.contains(e) && e.offsetParent !== null; };
   var kutu = (window.__vpKutu || []).filter(gor);
   if (kutu.length < 2) {
@@ -138,7 +143,28 @@ _EKRAN_DONEM = r"""
   var ata = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
   var kapat = function(){ try { document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', keyCode: 27, which: 27, bubbles: true}));
       document.body.dispatchEvent(new MouseEvent('mousedown', {bubbles: true})); document.body.click(); } catch(err) {} };
+  var tarih = function(v){ var p = v.split(/[-.\/]/); return new Date(+p[2], +p[1] - 1, +p[0]); };
+  var arac = function(e){                       // tarih kutusunu hangi bileşen yönetiyor (Kendo, DevExtreme, jqWidgets, jQuery UI…)
+    var a = [];
+    try { if (window.jQuery) { var j = jQuery(e);
+      if (j.data('kendoDatePicker')) a.push('kendo'); if (j.data('kendoDateInput')) a.push('kendoInput');
+      if (j.closest('.dx-datebox').length) a.push('devextreme'); if (j.closest('.jqx-datetimeinput').length) a.push('jqx');
+      if (j.hasClass('hasDatepicker')) a.push('jqueryui'); if (j.data('datepicker')) a.push('bootstrap'); if (j.data('DateTimePicker')) a.push('bsdatetime'); } } catch(err) {}
+    try { if (e._flatpickr) a.push('flatpickr'); } catch(err) {}
+    return a;
+  };
+  var bilesen = function(e, v){
+    var d = tarih(v);
+    try { if (window.jQuery) { var j = jQuery(e);
+      var k = j.data('kendoDatePicker') || j.data('kendoDateInput'); if (k) { k.value(d); k.trigger('change'); }
+      var dx = j.closest('.dx-datebox'); if (dx.length && dx.dxDateBox) { dx.dxDateBox('instance').option('value', d); }
+      var jq = j.closest('.jqx-datetimeinput'); if (jq.length && jq.jqxDateTimeInput) { jq.jqxDateTimeInput('setDate', d); }
+      if (j.hasClass('hasDatepicker') && j.datepicker) { j.datepicker('setDate', d); }
+      if (j.data('DateTimePicker')) { j.data('DateTimePicker').date(d); } } } catch(err) {}
+    try { if (e._flatpickr) e._flatpickr.setDate(d, true); } catch(err) {}
+  };
   var yaz = function(e, v){
+    bilesen(e, v);
     ata.call(e, v);
     ['input', 'change', 'keyup'].forEach(function(o){ e.dispatchEvent(new Event(o, {bubbles: true})); });
     try { if (window.angular) { var c = angular.element(e).controller('ngModel'); if (c) { c.$setViewValue(v); c.$render(); var sc = angular.element(e).scope(); if (sc && !sc.$$phase && !(sc.$root && sc.$root.$$phase)) sc.$apply(); } } } catch(err) {}
@@ -155,7 +181,10 @@ _EKRAN_DONEM = r"""
       if (kutu[1].value !== v2) yaz(kutu[1], v2);
       kapat();
       setTimeout(function(){
-        console.log('VPPVE|' + kutu[0].value + '|' + kutu[1].value);
+        var tanim = function(e){ var c = null; try { c = window.angular && angular.element(e).controller('ngModel'); } catch(err) {}
+          return [e.getAttribute('ng-model') || e.getAttribute('data-ng-model') || e.name || e.id || '?', (e.className || '').split(/\s+/).slice(0, 4).join('.'),
+                  arac(e).join('+') || 'düz', c ? 'model=' + String(c.$modelValue).slice(0, 24) : 'modelsiz', (e.parentNode && e.parentNode.className || '').split(/\s+/).slice(0, 3).join('.')].join(' ; '); };
+        console.log('VPPVE|' + kutu[0].value + '|' + kutu[1].value + '|' + tanim(kutu[0]) + '|' + tanim(kutu[1]));
         dug[0].click();
       }, 500);
     }, 900);
@@ -174,7 +203,7 @@ def elle_acik_mi() -> bool:
     return any(not w.otomatik for w in list(_PENCERELER))
 
 
-EKRAN_YANIT_SN = 90     # ekran yolunda bir ayın listesinin gelmesi için en uzun bekleme (büyük listeler yavaş gelebilir)
+EKRAN_YANIT_SN = 150    # ekran yolunda bir ayın listesinin gelmesi için en uzun bekleme (büyük listeler yavaş gelebilir)
 
 _GIRIS_VAR = "(function(){ var e = document.querySelector('input[type=password]'); return !!(e && e.offsetParent !== null); })();"
 
@@ -580,13 +609,17 @@ class PersonelVeriPenceresi(QDialog):
             meta = json.loads(meta_s)
         except ValueError:
             meta = {}
-        self.tani(("otomatik yanıt kaydedildi: " if meta.get("r") else "kaydedildi: ") + aciklama)
+        self.tani(("uyarı: " if tur == "eksik_liste" else "otomatik yanıt kaydedildi: " if meta.get("r") else "kaydedildi: ") + aciklama)
         self._sablon_kaydet(tur, meta)
+        if tur == "eksik_liste" and getattr(self, "_ekran_bekle", None):
+            a, _b = self._ekran_bekle
+            self.tani(f"ekran yolu {a:%m.%Y}: gelen liste eksik olduğu için bu ay alınmadı")
+            self._ekran_bekle = None
+            self._ekran_deneme = 0
         if tur == "giris_cikis" and not meta.get("r"):
             self._ekran_yanit(meta)
             self._son_veri = time.time()
-            if not self._kaydir_zaman.isActive() and not self._gorevler:
-                self._kaydirma_baslat()
+            # sayfa artık kendiliğinden alta kaydırılmaz (gerekirse 'Listeyi sonuna kadar al' düğmesi)
 
     def _kaydirma_baslat(self):
         self._kaydir_bas = time.time()
@@ -812,7 +845,7 @@ class PersonelVeriPenceresi(QDialog):
             self._gorev_baslat(gorevler, lambda ok, n: personel_sonra(ok, n, "istekle"))
 
     def _ekran_baslat(self, aylar: list, bitince: Callable[[int, int], None]):
-        self._ekran_aylar = list(aylar)
+        self._ekran_aylar = sorted(aylar, reverse=True)   # en yeni aydan geriye: liste büyürse en güncel aylar önce alınmış olur
         self._ekran_say = [0, len(aylar)]
         self._ekran_bitince = bitince
         self._ekran_bekle = None
@@ -871,6 +904,18 @@ class PersonelVeriPenceresi(QDialog):
                 d = json.loads(r) if isinstance(r, str) else {}
             except ValueError:
                 d = {}
+            if d.get("mesgul"):                         # sayfa hâlâ yükleniyor: acele etmeden bekle
+                self._ekran_mesgul = getattr(self, "_ekran_mesgul", 0) + 1
+                if self._ekran_mesgul in (1, 25):
+                    self.tani(f"ekran yolu {a:%m.%Y}: sayfa hâlâ yükleniyor (bekleyen istek {d.get('istek', 0)}), bekleniyor")
+                if self._ekran_mesgul < 180:                # pivot 1 dakikadan uzun yüklenebilir: en çok ~2,5 dk beklenir
+                    self._ekran_bos_kadar = time.time() + 0.5
+                    return
+                self._ekran_mesgul = 0
+                self._ekran_bos_kadar = time.time() + 1
+                self.sayfa.runJavaScript("window.__vpBekleyen = 0;")
+                return
+            self._ekran_mesgul = 0
             if d.get("git"):
                 self.tani(f"ekran yolu {a:%m.%Y}: sayfa başka ekrandaydı, {self._ekran_sayfa} ekranına dönülüyor")
                 self._ekran_bos_kadar = time.time() + 10
@@ -906,6 +951,7 @@ class PersonelVeriPenceresi(QDialog):
             self.tani(f"ekran yolu {a:%m.%Y}: alındı ({gi:%d.%m} – {gs:%d.%m})")
             self._ekran_bekle = None
             self._ekran_deneme = 0
+            self._ekran_bos_kadar = time.time() + 4            # sayfa tabloyu çizsin, sonra sıradaki aya geçilsin
             atla = [x for x in self._ekran_aylar if x[0] >= gi and min(x[1], _d.today() - timedelta(days=1)) <= gs]
             if atla:                                       # gelen liste sonraki ayları da içeriyor: onları yeniden isteme
                 self._ekran_aylar = [x for x in self._ekran_aylar if x not in atla]
@@ -918,6 +964,10 @@ class PersonelVeriPenceresi(QDialog):
         p = mesaj.split("|")
         if getattr(self, "_ekran_log", True) and self._ekran_bekle:
             self.tani(f"ekran yolu {self._ekran_bekle[0]:%m.%Y}: kutularda okunan {p[1] if len(p) > 1 else '?'} / {p[2] if len(p) > 2 else '?'}; düğmeye basıldı")
+            if len(p) > 4 and not getattr(self, "_kutu_tanim_yazildi", False):
+                self._kutu_tanim_yazildi = True
+                self.tani(f"tarih kutusu 1: {p[3]}")
+                self.tani(f"tarih kutusu 2: {p[4]}")
 
     def _otomatik_bitir(self, basarili: bool, metin: str):
         fn, self._bitince = self._bitince, None

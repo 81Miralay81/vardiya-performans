@@ -170,3 +170,28 @@ def test_kart_ozeti_listeler_ve_cubuk_orani():
     assert abs(v["cubuk"][0]["oran"] - 0.5) < 1e-9          # 10 dk geç, bölümde en çok 20 dk
     assert [k["deger"] for k in v["kutular"]] == [1, 1, 0, 1]
     assert pv.kart_ozeti([], None, oz, {}) is None
+
+
+def test_eksik_liste_kaydedilmez_ve_saatli_kayit_korunur():
+    import sqlite3
+    from vardiya import personel_veri as pv
+    con = sqlite3.connect(":memory:"); con.row_factory = sqlite3.Row
+    iyi = [{"ysicilid": 100 + i, "ysicilno": str(i), "ypersonel": f"K{i}", "ypozisyonad": "P",
+            **{f"y2026x10x{g:02d}": "08:00-16:00<br>0800-1600<br>07:50 16:05<br>a<br>b<br>-10U-5,white,0" for g in range(1, 31)}}
+           for i in range(3)]
+    import json
+    r = pv.tani_ve_kaydet(con, json.dumps(iyi))
+    assert r["tur"] == "giris_cikis"
+    bozuk = [{"ysicilid": 100 + i, "ysicilno": str(i), "ypersonel": f"K{i}", "ypozisyonad": "P",
+              **{f"y2026x10x{g:02d}": "08:00-16:00<br>0800-1600 01,white,0" for g in range(1, 31)}} for i in range(3)]
+    r = pv.tani_ve_kaydet(con, json.dumps(bozuk))          # iki satırlı (sınırı aşmış) hücreler gerçekleşen sayılmaz
+    assert r["tur"] == "plan"
+    bos = [{"ysicilid": 100 + i, "ysicilno": str(i), "ypersonel": f"K{i}", "ypozisyonad": "P",
+            **{f"y2026x10x{g:02d}": "08:00-16:00<br>0800-1600<br><br>-0U0,green,0" for g in range(1, 31)}} for i in range(3)]
+    r = pv.tani_ve_kaydet(con, json.dumps(bos))            # saatsiz gerçekleşen liste: eksik, kaydedilmez
+    assert r["tur"] == "eksik_liste"
+    assert con.execute("SELECT giris FROM pv_gun WHERE sicilid=100 AND gun='2026-10-05'").fetchone()[0] == "07:50"
+    # tek tük saatsiz hücre (ör. gerçekten izinli gün) eski saatli kaydı silmez
+    tek = [{"ysicilid": 100, "ysicilno": "0", "ypersonel": "K0", "ypozisyonad": "P", "y2026x10x05": "08:00-16:00<br>0800-1600 01<br>,white,0"}]
+    pv.tani_ve_kaydet(con, json.dumps(tek))
+    assert con.execute("SELECT giris FROM pv_gun WHERE sicilid=100 AND gun='2026-10-05'").fetchone()[0] == "07:50"

@@ -59,6 +59,11 @@ def kur(con) -> None:
     if "cikis_tarih" not in kol:                      # işten çıkış tarihi (sonradan eklendi)
         con.execute("ALTER TABLE pv_personel ADD COLUMN cikis_tarih TEXT")
         con.commit()
+    # Eksik (sınırı aşmış) listeden yanlış okunmuş günler: izin kodu yerine 'Ödenmeyen,green,-55_2_59' gibi kuyruk yazısı.
+    # Bunlar gerçekleşen sayılmaz; doğru liste yeniden çekilince üzerine yazılır.
+    if con.execute("SELECT 1 FROM pv_gun WHERE gercek=1 AND izin_kod LIKE '%,%' LIMIT 1").fetchone():
+        con.execute("UPDATE pv_gun SET gercek=0, izin_kod='' WHERE gercek=1 AND izin_kod LIKE '%,%'")
+        con.commit()
     _KURULU.add(id(con))
 
 
@@ -91,13 +96,13 @@ def hucre_coz(deger) -> Optional[Hucre]:
     if not isinstance(deger, str) or not deger.strip():
         return None
     s = deger.strip()
-    if "<br>" in s:
+    if "<br>" in s and len(s.split("<br>")) >= 3:     # iki satırlı hücre: eksik (sınırı aşmış) liste, gerçekleşen sayılmaz
         p = s.split("<br>")
         kuyruk = p[-1].split(",")
         h = Hucre(plan=p[0].lstrip("?").strip(), gercek=True)
         kodlar = p[1].split() if len(p) > 1 else []
         h.plan_kod = kodlar[0] if kodlar else ""
-        h.izin_kod = kodlar[1] if len(kodlar) > 1 else ""
+        h.izin_kod = kodlar[1] if len(kodlar) > 1 and "," not in kodlar[1] else ""
         if len(p) > 2:
             sa = p[2].split()
             h.giris = _saat(sa[0]) if sa else ""
@@ -107,7 +112,7 @@ def hucre_coz(deger) -> Optional[Hucre]:
             h.g_dk, h.e_dk = int(m.group(1)), int(m.group(2))
         h.renk = kuyruk[1].strip() if len(kuyruk) > 1 else ""
         return h
-    parca = s.split(",")
+    parca = s.split("<br>")[0].split(",")
     return Hucre(plan=parca[0].lstrip("?").strip(), renk=parca[1].strip() if len(parca) > 1 else "")
 
 
@@ -168,7 +173,11 @@ def tani_ve_kaydet(con, metin: str) -> Optional[dict]:
         if not kisi:
             return None
         gunler_ = sorted({f"{m.group(1)}-{m.group(2)}-{m.group(3)}" for r in kisi for a in r if (m := GUN_ANAHTAR.match(a))})
-        gercek = any(isinstance(d, str) and "<br>" in d for r in kisi for d in r.values())
+        gercek = any((h := hucre_coz(d)) is not None and h.gercek for r in kisi for a, d in r.items() if GUN_ANAHTAR.match(a))
+        if gercek and eksik_liste_mi(kisi):
+            return {"aciklama": f"EKSİK LİSTE: {len(kisi)} kişi, {len(gunler_)} gün, ama geçmiş günlerde giriş-çıkış saati yok "
+                                "(büyük olasılıkla sayfanın görüntüleme sınırı aşıldı). Kaydedilmedi, eldeki veri korunuyor.",
+                    "tur": "eksik_liste", "ilk": gunler_[0] if gunler_ else None, "son": gunler_[-1] if gunler_ else None}
         return {"aciklama": _tapivot(con, kisi), "tur": "giris_cikis" if gercek else "plan",
                 "ilk": gunler_[0] if gunler_ else None, "son": gunler_[-1] if gunler_ else None}
     if "kod" in k and "ad" in k and "saatlikizin" in k:
@@ -187,6 +196,24 @@ def tani_ve_kaydet(con, metin: str) -> Optional[dict]:
         aktif = any(not r.get("cikistarih") for r in v)
         return {"aciklama": _kisi_listesi(con, v), "tur": "liste_cikan" if cikan and not aktif else ("liste_hepsi" if cikan else "liste_aktif")}
     return None
+
+
+def eksik_liste_mi(satirlar: List[dict], bugun: Optional[date] = None) -> bool:
+    """Planlanan + Gerçekleşen listesi geçmiş günler için giriş-çıkış saati içermiyorsa (sayfa çok büyük listede saatleri
+    göndermiyor: 'Görüntüleme sınırı aşımı') eksiktir; kaydedilirse doğru verinin üzerine yazar."""
+    bugun = (bugun or date.today()).isoformat()
+    toplam = saatli = 0
+    for r in satirlar:
+        for a, d in r.items():
+            m = GUN_ANAHTAR.match(a)
+            if not m or f"{m.group(1)}-{m.group(2)}-{m.group(3)}" >= bugun:
+                continue
+            h = hucre_coz(d)
+            if h is None or not h.gercek:
+                continue
+            toplam += 1
+            saatli += bool(h.giris or h.cikis)
+    return toplam >= 30 and saatli < toplam * 0.05
 
 
 def _tapivot(con, satirlar: List[dict]) -> str:
@@ -213,9 +240,14 @@ def _tapivot(con, satirlar: List[dict]) -> str:
             g = f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
             gunler.add(g)
             gun_say += 1
-            if h.gercek:
-                con.execute("INSERT OR REPLACE INTO pv_gun(sicilid, gun, plan, plan_kod, izin_kod, giris, cikis, g_dk, e_dk, renk, "
-                            "gercek, guncel) VALUES(?,?,?,?,?,?,?,?,?,?,1,?)",
+            if h.gercek:                          # saatsiz yeni kayıt, saatli eski kaydın üzerine yazmaz
+                con.execute("INSERT INTO pv_gun(sicilid, gun, plan, plan_kod, izin_kod, giris, cikis, g_dk, e_dk, renk, "
+                            "gercek, guncel) VALUES(?,?,?,?,?,?,?,?,?,?,1,?) "
+                            "ON CONFLICT(sicilid, gun) DO UPDATE SET plan=excluded.plan, plan_kod=excluded.plan_kod, "
+                            "izin_kod=excluded.izin_kod, giris=excluded.giris, cikis=excluded.cikis, g_dk=excluded.g_dk, "
+                            "e_dk=excluded.e_dk, renk=excluded.renk, gercek=1, guncel=excluded.guncel "
+                            "WHERE NOT ((COALESCE(excluded.giris,'') = '' AND COALESCE(excluded.cikis,'') = '') "
+                            "AND (COALESCE(pv_gun.giris,'') <> '' OR COALESCE(pv_gun.cikis,'') <> ''))",
                             (sid, g, h.plan, h.plan_kod, h.izin_kod, h.giris, h.cikis, h.g_dk, h.e_dk, h.renk, simdi))
             else:                                   # yalnız plan: gerçekleşen kayıt varsa üzerine yazılmaz
                 con.execute("INSERT INTO pv_gun(sicilid, gun, plan, renk, gercek, guncel) VALUES(?,?,?,?,0,?) "
@@ -590,11 +622,23 @@ RENK = {"1": "#DDEBF7", "2": "#FCE4D6", "3": "#E2D9F3", "G": "#F1F6E8", "D": "#F
         TATIL: "#EDEDED", TATIL_CALISTI: "#D9E1F2", "gec": "#FFEB9C"}
 
 
+_KISA = (("yıllık", "Yıllık"), ("raporlu ödenmeyen", "Rapor"), ("raporlu ödenen", "Rapor (ücretli)"), ("rapor", "Rapor"),
+         ("habersiz", "Habersiz"), ("ücretsiz", "Ücretsiz"), ("ücretli", "Ücretli"), ("babalık", "Babalık"), ("ölüm", "Ölüm"),
+         ("evlilik", "Evlilik"), ("görev", "Görev"), ("süt", "Süt"), ("vizite", "Vizite"), ("sünnet", "Sünnet"),
+         ("doğum", "Doğum"), ("mazeret", "Mazeret"), ("cuma", "Cuma"), ("arge", "Ar-Ge"))
+
+
 def izin_kisa(izin_ad: Dict[str, str], kod: str) -> str:
-    """Aynı kodu paylaşan izin türleri (ör. 01: Yıllık izin / Raporlu ödenmeyen) kısaltılarak gösterilir."""
-    ad = izin_ad.get(kod, f"İzin {kod}")
-    parca = [x.strip() for x in ad.split(" / ") if x.strip()]
-    return " / ".join(x.split()[0] for x in parca) if len(parca) > 1 else ad
+    """Kısa izin adı: 'Yıllık', 'Rapor', 'Ücretsiz'… Aynı kodu paylaşan türler (01: Yıllık izin / Raporlu ödenmeyen)
+    'Yıllık / Rapor' olur."""
+    ad = izin_ad.get(kod) or BILINEN_IZINLER.get(kod) or f"İzin {kod}"
+    sonuc = []
+    for parca in (x.strip() for x in ad.split(" / ") if x.strip()):
+        k = parca.replace("I", "ı").replace("İ", "i").lower()
+        kisa = next((v for a, v in _KISA if a in k), parca)
+        if kisa not in sonuc:
+            sonuc.append(kisa)
+    return " / ".join(sonuc) or ad
 
 
 def gun_yazi(g: Gun, izin_ad: Dict[str, str], bugun: date) -> Tuple[str, str]:
