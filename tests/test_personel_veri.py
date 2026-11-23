@@ -210,3 +210,11 @@ def test_iki_vakit_otomatik_plan():
     # program birkaç gün kapalı kaldıysa arada kalan günler de çekilir, 01.07.2026'dan eskiye gidilmez
     assert p(datetime(2026, 11, 24, 9, 0), st=date(2026, 11, 19))[1] == date(2026, 11, 20)
     assert p(datetime(2026, 7, 3, 9, 0), st=None)[1] == date(2026, 7, 1)
+
+
+def test_izin_satirlari_toplam_kalan_kullanilan():
+    from vardiya import personel_veri as pv
+    s = dict(pv.izin_satirlari({"hak": 22, "kullanilan": 14.5, "devir": 0, "kalan": 119.5, "guncel": "2026-11-23 10:00:00"}))
+    assert s["Toplam izin hakkı"].startswith("134 gün") and "devreden 112" in s["Toplam izin hakkı"]
+    assert s["Kullanılan izin"].startswith("14.5 gün") and "<b>119.5 gün</b>" in s["Kalan izin"] and "23.11.2026" in s["Kalan izin"]
+    assert pv.izin_satirlari({}) == []
