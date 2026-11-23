@@ -150,7 +150,9 @@ class OtoCekim(QObject):
     def pv_kontrol(self):
         if not ayarda_acik() or self._pv_pencere is not None:
             return
-        from .personel_pencere import kimlik_oku, otomatik_calistir, sablon_oku
+        from .personel_pencere import ERTELENDI, elle_acik_mi, kimlik_oku, otomatik_calistir, sablon_oku
+        if elle_acik_mi():                                # kullanıcı Personel Veri penceresini kullanıyor: bitince denenir
+            return
         if not sablon_oku("giris_cikis") or not all(kimlik_oku()):
             self._pv_yaz("hazır değil (Personel Veri penceresinde giriş yapıp bir ayı bir kez elle listeleyin)")
             return
@@ -181,6 +183,9 @@ class OtoCekim(QObject):
                         s.yenile()
                 except Exception:  # noqa: BLE001
                     pass
+            elif metin.startswith(ERTELENDI):
+                self._pv_yeniden = None
+                self._pv_yaz(f"{metin} · sıradaki: {saat_y}")
             else:
                 bugun = datetime.now().date()
                 if getattr(self, "_pv_hata_gun", None) != bugun:

@@ -74,7 +74,9 @@ _YAKALA = r"""
   }
   window.__vpTekrar = function(id, m, u, b){
     var x = new XMLHttpRequest(); x.__vpTekrar = id; x.open(m || 'GET', u, true);
-    for (var k in window.__vpB) { try { x.setRequestHeader(k, window.__vpB[k]); } catch(e) {} }
+    var tipVar = false;
+    for (var k in window.__vpB) { try { x.setRequestHeader(k, window.__vpB[k]); if (/^content-type$/i.test(k)) tipVar = true; } catch(e) {} }
+    if (b != null && !tipVar) { try { x.setRequestHeader('Content-Type', 'application/json;charset=UTF-8'); } catch(e) {} }
     x.onerror = function(){ console.log('VPPVT|' + id + '|0'); };
     x.send(b == null ? null : b); return true;
   };
@@ -122,28 +124,51 @@ _EKRAN_DONEM = r"""
       return gor(e) && /^\d{2}[-.\/]\d{2}[-.\/]\d{4}$/.test((e.value || '').trim()); });
     if (kutu.length >= 2) window.__vpKutu = kutu.slice(0, 2);
   }
-  if (kutu.length < 2) return JSON.stringify({kutu: kutu.length, dugme: 0});
+  var dug = Array.prototype.slice.call(document.querySelectorAll('button, a, input[type=button]')).filter(function(b){
+    return b.offsetParent !== null && /planlanan\s*\+\s*gerçekleşen/.test(((b.textContent || b.value || '') + '').toLocaleLowerCase('tr-TR')); });
+  dug.sort(function(a, b){ return (a.textContent || '').length - (b.textContent || '').length; });
+  if (kutu.length < 2 || !dug.length) return JSON.stringify({kutu: kutu.length, dugme: dug.length});
   var ayr = window.__vpAyrac || (kutu[0].value.trim().charAt(2)) || '-'; if (!/[-.\/]/.test(ayr)) ayr = '-'; window.__vpAyrac = ayr;
   var ata = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
   var kapat = function(){ try { document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', keyCode: 27, which: 27, bubbles: true}));
       document.body.dispatchEvent(new MouseEvent('mousedown', {bubbles: true})); document.body.click(); } catch(err) {} };
-  [[kutu[0], bas.replace(/-/g, ayr)], [kutu[1], bit.replace(/-/g, ayr)]].forEach(function(x){
-    var e = x[0], v = x[1];
+  var yaz = function(e, v){
     ata.call(e, v);
     ['input', 'change', 'keyup'].forEach(function(o){ e.dispatchEvent(new Event(o, {bubbles: true})); });
     try { if (window.angular) { var c = angular.element(e).controller('ngModel'); if (c) { c.$setViewValue(v); c.$render(); var sc = angular.element(e).scope(); if (sc && !sc.$$phase && !(sc.$root && sc.$root.$$phase)) sc.$apply(); } } } catch(err) {}
     try { if (window.jQuery) { var j = jQuery(e); if (j.datepicker) { try { j.datepicker('update', v); } catch(e2) {} } j.val(v).trigger('change'); } } catch(err) {}
     if (e.value !== v) ata.call(e, v);
     try { e.dispatchEvent(new Event('blur', {bubbles: true})); } catch(err) {}
-  });
-  kapat();
-  var dug = Array.prototype.slice.call(document.querySelectorAll('button, a, input[type=button]')).filter(function(b){
-    return b.offsetParent !== null && /planlanan\s*\+\s*gerçekleşen/.test(((b.textContent || b.value || '') + '').toLocaleLowerCase('tr-TR')); });
-  dug.sort(function(a, b){ return (a.textContent || '').length - (b.textContent || '').length; });
-  if (dug.length) setTimeout(function(){ kapat(); dug[0].click(); }, 700);
-  return JSON.stringify({kutu: kutu.length, dugme: dug.length, ayrac: ayr, okunan: [kutu[0].value, kutu[1].value]});
+  };
+  var v1 = bas.replace(/-/g, ayr), v2 = bit.replace(/-/g, ayr);
+  yaz(kutu[0], v1); kapat();
+  setTimeout(function(){
+    yaz(kutu[1], v2); kapat();
+    setTimeout(function(){
+      if (kutu[0].value !== v1) yaz(kutu[0], v1);
+      if (kutu[1].value !== v2) yaz(kutu[1], v2);
+      kapat();
+      setTimeout(function(){
+        console.log('VPPVE|' + kutu[0].value + '|' + kutu[1].value);
+        dug[0].click();
+      }, 500);
+    }, 900);
+  }, 900);
+  return JSON.stringify({kutu: kutu.length, dugme: dug.length, ayrac: ayr});
 })(%s, %s, %s);
 """
+
+import weakref
+_PENCERELER = weakref.WeakSet()       # açık Personel Veri pencereleri (elle ve otomatik)
+ERTELENDI = "ertelendi"               # otomatik çekim, kullanıcı pencereyi açtığı için durduruldu (hata sayılmaz)
+
+
+def elle_acik_mi() -> bool:
+    """Kullanıcının açtığı (görünür) bir Personel Veri penceresi var mı."""
+    return any(not w.otomatik for w in list(_PENCERELER))
+
+
+EKRAN_YANIT_SN = 90     # ekran yolunda bir ayın listesinin gelmesi için en uzun bekleme (büyük listeler yavaş gelebilir)
 
 _GIRIS_VAR = "(function(){ var e = document.querySelector('input[type=password]'); return !!(e && e.offsetParent !== null); })();"
 
@@ -295,6 +320,7 @@ class PersonelVeriPenceresi(QDialog):
         eski_kayitlari_sil()
         self.db_yolu = db_yolu
         self.otomatik = otomatik
+        _PENCERELER.add(self)
         self._bitince = bitince
         self._kapaninca = kapaninca
         self._parcalar: dict = {}
@@ -387,6 +413,8 @@ class PersonelVeriPenceresi(QDialog):
                     ust_._parca(mesaj)
                 elif mesaj.startswith("VPPVT|"):
                     ust_._gorev_yanit(mesaj)
+                elif mesaj.startswith("VPPVE|"):
+                    ust_._ekran_yazildi(mesaj)
         self.web = QWebEngineView()
         self.sayfa = _Sayfa(self.profil, self.web)
         self.web.setPage(self.sayfa)
@@ -766,7 +794,7 @@ class PersonelVeriPenceresi(QDialog):
             self._ekran_zamanlayici = QTimer(self)
             self._ekran_zamanlayici.timeout.connect(self._ekran_tik)
         self._ekran_zamanlayici.stop()
-        self._ekran_bos_kadar = time.time() + 6     # ekranın yüklenmesi için bekleme
+        self._ekran_bos_kadar = time.time() + 10    # ekranın yüklenmesi için bekleme
         self._ekran_zamanlayici.start(800)
 
     def _ekran_bitir(self, neden: str = ""):
@@ -783,14 +811,14 @@ class PersonelVeriPenceresi(QDialog):
         if time.time() < getattr(self, "_ekran_bos_kadar", 0) or getattr(self, "_ekran_js", False):
             return
         if self._ekran_bekle is not None:
-            if time.time() - self._ekran_zaman > 40:
+            if time.time() - self._ekran_zaman > EKRAN_YANIT_SN:
                 a, b = self._ekran_bekle
                 self._ekran_bekle = None
                 if self._ekran_deneme < 2:
-                    self.tani(f"ekran yolu: {a:%m.%Y} için yanıt gelmedi (40 sn), ekran yeniden açılıp bir kez daha denenecek")
+                    self.tani(f"ekran yolu: {a:%m.%Y} için {EKRAN_YANIT_SN} sn yanıt gelmedi, ekran yeniden açılıp bir kez daha denenecek")
                     self._ekran_aylar.insert(0, (a, b))
-                    self.sayfa.runJavaScript("window.__vpKutu = null; location.reload();")
-                    self._ekran_bos_kadar = time.time() + 12
+                    self.sayfa.runJavaScript(f"window.__vpKutu = null; location.hash = '#!/'; setTimeout(function(){{ location.hash = {json.dumps(self._ekran_sayfa)}; }}, 3000);")
+                    self._ekran_bos_kadar = time.time() + 20
                 else:
                     self.tani(f"ekran yolu: {a:%m.%Y} için yanıt gelmedi, bu ay atlandı")
                     self._ekran_deneme = 0
@@ -811,24 +839,22 @@ class PersonelVeriPenceresi(QDialog):
                 d = {}
             if d.get("git"):
                 self.tani(f"ekran yolu {a:%m.%Y}: sayfa başka ekrandaydı, {self._ekran_sayfa} ekranına dönülüyor")
-                self._ekran_bos_kadar = time.time() + 6
+                self._ekran_bos_kadar = time.time() + 10
                 self._ekran_bulunamadi += 1
             elif not d.get("kutu") or d.get("kutu", 0) < 2 or not d.get("dugme"):
                 self._ekran_bulunamadi += 1
                 self.tani(f"ekran yolu {a:%m.%Y}: tarih kutusu {d.get('kutu', 0)}, 'Planlanan + Gerçekleşen' düğmesi {d.get('dugme', 0)}"
                           " → ekran yeniden açılıyor")
-                self.sayfa.runJavaScript(f"window.__vpKutu = null; location.hash = '#!/'; setTimeout(function(){{ location.hash = {json.dumps(self._ekran_sayfa)}; }}, 1500);")
-                self._ekran_bos_kadar = time.time() + 8
+                self.sayfa.runJavaScript(f"window.__vpKutu = null; location.hash = '#!/'; setTimeout(function(){{ location.hash = {json.dumps(self._ekran_sayfa)}; }}, 3000);")
+                self._ekran_bos_kadar = time.time() + 15
             else:
                 self._ekran_bulunamadi = 0
                 self._ekran_aylar.pop(0)
                 self._ekran_deneme += 1
                 self._ekran_bekle = (a, b)
                 self._ekran_zaman = time.time()
-                okunan = d.get("okunan") or []
-                if sira == 1 or self._ekran_deneme > 1:
-                    self.tani(f"ekran yolu {a:%m.%Y}: tarih kutuları yazıldı → kutuda okunan: {' / '.join(okunan) or '?'}; düğmeye basıldı")
-            if self._ekran_bulunamadi >= 6:
+                self._ekran_log = sira == 1 or self._ekran_deneme > 1
+            if self._ekran_bulunamadi >= 10:
                 self._ekran_bitir("tarih kutuları ya da düğme bulunamıyor (ekran değişmiş olabilir). "
                                   "Pivot ekranını açık bırakıp yeniden deneyin.")
         self.sayfa.runJavaScript(_EKRAN_DONEM % (json.dumps(f"{a:%d-%m-%Y}"), json.dumps(f"{b:%d-%m-%Y}"),
@@ -846,8 +872,18 @@ class PersonelVeriPenceresi(QDialog):
             self.tani(f"ekran yolu {a:%m.%Y}: alındı ({gi:%d.%m} – {gs:%d.%m})")
             self._ekran_bekle = None
             self._ekran_deneme = 0
+            atla = [x for x in self._ekran_aylar if x[0] >= gi and min(x[1], _d.today() - timedelta(days=1)) <= gs]
+            if atla:                                       # gelen liste sonraki ayları da içeriyor: onları yeniden isteme
+                self._ekran_aylar = [x for x in self._ekran_aylar if x not in atla]
+                self._ekran_say[0] += len(atla)
+                self.tani(f"ekran yolu: gelen liste {len(atla)} ayı daha kapsıyor ({atla[0][0]:%m.%Y} – {atla[-1][0]:%m.%Y}), onlar yeniden istenmeyecek")
         else:
             self.tani(f"ekran yolu {a:%m.%Y}: gelen dönem farklı ({gi:%d.%m.%Y} – {gs:%d.%m.%Y}); tarih kutuları değişmemiş olabilir")
+
+    def _ekran_yazildi(self, mesaj: str):
+        p = mesaj.split("|")
+        if getattr(self, "_ekran_log", True) and self._ekran_bekle:
+            self.tani(f"ekran yolu {self._ekran_bekle[0]:%m.%Y}: kutularda okunan {p[1] if len(p) > 1 else '?'} / {p[2] if len(p) > 2 else '?'}; düğmeye basıldı")
 
     def _otomatik_bitir(self, basarili: bool, metin: str):
         fn, self._bitince = self._bitince, None
@@ -860,6 +896,9 @@ class PersonelVeriPenceresi(QDialog):
             self._giris_zaman.stop()
             self._kaydir_zaman.stop()
             self._is_zaman.stop()
+            if hasattr(self, "_ekran_zamanlayici"):
+                self._ekran_zamanlayici.stop()
+            self._ekran_bitince = None
             self.kaydedici.bitir()
             self.web.setPage(None)
             self.sayfa.deleteLater()
@@ -871,6 +910,12 @@ class PersonelVeriPenceresi(QDialog):
 
 
 def ac(db_yolu: str, parent=None, kapaninca: Optional[Callable[[], None]] = None) -> PersonelVeriPenceresi:
+    for w in list(_PENCERELER):                   # arka planda süren otomatik çekim, iki sayfa birbirine karışmasın diye durur
+        if w.otomatik:
+            try:
+                w._otomatik_bitir(False, ERTELENDI + ": pencere elle açıldı, otomatik çekim sonra yeniden denenecek")
+            except Exception:  # noqa: BLE001
+                pass
     d = PersonelVeriPenceresi(db_yolu, parent, kapaninca)
     d.setAttribute(Qt.WA_DeleteOnClose)
     d.show()
