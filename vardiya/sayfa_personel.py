@@ -340,13 +340,28 @@ class PersonelSayfasi(QWidget):
         sat.addWidget(k1, 3)
         k2 = kart()
         k2.layout().addWidget(etiket("Seçili dönem özeti", "KartBaslik"))
-        self.k_ozet = QLabel()
-        self.k_ozet.setTextFormat(Qt.RichText)
-        self.k_ozet.setWordWrap(True)
+        from .ozet_gorsel import OzetGorsel
+        self.k_ozet = OzetGorsel()
+        self.k_ozet.kutu_tiklandi.connect(self._ozet_liste)
         k2.layout().addWidget(self.k_ozet)
         k2.layout().addStretch(1)
-        sat.addWidget(k2, 2)
+        sat.addWidget(k2, 3)
         l.addLayout(sat)
+        self.k_liste_kart = kart()                 # özet kutusuna tıklanınca: o günlerin listesi
+        self.k_liste_baslik = etiket("", "KartBaslik", kelime=False)
+        self.k_liste_kart.layout().addWidget(self.k_liste_baslik)
+        self.k_liste = QTableWidget(0, 4)
+        self.k_liste.setHorizontalHeaderLabels(["Tarih", "Vardiya", "Giriş – çıkış", "Açıklama"])
+        self.k_liste.verticalHeader().hide()
+        self.k_liste.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.k_liste.horizontalHeader().setStretchLastSection(True)
+        self.k_liste.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.k_liste.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.k_liste.cellClicked.connect(self._ozet_liste_tik)
+        self.k_liste_kart.layout().addWidget(self.k_liste)
+        self.k_liste_kart.hide()
+        l.addWidget(self.k_liste_kart)
+        self._kart_veri = None
         k3 = kart()
         ust2 = QHBoxLayout()
         b1, b3 = QPushButton("◀"), QPushButton("▶")
@@ -710,7 +725,8 @@ class PersonelSayfasi(QWidget):
         p = self._kisi.get(sid) if sid is not None else None
         if not p:
             self.k_bilgi.setText("Personel seçin")
-            self.k_ozet.setText("")
+            self.k_ozet.ayarla(None)
+            self.k_liste_kart.hide()
             self.k_foto.clear()
             return
         kimlik = self._yetki("personel_kimlik")
@@ -747,18 +763,41 @@ class PersonelSayfasi(QWidget):
             satir.append(("İşe giriş / kıdem", "<span style='color:#6b7285'>henüz alınmadı</span>"))
         self.k_bilgi.setText("<table cellpadding='3'>" + "".join(
             f"<tr><td style='color:#6b7285;padding-right:14px'>{a}</td><td>{d}</td></tr>" for a, d in satir) + "</table>")
-        o = self._ozet.get(sid)
-        if o:
-            dv = "-" if o.devam is None else f"%{o.devam * 100:.1f}".replace(".", ",")
-            izin = ", ".join(f"{self._izin_ad.get(k, k)}: {n} gün" for k, n in sorted(o.izin_tur.items())) or "yok"
-            self.k_ozet.setText(f"<span style='font-size:22px;color:{tema.LACIVERT}'><b>{dv}</b></span> devam<br>"
-                                f"Planlı {o.planli} gün · geldi {o.geldi} · <b style='color:{tema.KIRMIZI}'>gelmedi {o.gelmedi}</b>"
-                                f" · eksik kart {o.eksik}<br>Geç gelme {o.gec_adet} ({pv.sure_yaz(o.gec_dk)}) · erken çıkma "
-                                f"{o.erken_adet} ({pv.sure_yaz(o.erken_dk)})<br>Fazla çalışma {pv.sure_yaz(o.fazla_dk)} · tatilde "
-                                f"çalıştı {o.tatil_calisti} gün<br>İzinler: {izin}")
-        else:
-            self.k_ozet.setText("Seçili dönemde kayıt yok")
+        self._kart_veri = pv.kart_ozeti([g for g in self._gunler if g.sicilid == sid], self._ozet.get(sid), self._ozet, self._izin_ad)
+        secili = self.k_ozet.secili if getattr(self, "_kart_sid", None) == sid else ""
+        self._kart_sid = sid
+        self.k_ozet.ayarla(self._kart_veri, secili)
+        self._ozet_liste(secili)
         self._takvim_ciz(sid)
+
+    def _ozet_liste(self, anahtar: str):
+        """Özet kutusuna tıklanınca o günler aşağıda listelenir (aynı kutuya yeniden tıklanınca kapanır)."""
+        v = self._kart_veri
+        if not anahtar or not v:
+            self.k_liste_kart.hide()
+            return
+        ad = {k["k"]: k["ad"] for k in v["kutular"]}.get(anahtar, anahtar)
+        satirlar = v["listeler"].get(anahtar) or []
+        self.k_liste_baslik.setText(f"{ad}: {len(satirlar)} gün" + ("  ·  satıra tıklayın: takvim o aya gider" if satirlar else "  ·  bu dönemde yok"))
+        t = self.k_liste
+        t.setRowCount(len(satirlar))
+        for i, s in enumerate(satirlar):
+            for j, x in enumerate((s["tarih"], s["plan"], s["saat"], s["aciklama"])):
+                it = QTableWidgetItem(x)
+                if j == 0:
+                    it.setData(Qt.UserRole, s["gun"])
+                    it.setForeground(QColor(pv.SERIT_RENK.get(s["tur"], "#1f2433")) if s["tur"] not in ("geldi", "plan") else QColor("#1f2433"))
+                t.setItem(i, j, it)
+        t.setFixedHeight(min(34 + 30 * max(len(satirlar), 1), 34 + 30 * 12))
+        self.k_liste_kart.show()
+
+    def _ozet_liste_tik(self, r, _c):
+        it = self.k_liste.item(r, 0)
+        if not it or not it.data(Qt.UserRole):
+            return
+        g = date.fromisoformat(it.data(Qt.UserRole))
+        self._kart_ay = date(g.year, g.month, 1)
+        self._takvim_ciz(self.k_kisi.currentData())
 
     def _takvim_ciz(self, sid):
         a0 = self._kart_ay

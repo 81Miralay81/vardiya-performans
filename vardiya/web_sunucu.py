@@ -628,7 +628,7 @@ class Sunucu:
         ay_son = date(ay.year + (ay.month == 12), ay.month % 12 + 1, 1) - timedelta(days=1)
         con = self._con()
         try:
-            _ayar, _gl, oz, kisi, izin_ad = self._pv_temel(con, ilk, son)
+            _ayar, gl_donem, oz, kisi, izin_ad = self._pv_temel(con, ilk, son)
             ayar2 = vt.ayar_oku(con)
             gl_ay, _ = pv.donem_hesabi(con, ay, ay_son, ayar2)
         finally:
@@ -662,6 +662,7 @@ class Sunucu:
                                                           "erken_adet": o.erken_adet, "erken_dk": o.erken_dk, "fazla_dk": o.fazla_dk,
                                                           "tatil": o.tatil_calisti, "devam": o.devam,
                                                           "izin": {izin_ad.get(kk, kk): n for kk, n in o.izin_tur.items()}},
+                              "gorsel": pv.kart_ozeti([g for g in gl_donem if g.sicilid == sid], o, oz, izin_ad),
                               "ay": ay.isoformat(), "takvim": takvim})
 
     def api_personel_foto(self, h, q):

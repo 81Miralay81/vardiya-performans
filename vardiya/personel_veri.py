@@ -711,3 +711,88 @@ def tarih_degistir_derin(url: str, eski_ilk: date, eski_son: date, yeni_ilk: dat
         notlar.append(f"'{ad}': {('ön ek ' + repr(on) + ' + ') if on else ''}{len(deger)} karakter"
                       + (", base64 çözüldü ama tarih yok" if any(k for _, _, k in adaylar) else ", base64 değil"))
     return url, False, "; ".join(notlar) or "sorgu alanı yok"
+
+
+# ====================================================================== personel kartı: görsel dönem özeti (exe ve tarayıcı)
+GUN_AD = ("Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz")
+SERIT_RENK = {"geldi": "#3e9b2a", "gec": "#e0a100", "gelmedi": "#d64541", "eksik": "#e0702a", "izin": "#2a7fd1",
+              "tatil": "#c9cdd6", "tatil_calisti": "#7b4fa8", "plan": "#eef0f4"}
+SERIT_AD = (("geldi", "geldi"), ("gec", "geç / erken"), ("gelmedi", "gelmedi"), ("eksik", "eksik kart"),
+            ("izin", "izin"), ("tatil", "tatil"), ("tatil_calisti", "tatilde çalıştı"))
+
+
+def devam_rengi(devam: Optional[float]) -> str:
+    if devam is None:
+        return "#c9cdd6"
+    return "#3e9b2a" if devam >= 0.95 else "#e0a100" if devam >= 0.85 else "#d64541"
+
+
+def _serit_turu(g: Gun) -> str:
+    if g.durum == GELDI:
+        return "gec" if (g.gec_dk or g.erken_dk) else "geldi"
+    return {GELMEDI: "gelmedi", EKSIK: "eksik", IZIN_TAM: "izin", IZIN_SAAT: "izin", TATIL: "tatil", RESMI: "tatil",
+            TATIL_CALISTI: "tatil_calisti"}.get(g.durum, "plan")
+
+
+def _gun_satiri(g: Gun, izin_ad: Dict[str, str]) -> dict:
+    acik = []
+    if g.izin_kod:
+        acik.append(izin_ad.get(g.izin_kod, f"İzin {g.izin_kod}") + (" (saatlik)" if g.durum == IZIN_SAAT else ""))
+    if g.durum == GELMEDI:
+        acik.append("habersiz / kayıtsız gelmedi")
+    if g.durum == EKSIK:
+        acik.append("yalnızca " + ("giriş" if g.giris else "çıkış") + " kaydı var")
+    if g.durum == RESMI:
+        acik.append("resmi tatil")
+    if g.gec_dk:
+        acik.append(f"{sure_yaz(g.gec_dk)} geç")
+    if g.erken_dk:
+        acik.append(f"{sure_yaz(g.erken_dk)} erken çıktı")
+    if g.fazla_dk:
+        acik.append(f"+{sure_yaz(g.fazla_dk)} fazla")
+    return {"gun": g.gun.isoformat(), "tarih": f"{g.gun:%d.%m.%Y} {GUN_AD[g.gun.weekday()]}", "plan": plan_kisa(g.plan) or g.plan or "-",
+            "saat": (f"{g.giris or '--:--'} – {g.cikis or '--:--'}" if (g.giris or g.cikis) else "-"),
+            "aciklama": ", ".join(acik), "tur": _serit_turu(g)}
+
+
+def kart_ozeti(gunler_: Iterable[Gun], o: Optional[Ozet], tum: Dict[int, Ozet], izin_ad: Dict[str, str]) -> Optional[dict]:
+    """Personel kartındaki görsel özetin verisi. Çubuklar bölümdeki en yüksek değere göre oranlanır (0-1)."""
+    if o is None:
+        return None
+    gl = sorted((g for g in gunler_ if g.durum != PLAN), key=lambda g: g.gun)
+    tum = tum or {}
+
+    def en(f) -> float:
+        return max([f(x) for x in tum.values()] + [f(o), 0]) or 0
+
+    cubuk = []
+    for ad, deger, metin, renk in (
+            ("Geç gelme", o.gec_dk, f"{o.gec_adet} kez · {sure_yaz(o.gec_dk)}", "#e0a100"),
+            ("Erken çıkma", o.erken_dk, f"{o.erken_adet} kez · {sure_yaz(o.erken_dk)}", "#e0702a"),
+            ("Fazla çalışma", o.fazla_dk, sure_yaz(o.fazla_dk), "#150958"),
+            ("Tatilde çalıştı", o.tatil_calisti, f"{o.tatil_calisti} gün", "#7b4fa8")):
+        alan = {"Geç gelme": lambda x: x.gec_dk, "Erken çıkma": lambda x: x.erken_dk,
+                "Fazla çalışma": lambda x: x.fazla_dk, "Tatilde çalıştı": lambda x: x.tatil_calisti}[ad]
+        m = en(alan)
+        cubuk.append({"ad": ad, "metin": metin, "oran": (deger / m) if m else 0.0, "renk": renk})
+    listeler = {"geldi": [], "gelmedi": [], "eksik": [], "izin": []}
+    for g in gl:
+        s = _gun_satiri(g, izin_ad)
+        if g.durum in (GELDI, IZIN_SAAT, EKSIK):
+            listeler["geldi"].append(s)
+        if g.durum == GELMEDI:
+            listeler["gelmedi"].append(s)
+        if g.durum == EKSIK:
+            listeler["eksik"].append(s)
+        if g.durum in (IZIN_TAM, IZIN_SAAT):
+            listeler["izin"].append(s)
+    return {"devam": o.devam, "devam_renk": devam_rengi(o.devam), "planli": o.planli,
+            "kutular": [{"k": "geldi", "ad": "Geldi", "deger": o.geldi, "ek": f" / {o.planli}", "renk": "#3e9b2a", "zemin": "#eef8ec"},
+                        {"k": "gelmedi", "ad": "Gelmedi", "deger": o.gelmedi, "ek": "", "renk": "#d64541", "zemin": "#fdeeee"},
+                        {"k": "eksik", "ad": "Eksik kart", "deger": o.eksik, "ek": "", "renk": "#e0a100", "zemin": "#fdf6e3"},
+                        {"k": "izin", "ad": "İzinli gün", "deger": len(listeler["izin"]), "ek": "", "renk": "#2a7fd1", "zemin": "#e9f2fc"}],
+            "cubuk": cubuk,
+            "serit": [{"gun": g.gun.isoformat(), "tur": _serit_turu(g), "renk": SERIT_RENK[_serit_turu(g)],
+                       "ipucu": gun_ipucu(g, izin_ad)} for g in gl],
+            "izinler": [{"ad": izin_kisa(izin_ad, k), "gun": n} for k, n in sorted(o.izin_tur.items(), key=lambda x: -x[1])],
+            "listeler": listeler}

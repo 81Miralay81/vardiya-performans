@@ -154,3 +154,19 @@ def test_yetki_eski_kayit_acilir_yeni_kayit_aynen_kalir():
     a = [u for u in ku.liste(con) if u["ad"] == "ali"][0]
     assert a["yetkiler"] == ["personel_veri"]
     assert ku.yetkili(a, "personel_veri") and not ku.yetkili(a, "veri") and not ku.yetkili(a, "excel")
+
+
+def test_kart_ozeti_listeler_ve_cubuk_orani():
+    from datetime import date
+    from vardiya import personel_veri as pv
+    g = [pv.Gun(1, date(2026, 11, 2), "0800-1600", "2", pv.GELDI, "08:10", "16:00", gec_dk=10),
+         pv.Gun(1, date(2026, 11, 3), "0800-1600", "2", pv.GELMEDI),
+         pv.Gun(1, date(2026, 11, 4), "", "", pv.IZIN_TAM, izin_kod="01"),
+         pv.Gun(2, date(2026, 11, 2), "0800-1600", "2", pv.GELDI, "08:20", "16:00", gec_dk=20)]
+    oz = pv.ozetle(g)
+    v = pv.kart_ozeti([x for x in g if x.sicilid == 1], oz[1], oz, {"01": "Yıllık İzin"})
+    assert [s["gun"] for s in v["listeler"]["gelmedi"]] == ["2026-11-03"]
+    assert v["listeler"]["izin"][0]["aciklama"] == "Yıllık İzin"
+    assert abs(v["cubuk"][0]["oran"] - 0.5) < 1e-9          # 10 dk geç, bölümde en çok 20 dk
+    assert [k["deger"] for k in v["kutular"]] == [1, 1, 0, 1]
+    assert pv.kart_ozeti([], None, oz, {}) is None
