@@ -35,8 +35,10 @@ def etiket_iki_satir(ad: str) -> str:
     return ad.replace(" ", "\n", 1) if len(ad) > 9 and " " in ad else ad
 
 
-def kirilim_grafigi(p: QPainter, rect: QRectF, liste: List[tuple], baslik: Optional[str] = None):
-    """liste: [(ad, saat, renk)]. Üstte süre ve toplam içindeki payı (Performans 3. kırılım)."""
+def kirilim_grafigi(p: QPainter, rect: QRectF, liste: List[tuple], baslik: Optional[str] = None,
+                    bolgeler: Optional[list] = None, kisim: Optional[str] = None, secili: Optional[str] = None):
+    """liste: [(ad, saat, renk)]. Üstte süre ve toplam içindeki payı (Performans 3. kırılım). kisim verilirse sütunlar
+    tıklanır (bolgeler'e (alan, ad, kisim) eklenir); seçili sütun koyu çerçeveli."""
     if _web(p, rect, "kirilim_grafigi", locals()):
         return
     s = olcek(rect, 520, 340)
@@ -65,6 +67,12 @@ def kirilim_grafigi(p: QPainter, rect: QRectF, liste: List[tuple], baslik: Optio
         cx = alan.left() + slot * (i + 0.5)
         h = max(2.0, alan.height() * saat / ymax)
         _sutun(p, QRectF(cx - gen / 2, alan.bottom() - h, gen, h), renk, s)
+        if secili is not None and ad == secili:
+            p.setPen(QPen(QColor(tema.LACIVERT), 3 * s))
+            p.setBrush(Qt.NoBrush)
+            p.drawRect(QRectF(cx - gen / 2, alan.bottom() - h, gen, h))
+        if bolgeler is not None and kisim:
+            bolgeler.append((QRectF(cx - slot / 2, alan.top(), slot, alan.height() + 36 * s), ad, kisim))
         _yaz(p, QRectF(cx - slot / 2, alan.bottom() - h - 32 * s, slot, 30 * s), f"{_saat_dk(saat)} sa\n%{saat / toplam * 100:.0f}",
              10.5 * s, True, ORTA, tema.YAZI)
         _yaz(p, QRectF(cx - slot / 2, alan.bottom() + 3 * s, slot, 34 * s), etiket_iki_satir(ad), (10.5 if slot > 80 * s else 9.5) * s,
@@ -305,4 +313,79 @@ def supheli_cizelgesi(p: QPainter, rect: QRectF, olaylar: list):
         p.setBrush(Qt.NoBrush)
         p.drawRect(QRectF(xx(e.pb), y + sh * 0.20, xx(e.ps) - xx(e.pb), sh * 0.58))
         _zaman_ekseni(p, x0, x1, y + sh * 0.84, t0, t1, s, 10)
+    p.restore()
+
+
+GUN_KISA = ("Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz")
+VARDIYA_RENK = {1: "#4472C4", 2: "#F28C28", 3: "#7A5AA6"}
+
+
+def zaman_grafigi(p: QPainter, rect: QRectF, gunler: List[tuple], mod: str = "gun", baslik: Optional[str] = None,
+                  bolgeler: Optional[list] = None, secili: Optional[str] = None, renk: str = "#F28C28"):
+    """gunler: [(gün, [1. vrd saat, 2. vrd saat, 3. vrd saat])]. mod: gun (gün gün) · vardiya (1/2/3 toplamı) ·
+    gunv (gün gün, vardiyalar üst üste). Tıklama: (gün iso | vardiya no | 'gün iso|vardiya', kisim)."""
+    if _web(p, rect, "zaman_grafigi", locals()):
+        return
+    s = olcek(rect, 620, 340)
+    p.save()
+    p.setRenderHint(QPainter.Antialiasing, True)
+    if baslik:
+        _yaz(p, QRectF(rect.left(), rect.top() + 2 * s, rect.width(), 24 * s), baslik, 14 * s, True, ORTA, tema.LACIVERT)
+    if mod == "vardiya":
+        sutun = [(str(v), f"{v}. Vardiya", [(sum(x[1][v - 1] for x in gunler), VARDIYA_RENK[v], str(v))]) for v in (1, 2, 3)]
+        kisim = "oz_vardiya"
+    elif mod == "gunv":
+        sutun = [(g.isoformat(), f"{GUN_KISA[g.weekday()]} {g.day}", [(x[v - 1], VARDIYA_RENK[v], f"{g.isoformat()}|{v}") for v in (1, 2, 3)])
+                 for g, x in gunler]
+        kisim = "oz_gunv"
+    else:
+        sutun = [(g.isoformat(), f"{GUN_KISA[g.weekday()]} {g.day}", [(sum(x), renk, g.isoformat())]) for g, x in gunler]
+        kisim = "oz_gun"
+    toplam = sum(sa for _, _, pr in sutun for sa, _, _ in pr)
+    if not sutun or toplam <= 0:
+        _yaz(p, rect, "Kayıt yok", 14 * s, False, ORTA, tema.YAZI_SOLUK)
+        p.restore()
+        return
+    sol, sag, ust, alt = 52 * s, 14 * s, (64 if baslik else 40) * s, 40 * s
+    alan = QRectF(rect.left() + sol, rect.top() + ust, rect.width() - sol - sag, rect.height() - ust - alt)
+    ymax = max(0.5, math.ceil(max(sum(sa for sa, _, _ in pr) for _, _, pr in sutun) * 1.1 * 2) / 2)
+    for i in range(5):
+        y = alan.bottom() - alan.height() * i / 4
+        p.setPen(QPen(QColor("#E3E7EF"), max(1, s)))
+        p.drawLine(QPointF(alan.left(), y), QPointF(alan.right(), y))
+        k = ymax * i / 4
+        _yaz(p, QRectF(rect.left(), y - 9 * s, sol - 6 * s, 18 * s), (f"{k:.1f}".replace(".", ",") if ymax < 8 else f"{k:.0f}") + " sa",
+             10 * s, False, SAG, tema.YAZI_SOLUK)
+    slot = alan.width() / len(sutun)
+    gen = min(slot * 0.62, 60 * s)
+    for i, (anahtar, etiket, parcalar) in enumerate(sutun):
+        cx = alan.left() + slot * (i + 0.5)
+        y = alan.bottom()
+        for sa, rk, ak in parcalar:
+            if sa <= 0:
+                continue
+            h = max(1.5, alan.height() * sa / ymax)
+            r = QRectF(cx - gen / 2, y - h, gen, h)
+            p.fillRect(r, QColor(rk))
+            if secili is not None and ak == secili:
+                p.setPen(QPen(QColor(tema.LACIVERT), 3 * s))
+                p.setBrush(Qt.NoBrush)
+                p.drawRect(r)
+            if bolgeler is not None:
+                bolgeler.append((r.adjusted(-slot * 0.2, 0, slot * 0.2, 0), ak, kisim))
+            y -= h
+        top = sum(sa for sa, _, _ in parcalar)
+        if top > 0:
+            _yaz(p, QRectF(cx - slot / 2, y - 20 * s, slot, 18 * s), _saat_dk(top), (10 if slot > 40 * s else 8.5) * s, True, ORTA, tema.YAZI)
+        if bolgeler is not None and len(parcalar) == 1:
+            bolgeler.append((QRectF(cx - slot / 2, alan.top(), slot, alan.height() + 30 * s), parcalar[0][2], kisim))
+        _yaz(p, QRectF(cx - slot / 2, alan.bottom() + 3 * s, slot, 30 * s), etiket, (10 if slot > 46 * s else 8.5) * s, True, ORTA, tema.YAZI)
+    p.setPen(QPen(QColor("#9AA3B8"), max(1, s)))
+    p.drawLine(alan.bottomLeft(), alan.bottomRight())
+    if mod == "gunv":
+        x = alan.left()
+        for v in (1, 2, 3):
+            p.fillRect(QRectF(x, rect.top() + (40 if baslik else 14) * s, 12 * s, 10 * s), QColor(VARDIYA_RENK[v]))
+            _yaz(p, QRectF(x + 15 * s, rect.top() + (36 if baslik else 10) * s, 90 * s, 18 * s), f"{v}. vardiya", 10 * s, False, AL, tema.YAZI_SOLUK)
+            x += 100 * s
     p.restore()

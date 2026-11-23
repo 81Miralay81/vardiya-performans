@@ -190,3 +190,46 @@ def supheli_ozet(olaylar: List[SupheliMola], kayitlar: Iterable[Tuple[str, str, 
             n = max(1, len(gun_say.get((m, v), ())))
             d["dk_gun"] = d["sn"] / 60.0 / n
     return ozet
+
+
+# ---------------------------------------------------------------- Performans 4.-5. seviye: operatör ayrıntısı + zaman çizelgesi
+VARDIYA_SAAT = {1: (0, 8), 2: (8, 16), 3: (16, 24)}
+
+
+def donem_kayitlari(con, ilk: date, son: date) -> List[Tuple[str, str, str, datetime, datetime]]:
+    """Dönemin tüm makinelerdeki kayıtları, operatör adı doğrulanmış (operatör yoksa '')."""
+    from . import veritabani as vt
+    alt = datetime(ilk.year, ilk.month, ilk.day)
+    ust = datetime(son.year, son.month, son.day) + timedelta(days=1)
+    ham = [(r["operator"], r["makine"], r["tip"], vt.zaman(r["baslangic"]), vt.zaman(r["bitis"]))
+           for r in vt.aralik_satirlari(con, "operator, makine, tip, baslangic, bitis", ilk, son)]
+    return [(operator_adi(op) or "", m, t, max(a, alt), min(b, ust)) for op, m, t, a, b in operator_dogrula(ham, alt, ust) if b > alt and a < ust]
+
+
+def operator_ayrinti(kayit: List[Tuple[str, str, str, datetime, datetime]], ilk: date, son: date, tip: str, operator: str) -> dict:
+    """Bir operatörün (ya da 'Operatör yok') bir duruş türündeki süresi: makineye göre, gün ve vardiyaya göre; zaman
+    çizelgesi için o makinelerin tüm kayıtları (vurgu: bu operatör + bu duruş). Saatler seçili günlere düşen kısımdır."""
+    gset = {ilk + timedelta(days=i) for i in range((son - ilk).days + 1)}
+
+    def eslesir(op: str, t: str, a: datetime, b: datetime) -> bool:
+        return statu_bul(t) == DURUS and durus_adi(t, a, b) == tip and (op or OPERATOR_YOK) == operator
+    makine: Dict[str, float] = {}
+    gun_v: Dict[Tuple[date, int], float] = {}
+    for op, m, t, a, b in kayit:
+        if not eslesir(op, t, a, b):
+            continue
+        for g, v, sn in bol(a, b, True):
+            if g in gset and sn > 0:
+                makine[m] = makine.get(m, 0.0) + sn / 3600.0
+                gun_v[(g, v)] = gun_v.get((g, v), 0.0) + sn / 3600.0
+    sira = sorted(makine, key=lambda x: -makine[x])
+    msatir = set(sira)
+    bloklar: Dict[str, list] = {m: [] for m in sira}
+    for op, m, t, a, b in kayit:
+        if m in msatir and b > a:
+            bloklar[m].append((a, b, t, statu_bul(t), op or OPERATOR_YOK, eslesir(op, t, a, b)))
+    for m in bloklar:
+        bloklar[m].sort(key=lambda x: x[0])
+    return {"makine": [(m, makine[m]) for m in sira],
+            "gun": [(g, [gun_v.get((g, v), 0.0) for v in (1, 2, 3)]) for g in sorted(gset)],
+            "bloklar": bloklar}

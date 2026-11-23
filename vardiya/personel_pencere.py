@@ -46,10 +46,15 @@ _YAKALA = r"""
   }
   var ac = XMLHttpRequest.prototype.open, yolla = XMLHttpRequest.prototype.send, baslik = XMLHttpRequest.prototype.setRequestHeader;
   XMLHttpRequest.prototype.open = function(m, u){ this.__vpM = {m: m, u: u}; return ac.apply(this, arguments); };
-  XMLHttpRequest.prototype.setRequestHeader = function(k, v){ try { if (!/^content-length$/i.test(k)) window.__vpB[k] = v; } catch(e) {} return baslik.apply(this, arguments); };
+  function baslikUygun(k){ return !/^(content-length|x-signalr|x-requested-with$)/i.test(k); }
+  XMLHttpRequest.prototype.setRequestHeader = function(k, v){ try { if (baslikUygun(k)) { (this.__vpH = this.__vpH || {})[k] = v; } } catch(e) {} return baslik.apply(this, arguments); };
   XMLHttpRequest.prototype.send = function(b){
     var x = this; x.__vpGovde = (typeof b === 'string') ? b : null;
     x.addEventListener('load', function(){
+      try {
+        var uu = (x.__vpM || {}).u || '';
+        if (!x.__vpTekrar && x.__vpH && x.status >= 200 && x.status < 300 && uu.indexOf('/api/') >= 0 && !/signalr|negotiate/i.test(uu)) window.__vpB = x.__vpH;
+      } catch(e) {}
       try {
         if (!x.responseType || x.responseType === 'text') gonder({m: (x.__vpM || {}).m, u: (x.__vpM || {}).u, b: x.__vpGovde, r: x.__vpTekrar || '', s: location.hash}, x.responseText);
       } catch(e) {}
@@ -62,7 +67,7 @@ _YAKALA = r"""
     window.fetch = function(){
       var a0 = arguments[0], o = arguments[1] || {};
       var u = (a0 && a0.url) || String(a0);
-      try { var h = o.headers || {}; if (h.forEach) h.forEach(function(v, k){ window.__vpB[k] = v; }); else for (var k in h) window.__vpB[k] = h[k]; } catch(e) {}
+      try { if (u.indexOf('/api/') >= 0 && !/signalr|negotiate/i.test(u)) { var h = o.headers || {}, y = {}; if (h.forEach) h.forEach(function(v, k){ if (baslikUygun(k)) y[k] = v; }); else for (var k in h) if (baslikUygun(k)) y[k] = h[k]; if (Object.keys(y).length) window.__vpB = y; } } catch(e) {}
       var meta = {m: o.method || 'GET', u: u, b: (typeof o.body === 'string') ? o.body : null, r: '', s: location.hash};
       return f.apply(this, arguments).then(function(r){ try { r.clone().text().then(function(t){ gonder(meta, t); }); } catch(e) {} return r; });
     };
@@ -108,23 +113,36 @@ _DOLDUR = r"""
 # Ekran yolu (istekte tarih okunamıyorsa): Pdks Pivot ekranındaki iki tarih kutusuna dönemi yazar ve
 # 'Planlanan + Gerçekleşen' düğmesine basar; sayfa isteği kendisi oluşturur, program yanıtı yakalar.
 _EKRAN_DONEM = r"""
-(function(bas, bit){
-  var kutu = Array.prototype.slice.call(document.querySelectorAll('input')).filter(function(e){
-    return e.offsetParent !== null && /^\d{2}[-.\/]\d{2}[-.\/]\d{4}$/.test((e.value || '').trim()); });
+(function(bas, bit, sayfa){
+  if (sayfa && location.hash !== sayfa) { location.hash = sayfa; return JSON.stringify({git: 1}); }
+  var gor = function(e){ return e && document.body.contains(e) && e.offsetParent !== null; };
+  var kutu = (window.__vpKutu || []).filter(gor);
+  if (kutu.length < 2) {
+    kutu = Array.prototype.slice.call(document.querySelectorAll('input')).filter(function(e){
+      return gor(e) && /^\d{2}[-.\/]\d{2}[-.\/]\d{4}$/.test((e.value || '').trim()); });
+    if (kutu.length >= 2) window.__vpKutu = kutu.slice(0, 2);
+  }
   if (kutu.length < 2) return JSON.stringify({kutu: kutu.length, dugme: 0});
-  var ayr = kutu[0].value.trim().charAt(2);
+  var ayr = window.__vpAyrac || (kutu[0].value.trim().charAt(2)) || '-'; if (!/[-.\/]/.test(ayr)) ayr = '-'; window.__vpAyrac = ayr;
   var ata = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+  var kapat = function(){ try { document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', keyCode: 27, which: 27, bubbles: true}));
+      document.body.dispatchEvent(new MouseEvent('mousedown', {bubbles: true})); document.body.click(); } catch(err) {} };
   [[kutu[0], bas.replace(/-/g, ayr)], [kutu[1], bit.replace(/-/g, ayr)]].forEach(function(x){
-    var e = x[0]; e.focus(); ata.call(e, x[1]);
-    ['input', 'change', 'keyup', 'blur'].forEach(function(o){ e.dispatchEvent(new Event(o, {bubbles: true})); });
-    try { if (window.jQuery) { jQuery(e).val(x[1]).trigger('change'); } } catch(err) {}
+    var e = x[0], v = x[1];
+    ata.call(e, v);
+    ['input', 'change', 'keyup'].forEach(function(o){ e.dispatchEvent(new Event(o, {bubbles: true})); });
+    try { if (window.angular) { var c = angular.element(e).controller('ngModel'); if (c) { c.$setViewValue(v); c.$render(); var sc = angular.element(e).scope(); if (sc && !sc.$$phase && !(sc.$root && sc.$root.$$phase)) sc.$apply(); } } } catch(err) {}
+    try { if (window.jQuery) { var j = jQuery(e); if (j.datepicker) { try { j.datepicker('update', v); } catch(e2) {} } j.val(v).trigger('change'); } } catch(err) {}
+    if (e.value !== v) ata.call(e, v);
+    try { e.dispatchEvent(new Event('blur', {bubbles: true})); } catch(err) {}
   });
-  var dug = Array.prototype.slice.call(document.querySelectorAll('button, a, input[type=button], li, span, div')).filter(function(b){
-    return b.offsetParent !== null && b.children.length < 3 && /planlanan\s*\+\s*gerçekleşen/.test(((b.textContent || b.value || '') + '').toLocaleLowerCase('tr-TR')); });
+  kapat();
+  var dug = Array.prototype.slice.call(document.querySelectorAll('button, a, input[type=button]')).filter(function(b){
+    return b.offsetParent !== null && /planlanan\s*\+\s*gerçekleşen/.test(((b.textContent || b.value || '') + '').toLocaleLowerCase('tr-TR')); });
   dug.sort(function(a, b){ return (a.textContent || '').length - (b.textContent || '').length; });
-  if (dug.length) setTimeout(function(){ dug[0].click(); }, 400);
-  return JSON.stringify({kutu: kutu.length, dugme: dug.length, ayrac: ayr});
-})(%s, %s);
+  if (dug.length) setTimeout(function(){ kapat(); dug[0].click(); }, 700);
+  return JSON.stringify({kutu: kutu.length, dugme: dug.length, ayrac: ayr, okunan: [kutu[0].value, kutu[1].value]});
+})(%s, %s, %s);
 """
 
 _GIRIS_VAR = "(function(){ var e = document.querySelector('input[type=password]'); return !!(e && e.offsetParent !== null); })();"
@@ -355,9 +373,10 @@ class PersonelVeriPenceresi(QDialog):
             from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile, QWebEngineScript
             from PySide6.QtWebEngineWidgets import QWebEngineView
         except Exception as e:  # noqa: BLE001
-            l.addWidget(QLabel(f"Tarayıcı motoru yüklenemedi: {e}"))
+            hata_m = str(e)
+            l.addWidget(QLabel(f"Tarayıcı motoru yüklenemedi: {hata_m}"))
             if bitince:
-                QTimer.singleShot(0, lambda: self._otomatik_bitir(False, f"tarayıcı motoru yok: {e}"))
+                QTimer.singleShot(0, lambda: self._otomatik_bitir(False, f"tarayıcı motoru yok: {hata_m}"))
             return
         self.profil = _profil(QWebEngineProfile, QWebEngineScript)
         ust_ = self
@@ -697,6 +716,16 @@ class PersonelVeriPenceresi(QDialog):
 
     # ------------------------------------------------------------ birleşik akış: aylar (istekle ya da ekran yoluyla) + personel
     def donem_cek(self, ilk, son, bitti: Callable[[int, int, str], None]):
+        if getattr(self, "_cekim_suruyor", False):
+            self.tani("bir çekim zaten sürüyor; yenisi başlatılmadı")
+            self.bilgi.setText("Bir çekim zaten sürüyor, bitmesini bekleyin.")
+            return
+        self._cekim_suruyor = True
+        ilk_bitti = bitti
+
+        def bitti(ok, n, aciklama):  # noqa: F811
+            self._cekim_suruyor = False
+            ilk_bitti(ok, n, aciklama)
         gorevler, hata = self.ay_gorevleri(ilk, son) if ilk <= son else ([], "")
         if hata and hata != "TARIH_YOK":
             self.tani("durdu: " + hata)
@@ -725,45 +754,85 @@ class PersonelVeriPenceresi(QDialog):
         self._ekran_say = [0, len(aylar)]
         self._ekran_bitince = bitince
         self._ekran_bekle = None
+        self._ekran_deneme = 0          # bu ay için kaçıncı deneme (yanıt gelmezse bir kez daha)
+        self._ekran_bulunamadi = 0      # tarih kutusu art arda bulunamayan deneme sayısı
         self._ekran_zaman = time.time()
         self.b_yil.setEnabled(False)
         s = sablon_oku("giris_cikis") or {}
-        sayfa = s.get("sayfa") or "#!/pdkspiv"
-        self.tani(f"ekran yolu: {sayfa} ekranına gidiliyor")
-        self.sayfa.runJavaScript(f"if (location.hash !== {json.dumps(sayfa)}) location.hash = {json.dumps(sayfa)};")
+        self._ekran_sayfa = s.get("sayfa") or "#!/pdkspiv"
+        self.tani(f"ekran yolu: {self._ekran_sayfa} ekranına gidiliyor")
+        self.sayfa.runJavaScript(f"window.__vpKutu = null; if (location.hash !== {json.dumps(self._ekran_sayfa)}) location.hash = {json.dumps(self._ekran_sayfa)};")
         if not hasattr(self, "_ekran_zamanlayici"):
             self._ekran_zamanlayici = QTimer(self)
             self._ekran_zamanlayici.timeout.connect(self._ekran_tik)
-        QTimer.singleShot(7000, lambda: self._ekran_zamanlayici.start(800))
+        self._ekran_zamanlayici.stop()
+        self._ekran_bos_kadar = time.time() + 6     # ekranın yüklenmesi için bekleme
+        self._ekran_zamanlayici.start(800)
+
+    def _ekran_bitir(self, neden: str = ""):
+        self._ekran_zamanlayici.stop()
+        self._ekran_bekle = None
+        self.b_yil.setEnabled(True)
+        if neden:
+            self.tani("ekran yolu durdu: " + neden)
+        fn, self._ekran_bitince = self._ekran_bitince, None
+        if fn:
+            fn(*self._ekran_say)
 
     def _ekran_tik(self):
+        if time.time() < getattr(self, "_ekran_bos_kadar", 0) or getattr(self, "_ekran_js", False):
+            return
         if self._ekran_bekle is not None:
-            if time.time() - self._ekran_zaman > 45:
+            if time.time() - self._ekran_zaman > 40:
                 a, b = self._ekran_bekle
-                self.tani(f"ekran yolu: {a:%m.%Y} için yanıt gelmedi (45 sn)")
                 self._ekran_bekle = None
+                if self._ekran_deneme < 2:
+                    self.tani(f"ekran yolu: {a:%m.%Y} için yanıt gelmedi (40 sn), ekran yeniden açılıp bir kez daha denenecek")
+                    self._ekran_aylar.insert(0, (a, b))
+                    self.sayfa.runJavaScript("window.__vpKutu = null; location.reload();")
+                    self._ekran_bos_kadar = time.time() + 12
+                else:
+                    self.tani(f"ekran yolu: {a:%m.%Y} için yanıt gelmedi, bu ay atlandı")
+                    self._ekran_deneme = 0
             return
         if not self._ekran_aylar:
-            self._ekran_zamanlayici.stop()
-            self.b_yil.setEnabled(True)
-            fn, self._ekran_bitince = self._ekran_bitince, None
-            if fn:
-                fn(*self._ekran_say)
+            self._ekran_bitir()
             return
-        a, b = self._ekran_aylar.pop(0)
-        self._ekran_bekle = (a, b)
-        self._ekran_zaman = time.time()
-        sira = self._ekran_say[1] - len(self._ekran_aylar)
+        a, b = self._ekran_aylar[0]
+        self._ekran_js = True
+        sira = self._ekran_say[1] - len(self._ekran_aylar) + 1
         self.bilgi.setText(f"Ekran yoluyla alınıyor ({sira}/{self._ekran_say[1]}): {a:%d.%m.%Y} – {b:%d.%m.%Y}")
 
-        def sonuc(r, a=a):
+        def sonuc(r, a=a, b=b, sira=sira):
+            self._ekran_js = False
             try:
                 d = json.loads(r) if isinstance(r, str) else {}
             except ValueError:
                 d = {}
-            if sira == 1 or not d.get("kutu") or not d.get("dugme"):
-                self.tani(f"ekran yolu {a:%m.%Y}: tarih kutusu {d.get('kutu', 0)}, 'Planlanan + Gerçekleşen' düğmesi {d.get('dugme', 0)}")
-        self.sayfa.runJavaScript(_EKRAN_DONEM % (json.dumps(f"{a:%d-%m-%Y}"), json.dumps(f"{b:%d-%m-%Y}")), 0, sonuc)
+            if d.get("git"):
+                self.tani(f"ekran yolu {a:%m.%Y}: sayfa başka ekrandaydı, {self._ekran_sayfa} ekranına dönülüyor")
+                self._ekran_bos_kadar = time.time() + 6
+                self._ekran_bulunamadi += 1
+            elif not d.get("kutu") or d.get("kutu", 0) < 2 or not d.get("dugme"):
+                self._ekran_bulunamadi += 1
+                self.tani(f"ekran yolu {a:%m.%Y}: tarih kutusu {d.get('kutu', 0)}, 'Planlanan + Gerçekleşen' düğmesi {d.get('dugme', 0)}"
+                          " → ekran yeniden açılıyor")
+                self.sayfa.runJavaScript(f"window.__vpKutu = null; location.hash = '#!/'; setTimeout(function(){{ location.hash = {json.dumps(self._ekran_sayfa)}; }}, 1500);")
+                self._ekran_bos_kadar = time.time() + 8
+            else:
+                self._ekran_bulunamadi = 0
+                self._ekran_aylar.pop(0)
+                self._ekran_deneme += 1
+                self._ekran_bekle = (a, b)
+                self._ekran_zaman = time.time()
+                okunan = d.get("okunan") or []
+                if sira == 1 or self._ekran_deneme > 1:
+                    self.tani(f"ekran yolu {a:%m.%Y}: tarih kutuları yazıldı → kutuda okunan: {' / '.join(okunan) or '?'}; düğmeye basıldı")
+            if self._ekran_bulunamadi >= 6:
+                self._ekran_bitir("tarih kutuları ya da düğme bulunamıyor (ekran değişmiş olabilir). "
+                                  "Pivot ekranını açık bırakıp yeniden deneyin.")
+        self.sayfa.runJavaScript(_EKRAN_DONEM % (json.dumps(f"{a:%d-%m-%Y}"), json.dumps(f"{b:%d-%m-%Y}"),
+                                                 json.dumps(self._ekran_sayfa)), 0, sonuc)
 
     def _ekran_yanit(self, meta: dict):
         """Ekran yolunda beklenen ayın listesi geldi mi (gelen dönem beklenenle örtüşüyorsa)."""
@@ -776,6 +845,7 @@ class PersonelVeriPenceresi(QDialog):
             self._ekran_say[0] += 1
             self.tani(f"ekran yolu {a:%m.%Y}: alındı ({gi:%d.%m} – {gs:%d.%m})")
             self._ekran_bekle = None
+            self._ekran_deneme = 0
         else:
             self.tani(f"ekran yolu {a:%m.%Y}: gelen dönem farklı ({gi:%d.%m.%Y} – {gs:%d.%m.%Y}); tarih kutuları değişmemiş olabilir")
 

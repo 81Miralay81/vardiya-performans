@@ -812,12 +812,15 @@ function pvKart(){
   if (!PV.ay) PV.ay = $('son').value.slice(0, 8) + '01';
   fetch('/api/personel/kart?sid=' + PV.sid + '&ilk=' + $('ilk').value + '&son=' + $('son').value + '&ay=' + PV.ay).then(function(r){ return r.json(); }).then(function(d){
     if (d.hata) return;
-    $('pv-foto').style.display = d.foto ? '' : 'none'; if (d.foto) $('pv-foto').src = '/api/personel/foto?sid=' + d.sid;
+    var bosFoto = "data:image/svg+xml;utf8," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 150"><rect width="120" height="150" fill="#e4e8f0"/><circle cx="60" cy="58" r="27" fill="#b8c0d0"/><rect x="19" y="93" width="82" height="70" rx="36" fill="#b8c0d0"/></svg>');
+    $('pv-foto').style.display = d.kimlik === false ? 'none' : ''; $('pv-foto').src = d.foto ? '/api/personel/foto?sid=' + d.sid : bosFoto;
     var b = [['Ad Soyad', '<b>' + esc(d.ad) + '</b>'], ['Sicil no', esc(d.sicilno)], ['Pozisyon', esc(d.pozisyon)], ['Yaka', esc(d.yaka)]];
     if (d.periyot) b.push(['Vardiya düzeni', esc(d.periyot)]);
     if (d.cikis) b.push(['İşten çıkış', '<b style="color:var(--kirmizi)">' + trT(d.cikis) + '</b>']);
     if (d.giris) b.push(['İşe giriş / kıdem', trT(d.giris) + (d.kidem != null ? ' · ' + d.kidem + ' yıl' : '')]);
     if (d.telefon) b.push(['Cep telefonu', esc(d.telefon)]);
+    if (!d.giris) b.push(['İşe giriş / kıdem', '<span style="color:var(--soluk,#6b7285)">henüz alınmadı</span>']);
+    if (!d.izin) b.push(['Yıllık izin', '<span style="color:var(--soluk,#6b7285)">henüz alınmadı (otomatik çekimde gelecek)</span>']);
     if (d.izin) b.push(['Yıllık izin', 'hak ' + (d.izin.hak || 0) + ' · kullanılan ' + (d.izin.kullanilan || 0) + ' · devir ' + (d.izin.devir || 0) + ' · <b>kalan ' + (d.izin.kalan || 0) + '</b>']);
     $('pv-bilgi').innerHTML = '<table>' + b.map(function(x){ return '<tr><td style="color:var(--soluk)">' + x[0] + '</td><td>' + x[1] + '</td></tr>'; }).join('') + '</table>';
     var o = d.ozet;

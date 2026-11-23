@@ -29,6 +29,24 @@ def _sayi(v, metin: Optional[str] = None) -> QTableWidgetItem:
     return it
 
 
+
+def _bos_profil(g: int, y: int) -> QPixmap:
+    """Fotoğrafı olmayan personel için gri, boş profil resmi (baş ve omuz silueti)."""
+    from PySide6.QtGui import QPainter, QColor, QPainterPath
+    pm = QPixmap(g, y)
+    pm.fill(QColor("#e4e8f0"))
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.Antialiasing)
+    p.setPen(Qt.NoPen)
+    p.setBrush(QColor("#b8c0d0"))
+    r = g * 0.22
+    p.drawEllipse(int(g / 2 - r), int(y * 0.40 - r * 1.1), int(r * 2), int(r * 2))
+    yol = QPainterPath()
+    yol.addRoundedRect(g * 0.16, y * 0.62, g * 0.68, y * 0.45, g * 0.3, g * 0.3)
+    p.drawPath(yol)
+    p.end()
+    return pm
+
 class _SiraliHucre(QTableWidgetItem):
     def __init__(self, metin: str, anahtar):
         super().__init__(metin)
@@ -688,18 +706,17 @@ class PersonelSayfasi(QWidget):
             return
         kimlik = self._yetki("personel_kimlik")
         self.k_foto.setVisible(kimlik)
+        pm = QPixmap()
         if kimlik and p.get("foto"):
-            pm = QPixmap()
             try:
                 pm.loadFromData(base64.b64decode(p["foto"]))
             except Exception:  # noqa: BLE001
-                pass
-            self.k_foto.setPixmap(pm.scaled(130, 160, Qt.KeepAspectRatio, Qt.SmoothTransformation) if not pm.isNull() else QPixmap())
-            if pm.isNull():
-                self.k_foto.setText("fotoğraf yok")
+                pm = QPixmap()
+        if kimlik:
+            self.k_foto.setPixmap(pm.scaled(130, 160, Qt.KeepAspectRatio, Qt.SmoothTransformation) if not pm.isNull()
+                                  else _bos_profil(130, 160))
         else:
             self.k_foto.clear()
-            self.k_foto.setVisible(False)              # fotoğraf yoksa yer kaplamasın
         satir = [("Ad Soyad", f"<b>{pv.tr_baslik(p.get('ad') or '')}</b>"), ("Sicil no", p.get("sicilno") or "-"),
                  ("Pozisyon", pv.tr_baslik(p.get("pozisyon") or "-")), ("Yaka", pv.tr_baslik(p.get("yaka") or "-"))]
         if p.get("periyot"):
@@ -712,9 +729,13 @@ class PersonelSayfasi(QWidget):
             satir.append(("İşe giriş / kıdem", pv._tr(str(giris)[:10]) + (f" · {b['kidem']} yıl" if b.get("kidem") is not None else "")))
         if kimlik and p.get("telefon"):
             satir.append(("Cep telefonu", p.get("telefon")))
-        if b:                                          # yalnızca izin bakiyesi alınabildiyse
+        if b:
             satir.append(("Yıllık izin", f"hak {b.get('hak') or 0:g} · kullanılan {b.get('kullanilan') or 0:g} · devir {b.get('devir') or 0:g}"
                                          f" · <b>kalan {b.get('kalan') or 0:g}</b> <span style='color:#6b7285'>({str(b.get('guncel') or '')[:10]})</span>"))
+        else:
+            satir.append(("Yıllık izin", "<span style='color:#6b7285'>henüz alınmadı (otomatik çekimde gelecek)</span>"))
+        if not giris:
+            satir.append(("İşe giriş / kıdem", "<span style='color:#6b7285'>henüz alınmadı</span>"))
         self.k_bilgi.setText("<table cellpadding='3'>" + "".join(
             f"<tr><td style='color:#6b7285;padding-right:14px'>{a}</td><td>{d}</td></tr>" for a, d in satir) + "</table>")
         o = self._ozet.get(sid)

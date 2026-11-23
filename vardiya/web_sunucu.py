@@ -625,7 +625,7 @@ class Sunucu:
         finally:
             con.close()
         kimlik = ku.yetkili(k, "personel_kimlik")
-        return self._json(h, {"sid": sid, "ad": pv.tr_baslik(p.get("ad") or ""), "sicilno": p.get("sicilno") or "",
+        return self._json(h, {"sid": sid, "kimlik": kimlik, "ad": pv.tr_baslik(p.get("ad") or ""), "sicilno": p.get("sicilno") or "",
                               "giris": str(b.get("giris_tarih") or p.get("giris_tarih") or "")[:10], "kidem": b.get("kidem"),
                               "telefon": (p.get("telefon") or "") if kimlik else "",
                               "izin": None if not b else {k2: b.get(k2) for k2 in ("hak", "kullanilan", "devir", "kalan", "guncel")},

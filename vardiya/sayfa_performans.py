@@ -83,6 +83,27 @@ class _KirilimIs(QThread):
         self.bitti.emit(makine, tip, k)
 
 
+class _DonemKayitIs(QThread):
+    """Dönemin tüm makinelerdeki kayıtları (operatör doğrulanmış) arka planda, sürekli açık okuma bağlantısıyla."""
+    bitti = Signal(object, object)               # ((ilk, son), kayıtlar | hata metni)
+
+    def __init__(self, db_yolu, ilk, son, parent=None):
+        super().__init__(parent)
+        self.a = (db_yolu, ilk, son)
+
+    def run(self):
+        from . import veritabani as vt
+        from .kirilim import donem_kayitlari
+        db_yolu, ilk, son = self.a
+        try:
+            con, kilit = vt.okuma_baglantisi(db_yolu)
+            with kilit:
+                k = donem_kayitlari(con, ilk, son)
+        except Exception as e:  # noqa: BLE001
+            k = str(e)
+        self.bitti.emit((ilk, son), k)
+
+
 class _Kutu(QFrame):
     def __init__(self, baslik: str):
         super().__init__()
@@ -206,8 +227,9 @@ class PerformansSayfasi(QWidget):
         ikili.setSpacing(12)
         self.g_kv = CizimWidget(lambda p, r: cizim_ek.kirilim_grafigi(p, r, self._kirilim.get("vardiya", []), "Vardiyaya göre"), 320, 260,
                                 kopya_resim=lambda: self.g_kv.resim(2.0))
-        self.g_ko = CizimWidget(lambda p, r: cizim_ek.kirilim_grafigi(p, r, self._kirilim.get("operator", []), "Operatöre göre"), 320, 260,
-                                kopya_resim=lambda: self.g_ko.resim(2.0))
+        self.g_ko = TikliCizim(lambda p, r, b: cizim_ek.kirilim_grafigi(p, r, self._kirilim.get("operator", []), "Operatöre göre (tıklayın)",
+                                                                        b, "operator", self._op), 260, 320)
+        self.g_ko.tiklandi.connect(lambda a, k: self._op_tik(a))
         ikili.addWidget(self.g_kv, 1)
         ikili.addWidget(self.g_ko, 1)
         kk.layout().addLayout(ikili)
@@ -219,6 +241,64 @@ class PerformansSayfasi(QWidget):
         kk.hide()
         self.k_kirilim = kk
         kok.addWidget(kk)
+
+        # ---------------------------------------------------------------- 4. seviye: seçili operatörün bu duruşu (makine / zaman)
+        self._op = None
+        self._op_veri: dict = {}
+        self._oz_mod = "gun"
+        self._om_secili = None
+        self._oz_secili = None
+        ko, self.o_baslik, self.o_alt, _s = _kart_baslikli("Operatör", "")
+        ikili = QHBoxLayout()
+        ikili.setSpacing(12)
+        self.g_om = TikliCizim(lambda p, r, b: cizim_ek.kirilim_grafigi(p, r, [(m, x, tema.durus_rengi(self._tip or ""))
+                                                                              for m, x in self._op_veri.get("makine", [])],
+                                                                         "Makineye göre (tıklayın)", b, "om_makine", self._om_secili), 260, 320)
+        self.g_om.tiklandi.connect(lambda a, k: self._cizelge_ac("makine", a))
+        sag = QVBoxLayout()
+        from PySide6.QtWidgets import QButtonGroup
+        mod_s = QHBoxLayout()
+        mod_s.addWidget(etiket("Zamana göre:", "AltBaslik"))
+        self._oz_grup = QButtonGroup(self)
+        for kod, ad in (("gun", "Gün"), ("vardiya", "Vardiya"), ("gunv", "Gün × vardiya")):
+            b = QPushButton(ad)
+            b.setObjectName("Hizli")
+            b.setCheckable(True)
+            b.setChecked(kod == "gun")
+            b.clicked.connect(lambda _=False, k=kod: self._oz_mod_sec(k))
+            self._oz_grup.addButton(b)
+            mod_s.addWidget(b)
+        mod_s.addStretch(1)
+        sag.addLayout(mod_s)
+        self.g_oz = TikliCizim(lambda p, r, b: cizim_ek.zaman_grafigi(p, r, self._op_veri.get("gun", []), self._oz_mod, "Zamana göre (tıklayın)",
+                                                                      b, self._oz_secili, tema.durus_rengi(self._tip or "")), 260, 320)
+        self.g_oz.tiklandi.connect(lambda a, k: self._cizelge_ac(k, a))
+        sag.addWidget(self.g_oz, 1)
+        ikili.addWidget(self.g_om, 1)
+        ikili.addLayout(sag, 1)
+        ko.layout().addLayout(ikili)
+        b_o = QPushButton("✕")
+        b_o.setToolTip("Kapat")
+        b_o.setFixedSize(28, 26)
+        b_o.clicked.connect(self._op_kapat)
+        _s.addWidget(b_o)
+        ko.hide()
+        self.k_op = ko
+        kok.addWidget(ko)
+
+        # ---------------------------------------------------------------- 5. seviye: zaman çizelgesi (gank)
+        from .zaman_cizelgesi import ZamanCizelgesi
+        kg, self.z_baslik, self.z_alt, _s = _kart_baslikli("Zaman çizelgesi", "")
+        self.zc = ZamanCizelgesi()
+        kg.layout().addWidget(self.zc)
+        b_z = QPushButton("✕")
+        b_z.setToolTip("Kapat")
+        b_z.setFixedSize(28, 26)
+        b_z.clicked.connect(lambda: self.k_gantt.hide())
+        _s.addWidget(b_z)
+        kg.hide()
+        self.k_gantt = kg
+        kok.addWidget(kg)
 
         # ---------------------------------------------------------------- şüpheli mola zaman çizelgesi
         ks, self.s_baslik, self.s_alt, _s = _kart_baslikli("Şüpheli molalar", "")
@@ -347,6 +427,7 @@ class PerformansSayfasi(QWidget):
         gunler = self.ana.donem_gunleri()
         if not gunler:
             return
+        self._op_kapat()                            # yeni duruş: 4.-5. seviye kapanır
         self._tip = tip
         self._kirilim = {}
         anahtar = (min(gunler), max(gunler), m, tip)
@@ -392,6 +473,112 @@ class PerformansSayfasi(QWidget):
         if hasattr(self, "k_kirilim"):
             self.k_kirilim.hide()
             self.g_detay.update()
+        self._op_kapat()
+
+    # ---------------------------------------------------------------- 4. seviye: operatör ayrıntısı
+    def _op_kapat(self):
+        self._op = None
+        self._om_secili = self._oz_secili = None
+        if hasattr(self, "k_op"):
+            self.k_op.hide()
+            self.k_gantt.hide()
+            self.g_ko.update()
+
+    def _op_tik(self, ad):
+        if not ad or not self._tip:
+            return
+        if ad == self._op and self.k_op.isVisible():               # aynı operatöre ikinci tıklama kapatır
+            self._op_kapat()
+            return
+        gunler = self.ana.donem_gunleri()
+        if not gunler:
+            return
+        self._op = ad
+        self._om_secili = self._oz_secili = None
+        self._op_veri = {}
+        self.k_gantt.hide()
+        self.o_baslik.setText(f"{ad} · {self._tip}")
+        self.o_alt.setText("hesaplanıyor…")
+        self.k_op.show()
+        for w in (self.g_ko, self.g_om, self.g_oz):
+            w.update()
+        self._sc.ensureWidgetVisible(self.k_op, 0, 30)
+        anahtar = (min(gunler), max(gunler))
+        bellek = getattr(self, "_donem_kayit", None)
+        if bellek and bellek[0] == anahtar:
+            self._op_hesapla(bellek[1])
+            return
+        is_ = _DonemKayitIs(self.ana.db_yolu, anahtar[0], anahtar[1], self)
+        is_.bitti.connect(self._donem_kayit_geldi)
+        is_.finished.connect(is_.deleteLater)
+        self._donem_is = is_
+        is_.start()
+
+    def _donem_kayit_geldi(self, anahtar, kayit):
+        if isinstance(kayit, str):
+            self.o_alt.setText(f"Hesaplanamadı: {kayit}")
+            return
+        self._donem_kayit = (anahtar, kayit)
+        gunler = self.ana.donem_gunleri()
+        if gunler and (min(gunler), max(gunler)) == anahtar and self._op:
+            self._op_hesapla(kayit)
+
+    def _op_hesapla(self, kayit):
+        from .kirilim import operator_ayrinti
+        gunler = self.ana.donem_gunleri()
+        self._op_veri = operator_ayrinti(kayit, min(gunler), max(gunler), self._tip, self._op)
+        top = sum(x for _m, x in self._op_veri["makine"])
+        self.o_alt.setText(f"toplam {cizim._saat_dk(top)} saat · {len(self._op_veri['makine'])} makine · makine ya da zaman çubuğuna tıklayın: "
+                           "zaman çizelgesi · aynı operatöre yeniden tıklarsanız kapanır")
+        for w in (self.g_om, self.g_oz):
+            w.update()
+
+    def _oz_mod_sec(self, kod: str):
+        self._oz_mod = kod
+        self._oz_secili = None
+        self.g_oz.update()
+
+    # ---------------------------------------------------------------- 5. seviye: zaman çizelgesi
+    def _cizelge_ac(self, kisim, anahtar):
+        from datetime import datetime as _dt, timedelta as _td
+        from .kirilim import VARDIYA_SAAT
+        v = self._op_veri
+        if not v or not v.get("makine"):
+            return
+        gunler = self.ana.donem_gunleri()
+        t0 = _dt(min(gunler).year, min(gunler).month, min(gunler).day)
+        t1 = _dt(max(gunler).year, max(gunler).month, max(gunler).day) + _td(days=1)
+        satirlar = [m for m, _x in v["makine"]]
+        bloklar = v["bloklar"]
+        gorunum, baslik = None, ""
+        if kisim == "om_makine":
+            self._om_secili, self._oz_secili = anahtar, None
+            satirlar = [anahtar] + [m for m in satirlar if m != anahtar]
+            baslik = f"{anahtar} seçili · tüm dönem"
+        elif kisim == "oz_gun":
+            self._oz_secili, self._om_secili = anahtar, None
+            g = _dt.fromisoformat(anahtar)
+            gorunum, baslik = (g, g + _td(days=1)), f"{g:%d.%m.%Y}"
+        elif kisim == "oz_gunv":
+            self._oz_secili, self._om_secili = anahtar, None
+            gi, vv = anahtar.split("|")
+            g = _dt.fromisoformat(gi)
+            h0, h1 = VARDIYA_SAAT[int(vv)]
+            gorunum, baslik = (g + _td(hours=h0), g + _td(hours=h1)), f"{g:%d.%m.%Y} · {vv}. vardiya"
+        elif kisim == "oz_vardiya":
+            self._oz_secili, self._om_secili = anahtar, None
+            h0, h1 = VARDIYA_SAAT[int(anahtar)]
+            bloklar = {m: [(a, b, t, st, op, vu and h0 <= a.hour < h1) for a, b, t, st, op, vu in lst] for m, lst in bloklar.items()}
+            baslik = f"yalnızca {anahtar}. vardiya vurgulu · tüm dönem"
+        else:
+            return
+        for w in (self.g_om, self.g_oz):
+            w.update()
+        self.z_baslik.setText(f"{self._op} · {self._tip} · zaman çizelgesi")
+        self.z_alt.setText(baslik + " · satırlar: bu duruşun görüldüğü makineler")
+        self.zc.ayarla(satirlar, bloklar, t0, t1, tema.durus_rengi(self._tip or ""), self._tip or "", gorunum)
+        self.k_gantt.show()
+        self._sc.ensureWidgetVisible(self.k_gantt, 0, 30)
 
     def _sup_olaylar(self) -> list:
         if not self._secili or self._sup_v is None:
@@ -481,6 +668,7 @@ class PerformansSayfasi(QWidget):
 
     def yenile(self):
         self._kirilim_bellek = None                 # yeni veri / dönem: kırılım önbelleği sıfırlanır
+        self._donem_kayit = None
         s, ayar = self.ana.sonuc, self.ana.hesap_ayar()
         self._mola_pay = 100.0 * ayar.mola_saat / ayar.net_saat
         self._mola_dk = ayar.mola_saat * 60.0

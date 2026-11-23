@@ -340,8 +340,11 @@ def kirilim_grafigi(a: dict) -> dict:
         return _bos("Kayıt yok")
     from .cizim import _saat_dk
     from .cizim_ek import etiket_iki_satir
-    d = [{"value": round(sa, 3), "itemStyle": dict(_golge(), color=_gecis(r), borderRadius=[4, 4, 0, 0]),
-          "tip": f"<b>{ad}</b><br>{_saat_dk(sa)} saat · %{sa / toplam * 100:.0f}",
+    kisim, secili = a.get("kisim"), a.get("secili")
+    d = [{"value": round(sa, 3), "itemStyle": dict(_golge(), color=_gecis(r), borderRadius=[4, 4, 0, 0],
+                                                   **({"borderColor": LACIVERT, "borderWidth": 3} if secili is not None and ad == secili else {})),
+          "tip": f"<b>{ad}</b><br>{_saat_dk(sa)} saat · %{sa / toplam * 100:.0f}" + ("<br><i>tıklayın: ayrıntı</i>" if kisim else ""),
+          "anahtar": ad if kisim else None, "kisim": kisim,
           "label": {"formatter": f"{_saat_dk(sa)} sa\n%{sa / toplam * 100:.0f}"}} for ad, sa, r in liste]
     return {"title": _baslik(baslik, 14), "tooltip": _ipucu(), "grid": {"left": 56, "right": 16, "top": 64 if baslik else 40, "bottom": 50},
             "xAxis": _eksen_x([etiket_iki_satir(x[0]) for x in liste], axisLabel={"color": YAZI, "fontWeight": 600, "interval": 0, "fontSize": 11, "lineHeight": 14}),
@@ -349,7 +352,43 @@ def kirilim_grafigi(a: dict) -> dict:
             "series": [{"type": "bar", "data": d, "barMaxWidth": 70, "label": {"show": True, "position": "top", "color": YAZI, "fontWeight": 700, "fontSize": 11}}]}
 
 
+def zaman_grafigi(a: dict) -> dict:
+    from .cizim import _saat_dk
+    from .cizim_ek import GUN_KISA, VARDIYA_RENK
+    gunler, mod, baslik, secili, renk = a.get("gunler") or [], a.get("mod") or "gun", a.get("baslik"), a.get("secili"), a.get("renk") or "#F28C28"
+    if not gunler or sum(sum(x) for _, x in gunler) <= 0:
+        return _bos("Kayıt yok")
+
+    def oge(sa, rk, anahtar, kisim, ek=""):
+        st = {"color": rk}
+        if secili is not None and anahtar == secili:
+            st.update(borderColor=LACIVERT, borderWidth=3)
+        return {"value": round(sa, 3), "itemStyle": st, "anahtar": anahtar, "kisim": kisim, "label": {"formatter": _saat_dk(sa) if sa > 0 else ""},
+                "tip": f"{ek}<b>{_saat_dk(sa)} saat</b><br><i>tıklayın: zaman çizelgesi</i>"}
+    if mod == "vardiya":
+        adlar = [f"{v}. Vardiya" for v in (1, 2, 3)]
+        seri = [{"type": "bar", "barMaxWidth": 70, "label": {"show": True, "position": "top", "fontWeight": 700},
+                 "data": [oge(sum(x[v - 1] for _, x in gunler), VARDIYA_RENK[v], str(v), "oz_vardiya", f"{v}. vardiya<br>") for v in (1, 2, 3)]}]
+    elif mod == "gunv":
+        adlar = [f"{GUN_KISA[g.weekday()]} {g.day}" for g, _ in gunler]
+        seri = [{"type": "bar", "stack": "v", "name": f"{v}. vardiya", "barMaxWidth": 60, "itemStyle": {"color": VARDIYA_RENK[v]},
+                 "data": [oge(x[v - 1], VARDIYA_RENK[v], f"{g.isoformat()}|{v}", "oz_gunv", f"{g:%d.%m.%Y} · {v}. vardiya<br>") for g, x in gunler]}
+                for v in (1, 2, 3)]
+    else:
+        adlar = [f"{GUN_KISA[g.weekday()]} {g.day}" for g, _ in gunler]
+        seri = [{"type": "bar", "barMaxWidth": 60, "label": {"show": len(gunler) <= 31, "position": "top", "fontWeight": 700, "fontSize": 10},
+                 "data": [oge(sum(x), renk, g.isoformat(), "oz_gun", f"{g:%d.%m.%Y}<br>") for g, x in gunler]}]
+    sec = {"title": _baslik(baslik, 14), "tooltip": _ipucu(), "grid": {"left": 56, "right": 16, "top": 70 if baslik else 40, "bottom": 40},
+           "xAxis": _eksen_x(adlar, axisLabel={"color": YAZI, "fontWeight": 600, "interval": 0 if len(adlar) <= 16 else "auto", "fontSize": 10}),
+           "yAxis": {"type": "value", "axisLabel": {"color": SOLUK, "formatter": "{value} sa"}, "splitLine": {"lineStyle": {"color": CIZGI}}},
+           "series": seri}
+    if mod == "gunv":
+        sec["legend"] = {"top": 34 if baslik else 6, "textStyle": {"color": SOLUK}}
+    return sec
+
+
 YAPICILAR = {
+    "zaman_grafigi": zaman_grafigi,
     "kirilim_grafigi": kirilim_grafigi,
     "vardiya_grafigi": vardiya_grafigi,
     "makine_grafigi": makine_grafigi,
