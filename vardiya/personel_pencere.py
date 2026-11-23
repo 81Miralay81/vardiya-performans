@@ -152,8 +152,8 @@ def kimlik_yaz(k: str, s: str):
     a.sync()
 
 
-SABLON_TURLERI = {"giris_cikis": "Giriş-çıkış listesi (Planlanan + Gerçekleşen)", "liste_aktif": "Personel listesi (aktif)",
-                  "liste_cikan": "İşten çıkanlar listesi", "bakiye": "İzin bakiyesi (izin formu)", "kisi_karti": "Kişi kartı (fotoğraf)"}
+SABLON_TURLERI = {"giris_cikis": "Giriş-çıkış listesi (Planlanan + Gerçekleşen)", "liste_aktif": "Personel listesi (Sicil · Aktifler)",
+                  "liste_cikan": "İşten çıkanlar (Sicil · İşten Çıkanlar)"}
 
 
 def sablon_oku(tur: str) -> Optional[dict]:
@@ -290,11 +290,7 @@ class PersonelVeriPenceresi(QDialog):
         self.b_yil = QPushButton("Seçili yılı ay ay al")
         self.b_yil.setToolTip("Bir ayı elle listeledikten sonra program aynı listeyi seçili yılın her ayı için kendisi alır.")
         self.b_yil.clicked.connect(self._yil_al)
-        self.b_kisi = QPushButton("Tüm personel bilgilerini güncelle")
-        self.b_kisi.setToolTip("Personel listesi, işten çıkanlar, izin bakiyesi, kıdem ve fotoğraf herkes için sırayla alınır "
-                               "(izin formunu ve kişi kartını bir kez açmış olmanız yeterli; hiçbir şey kaydedilmez, yalnızca okunur).")
-        self.b_kisi.clicked.connect(self._personel_al)
-        for w in (QLabel("Yıl"), self.yil, self.b_yil, self.b_kisi):
+        for w in (QLabel("Yıl"), self.yil, self.b_yil):
             ust2.addWidget(w)
         ust2.addStretch(1)
         l.addLayout(ust2)
@@ -303,8 +299,8 @@ class PersonelVeriPenceresi(QDialog):
         self.sablon_et.setWordWrap(True)
         l.addWidget(self.sablon_et)
         self.bilgi = QLabel("Giriş yapın; sonra 'Planlanan + Gerçekleşen' ekranını açıp bir ayı listeleyin. Program o isteği öğrenir: "
-                            "sonra 'Seçili yılı ay ay al' ile bütün yılı kendisi alır ve her akşam 20:00'de dünü kendisi çeker. "
-                            "İzin formunu ve kişi kartını herhangi bir kişi için bir kez açarsanız tüm personelin bilgileri de alınır.")
+                            "sonra 'Seçili yılı ay ay al' ile bütün yılı kendisi alır ve her gün Ayarlar'daki saatte dünü kendisi çeker. "
+                            "Sicil ekranında Aktifler ve İşten Çıkanlar sekmelerini bir kez açarsanız personel listesi ve işten çıkışlar da güncellenir.")
         self.bilgi.setWordWrap(True)
         self.bilgi.setObjectName("AltBaslik")
         l.addWidget(self.bilgi)
@@ -370,10 +366,6 @@ class PersonelVeriPenceresi(QDialog):
             if not meta.get("ilk") or not meta.get("son"):
                 return
             v.update(ilk=meta["ilk"], son=meta["son"])
-        if tur in ("bakiye", "kisi_karti"):
-            if meta.get("sid") is None:
-                return
-            v["sid"] = int(meta["sid"])
         sablon_yaz(tur, v)
         self._sablon_yaz()
 
@@ -459,8 +451,7 @@ class PersonelVeriPenceresi(QDialog):
         self._gorev_say = [0, len(gorevler)]
         self._gorev_bitti_fn = bitince
         self._gorev_bekle = None
-        for b in (self.b_yil, self.b_kisi):
-            b.setEnabled(False)
+        self.b_yil.setEnabled(False)
         self._is_zaman.start(400)
 
     def _gorev_tik(self):
@@ -472,8 +463,7 @@ class PersonelVeriPenceresi(QDialog):
             if self.kaydedici.bekleyen > 0 and time.time() - self._gorev_zaman < 120:
                 return                                           # son yanıtların kaydı bitsin
             self._is_zaman.stop()
-            for b in (self.b_yil, self.b_kisi):
-                b.setEnabled(True)
+            self.b_yil.setEnabled(True)
             fn, self._gorev_bitti_fn = self._gorev_bitti_fn, None
             if fn:
                 fn(*self._gorev_say)
@@ -525,27 +515,12 @@ class PersonelVeriPenceresi(QDialog):
         return gorevler, ""
 
     def personel_gorevleri(self) -> list:
-        from . import personel_veri as pv, veritabani as vt
+        """Personel listesi ve işten çıkanlar (tek istek; kişi kişi istek yok)."""
         gorevler = []
         for t, ad in (("liste_aktif", "personel listesi"), ("liste_cikan", "işten çıkanlar")):
             s = sablon_oku(t)
             if s:
                 gorevler.append((ad, s["m"], s["u"], s.get("b")))
-        con = vt.ac(self.db_yolu)
-        try:
-            ad = {sid: p.get("ad") for sid, p in pv.personel(con).items()}
-            siciller = pv.aktif_siciller(con)
-        finally:
-            con.close()
-        for t, etiket in (("bakiye", "izin bakiyesi"), ("kisi_karti", "kişi kartı")):
-            s = sablon_oku(t)
-            if not s:
-                continue
-            for sid in siciller:
-                u, ok1 = pv.kimlik_degistir(s["u"], s["sid"], sid)
-                g, ok2 = pv.kimlik_degistir(s.get("b") or "", s["sid"], sid)
-                if ok1 or ok2:
-                    gorevler.append((f"{etiket}: {pv.tr_baslik(ad.get(sid) or str(sid))}", s["m"], u, g if s.get("b") is not None else None))
         return gorevler
 
     def _yil_al(self):
@@ -565,18 +540,6 @@ class PersonelVeriPenceresi(QDialog):
                 return
             self._gorev_baslat(gorevler, lambda ok, n: self.bilgi.setText(
                 f"{y} yılı alındı: {ok}/{n} ay kaydedildi. Aynı gün ikinci kez gelirse çoğalmaz, yenisiyle güncellenir."))
-        self._hazir(basla)
-
-    def _personel_al(self):
-        def basla(hazir, giris):
-            if not hazir or giris:
-                self.bilgi.setText("Önce giriş yapın.")
-                return
-            g = self.personel_gorevleri()
-            if not g:
-                self.bilgi.setText("Önce Sicil ekranını, izin formunu ve kişi kartını bir kez açın (program istekleri öğrensin).")
-                return
-            self._gorev_baslat(g, lambda ok, n: self.bilgi.setText(f"Personel bilgileri güncellendi: {ok}/{n} istek."))
         self._hazir(basla)
 
     # ------------------------------------------------------------ otomatik çekim (her akşam)
@@ -603,8 +566,8 @@ class PersonelVeriPenceresi(QDialog):
         gorevler += self.personel_gorevleri()
 
         def bitti(ok, n):
-            self._otomatik_bitir(ok > 0 or n == 0, f"{ilk:%d.%m.%Y} – {son:%d.%m.%Y} ({n_ay} ay listesi) ve personel bilgileri: "
-                                                   f"{ok}/{n} istek başarılı")
+            self._otomatik_bitir(ok > 0 or n == 0, f"{ilk:%d.%m.%Y} – {son:%d.%m.%Y} ({n_ay} ay listesi"
+                                                   f"{' + personel listesi' if n > n_ay else ''}): {ok}/{n} istek başarılı")
         self._gorev_baslat(gorevler, bitti)
 
     def _otomatik_bitir(self, basarili: bool, metin: str):
@@ -636,7 +599,7 @@ def ac(db_yolu: str, parent=None, kapaninca: Optional[Callable[[], None]] = None
 
 
 def otomatik_calistir(db_yolu: str, ilk, son, parent, bitince: Callable[[bool, str], None]) -> Optional[PersonelVeriPenceresi]:
-    """Görünmez pencereyle: giriş (kayıtlı şifreyle), [ilk, son] ay ay giriş-çıkış listesi ve tüm personel bilgileri."""
+    """Görünmez pencereyle: giriş (kayıtlı şifreyle), [ilk, son] ay ay giriş-çıkış listesi ve personel listesi."""
     if not all(kimlik_oku()):
         bitince(False, "kullanıcı adı ve şifre bu bilgisayarda kayıtlı değil")
         return None

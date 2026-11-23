@@ -171,6 +171,13 @@ class AyarSayfasi(QWidget):
             w.setButtonSymbols(QAbstractSpinBox.PlusMinus)
         fp.addRow("Geç gelme / erken çıkma toleransı", self.pv_tol)
         fp.addRow("Fazla çalışma için en az", self.pv_fazla)
+        from PySide6.QtWidgets import QTimeEdit
+        self.pv_saat = QTimeEdit()
+        self.pv_saat.setDisplayFormat("HH:mm")
+        self.pv_saat.setMaximumWidth(150)
+        self.pv_saat.setToolTip("Her gün bu saatte bir önceki günün personel verisi otomatik çekilir (yalnızca 'Otomatik çek' işaretli "
+                                "bilgisayar). Düzeltmeler ertesi gün yapıldığı için öğleden sonra / akşam bir saat seçin.")
+        fp.addRow("Otomatik çekim saati (bir önceki gün)", self.pv_saat)
         kp.layout().addLayout(fp)
         ic.addWidget(kp)
 
@@ -353,9 +360,9 @@ class AyarSayfasi(QWidget):
         self.oto_acik = QCheckBox("Otomatik çek: Cormind ve personel verisi (bu bilgisayar)")
         self.oto_acik.setToolTip("Cormind: program açılınca ve açık kaldıysa her gece 01:00'de, son tam çekilen günden düne kadar eksik "
                                  "günler çekilir. Bugün hiçbir zaman otomatik çekilmez (tabloda yarım gün olmasın).\n"
-                                 "Personel verisi: her akşam 20:00'de dünün giriş-çıkış listesi (ayın başından itibaren yeniden; aynı gün "
-                                 "çoğalmaz, düzeltilmişse güncellenir), personel listesi, işten çıkanlar, izin bakiyeleri ve kişi kartları "
-                                 "alınır. Program o saatte kapalıysa açıldığında tamamlanır.\n"
+                                 "Personel verisi: her gün 'Otomatik çekim saati'nde bir önceki günün giriş-çıkış listesi (ayın başından "
+                                 "itibaren yeniden; aynı gün çoğalmaz, düzeltilmişse güncellenir), personel listesi ve işten çıkanlar alınır. "
+                                 "Program o saatte kapalıysa açıldığında tamamlanır.\n"
                                  "Yalnızca bu kutunun işaretli olduğu bilgisayar çeker.")
         self.oto_acik.setChecked(oto_cekim.ayarda_acik())
         self.oto_not = QLabel("Kapalı")
@@ -666,6 +673,10 @@ class AyarSayfasi(QWidget):
         from .personel_veri import VARSAYILAN_FAZLA_EN_AZ_DK, VARSAYILAN_TOLERANS_DK
         self.pv_tol.setValue(int(a.get("pv_tolerans_dk", VARSAYILAN_TOLERANS_DK)))
         self.pv_fazla.setValue(int(a.get("pv_fazla_en_az_dk", VARSAYILAN_FAZLA_EN_AZ_DK)))
+        from PySide6.QtCore import QTime
+        from .oto_cekim import OtoCekim, PV_SAATI
+        h, m = OtoCekim.pv_saat_coz(a.get("pv_cekim_saati", PV_SAATI))
+        self.pv_saat.setTime(QTime(h, m))
         self.kullanici_yenile()
         self.mak_liste.clear()
         for m in a["makineler"]:
@@ -791,6 +802,7 @@ class AyarSayfasi(QWidget):
             QSettings("Teknorot", "VardiyaPerformans").setValue("yedek/mola_saatleri", json.dumps(ms))
         vt.ayar_yaz(con, "pv_tolerans_dk", self.pv_tol.value())
         vt.ayar_yaz(con, "pv_fazla_en_az_dk", self.pv_fazla.value())
+        vt.ayar_yaz(con, "pv_cekim_saati", self.pv_saat.time().toString("HH:mm"))
         vt.ayar_yaz(con, "supheli_en_kisa_mola_dk", self.sup_min.value())
         vt.ayar_yaz(con, "calismayanlari_gizle", self.gizle.isChecked())
         vt.ayar_yaz(con, "makineler", self._adlar(self.mak_liste))

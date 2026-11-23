@@ -155,7 +155,8 @@ class Sunucu:
             f = {"/api/durum": self.api_durum, "/api/performans": self.api_performans, "/api/tablo.png": self.api_tablo,
                  "/api/rapor/bilgi": self.api_rapor_bilgi, "/api/rapor/sayfa.png": self.api_rapor_sayfa,
                  "/api/rapor.pdf": self.api_rapor_pdf, "/api/operator": self.api_operator, "/api/operator/ayrinti": self.api_operator_ayrinti, "/api/operator/cakisma": self.api_operator_cakisma, "/api/duran": self.api_duran, "/api/kirilim": self.api_kirilim,
-                 "/api/kayitlar": self.api_kayitlar, "/api/cormind/cek": self.api_cek, "/api/cormind/durum": self.api_cek_durum,
+                 "/api/kayitlar": self.api_kayitlar, "/api/personel": self.api_personel,
+                 "/api/personel/hafta": self.api_personel_hafta, "/api/personel/kart": self.api_personel_kart, "/api/personel/foto": self.api_personel_foto, "/api/cormind/cek": self.api_cek, "/api/cormind/durum": self.api_cek_durum,
                  "/api/cormind/durdur": self.api_cek_durdur, "/api/outlook": self.api_outlook}.get(yol)
             if f is None:
                 return self._gonder(h, b"Bulunamadi", "text/plain; charset=utf-8", 404)
@@ -179,7 +180,8 @@ class Sunucu:
     YETKI = {"/api/performans": "performans", "/api/tablo.png": "performans", "/api/kirilim": "performans", "/api/duran": "performans",
              "/api/rapor/bilgi": "rapor", "/api/rapor/sayfa.png": "rapor", "/api/rapor.pdf": "rapor", "/api/outlook": "rapor",
              "/api/operator": "operator", "/api/operator/ayrinti": "operator", "/api/operator/cakisma": "operator",
-             "/api/kayitlar": "kayitlar", "/api/cormind/cek": "veri", "/api/cormind/durum": "veri", "/api/cormind/durdur": "veri"}
+             "/api/kayitlar": "kayitlar", "/api/personel": "personel", "/api/personel/hafta": "personel",
+             "/api/personel/kart": "personel", "/api/personel/foto": "personel_kimlik", "/api/cormind/cek": "veri", "/api/cormind/durum": "veri", "/api/cormind/durdur": "veri"}
     OTURUM_SN = 12 * 3600
 
     def _oturumlar(self) -> dict:
@@ -229,6 +231,8 @@ class Sunucu:
 
     def _yetki_denetle(self, h, yol: str):
         if not self._sistem_acik():
+            if yol.startswith("/api/personel"):          # personel verisi tarayıcıda yalnızca kullanıcı girişiyle
+                return 403, "Personel Durum tarayıcıda yalnızca kullanıcı girişi açıkken görünür"
             return None
         k = self._oturum_kullanici(h)
         if not k:
@@ -522,6 +526,126 @@ class Sunucu:
         self._json(h, {"ilk": ilk, "son": son, "satirlar": [
             {"makine": m, "operator": op, "saat": round(top, 2), "nedenler": sorted(((t, round(sa, 2)) for t, sa in d.items()), key=lambda x: -x[1])}
             for top, m, op, d in satirlar]})
+
+    # -------------------------------------------------------------- personel durum (yalnızca yetkili kullanıcı)
+    def _pv_temel(self, con, ilk, son):
+        from . import personel_veri as pv
+        ayar = vt.ayar_oku(con)
+        gl, oz = pv.donem_hesabi(con, ilk, son, ayar)
+        return ayar, gl, oz, pv.personel(con), pv.izin_adlari(con)
+
+    def api_personel(self, h, q):
+        from . import personel_veri as pv
+        bugun = date.today()
+        ilk = _tarih(q, "ilk", date(bugun.year, bugun.month, 1))
+        son = _tarih(q, "son", bugun - timedelta(days=1))
+        con = self._con()
+        try:
+            ayar, gl, oz, kisi, izin_ad = self._pv_temel(con, ilk, son)
+            kap = pv.kapsam(con)
+        finally:
+            con.close()
+        bv = pv.baskin_vardiya(gl)
+        satir = []
+        for sid, o in oz.items():
+            p = kisi.get(sid, {})
+            satir.append({"sid": sid, "ad": pv.tr_baslik(p.get("ad") or sid), "pozisyon": pv.tr_baslik(p.get("pozisyon") or ""),
+                          "vardiya": bv.get(sid, ""), "lider": pv.lider_mi(p), "cikis": p.get("cikis_tarih") or "",
+                          "planli": o.planli, "geldi": o.geldi, "gelmedi": o.gelmedi, "eksik": o.eksik, "izinli": o.izinli,
+                          "izin_saat": o.izin_saat, "izin": {pv.izin_kisa(izin_ad, k): n for k, n in o.izin_tur.items()},
+                          "gec_adet": o.gec_adet, "gec_dk": o.gec_dk, "erken_adet": o.erken_adet, "erken_dk": o.erken_dk,
+                          "fazla_dk": o.fazla_dk, "tatil": o.tatil_calisti,
+                          "devam": None if o.devam is None else round(o.devam, 4)})
+        satir.sort(key=lambda r: r["ad"])
+        return self._json(h, {"satir": satir, "kapsam": list(kap), "ilk": ilk.isoformat(), "son": son.isoformat(),
+                              "tolerans": ayar.get("pv_tolerans_dk", pv.VARSAYILAN_TOLERANS_DK),
+                              "fazla_en_az": ayar.get("pv_fazla_en_az_dk", pv.VARSAYILAN_FAZLA_EN_AZ_DK)})
+
+    def api_personel_hafta(self, h, q):
+        from . import personel_veri as pv
+        bugun = date.today()
+        pzt = _tarih(q, "pzt", bugun - timedelta(days=bugun.weekday()))
+        pzt = pzt - timedelta(days=pzt.weekday())
+        con = self._con()
+        try:
+            ayar, gl, _oz, kisi, izin_ad = self._pv_temel(con, pzt, pzt + timedelta(days=6))
+            lider = pv.hafta_grup_liderleri(con, pzt, ayar)
+        finally:
+            con.close()
+        bv = pv.baskin_vardiya(gl)
+        gm: dict = {}
+        for g in gl:
+            gm.setdefault(g.sicilid, {})[g.gun] = g
+        sira = {"1": 0, "2": 1, "3": 2, "G": 3}
+        satir = []
+        for sid in sorted(gm, key=lambda s: (sira.get(bv.get(s, ""), 9), not pv.lider_mi(kisi.get(s, {})), str(kisi.get(s, {}).get("ad", "")))):
+            gunler = []
+            for i in range(7):
+                g = gm[sid].get(pzt + timedelta(days=i))
+                if g is None:
+                    gunler.append(None)
+                    continue
+                m, r = pv.gun_yazi(g, izin_ad, bugun)
+                gunler.append({"m": m, "r": r, "i": pv.gun_ipucu(g, izin_ad)})
+            p = kisi.get(sid, {})
+            satir.append({"sid": sid, "ad": pv.tr_baslik(p.get("ad") or sid), "vardiya": bv.get(sid, ""), "lider": pv.lider_mi(p),
+                          "cikis": p.get("cikis_tarih") or "", "gun": gunler})
+        return self._json(h, {"pzt": pzt.isoformat(), "satir": satir,
+                              "lider": {k: [pv.tr_baslik(x) for x in v] for k, v in lider.items()}, "vardiya_ad": pv.VARDIYA_AD})
+
+    def api_personel_kart(self, h, q):
+        from . import kullanici as ku, personel_veri as pv
+        bugun = date.today()
+        sid = int(q.get("sid", ["0"])[0] or 0)
+        ilk = _tarih(q, "ilk", date(bugun.year, bugun.month, 1))
+        son = _tarih(q, "son", bugun - timedelta(days=1))
+        ay = _tarih(q, "ay", date(son.year, son.month, 1)).replace(day=1)
+        ay_son = date(ay.year + (ay.month == 12), ay.month % 12 + 1, 1) - timedelta(days=1)
+        con = self._con()
+        try:
+            _ayar, _gl, oz, kisi, izin_ad = self._pv_temel(con, ilk, son)
+            ayar2 = vt.ayar_oku(con)
+            gl_ay, _ = pv.donem_hesabi(con, ay, ay_son, ayar2)
+        finally:
+            con.close()
+        p = kisi.get(sid)
+        if not p:
+            return self._json(h, {"hata": "personel bulunamadı"}, 404)
+        o = oz.get(sid)
+        takvim = []
+        for g in gl_ay:
+            if g.sicilid == sid:
+                m, r = pv.gun_yazi(g, izin_ad, bugun)
+                takvim.append({"gun": g.gun.isoformat(), "m": m, "r": r, "i": pv.gun_ipucu(g, izin_ad),
+                               "gec": g.gec_dk, "erken": g.erken_dk, "fazla": g.fazla_dk if g.durum == pv.GELDI else 0})
+        k = self._oturum_kullanici(h)
+        return self._json(h, {"sid": sid, "ad": pv.tr_baslik(p.get("ad") or ""), "sicilno": p.get("sicilno") or "",
+                              "pozisyon": pv.tr_baslik(p.get("pozisyon") or ""), "yaka": pv.tr_baslik(p.get("yaka") or ""),
+                              "periyot": p.get("periyot") or "", "cikis": p.get("cikis_tarih") or "",
+                              "foto": bool(p.get("foto")) and ku.yetkili(k, "personel_kimlik"),
+                              "ozet": None if not o else {"planli": o.planli, "geldi": o.geldi, "gelmedi": o.gelmedi, "eksik": o.eksik,
+                                                          "izinli": o.izinli, "gec_adet": o.gec_adet, "gec_dk": o.gec_dk,
+                                                          "erken_adet": o.erken_adet, "erken_dk": o.erken_dk, "fazla_dk": o.fazla_dk,
+                                                          "tatil": o.tatil_calisti, "devam": o.devam,
+                                                          "izin": {izin_ad.get(kk, kk): n for kk, n in o.izin_tur.items()}},
+                              "ay": ay.isoformat(), "takvim": takvim})
+
+    def api_personel_foto(self, h, q):
+        import base64
+        from . import personel_veri as pv
+        sid = int(q.get("sid", ["0"])[0] or 0)
+        con = self._con()
+        try:
+            p = pv.personel(con).get(sid) or {}
+        finally:
+            con.close()
+        try:
+            veri = base64.b64decode(p.get("foto") or "")
+        except Exception:  # noqa: BLE001
+            veri = b""
+        if not veri:
+            return self._json(h, {"hata": "fotoğraf yok"}, 404)
+        self._gonder(h, veri, "image/jpeg")
 
     def api_kayitlar(self, h, q):
         from datetime import datetime

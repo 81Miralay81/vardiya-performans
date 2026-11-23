@@ -17,7 +17,7 @@ from PySide6.QtCore import QObject, QSettings, QTimer, Signal
 from . import veritabani as vt
 
 GECE_SAATI = 1                             # her gece 01:00
-PV_SAATI = 20                              # personel verisi her akşam 20:00 (dünün düzeltmeleri ertesi gün 18:00'e kadar yapılır)
+PV_SAATI = "20:00"                         # personel verisi varsayılan çekim saati (Ayarlar'dan değişir; dünün düzeltmeleri ertesi gün 18:00'e kadar yapılır)
 YENIDEN_DK = 30
 YARIM_SAAT = timedelta(minutes=30)         # Cormind gün sonu kayıtlarını kapatsın diye beklenen pay
 EN_GERI_GUN = 62                           # hiç geçmiş yoksa ya da çok eskiyse en fazla bu kadar geri gidilir
@@ -121,9 +121,24 @@ class OtoCekim(QObject):
 
     # ------------------------------------------------ personel verisi (her akşam 20:00, dünü)
     @staticmethod
-    def pv_hedef(simdi: Optional[datetime] = None) -> date:
+    def pv_saat_coz(metin) -> tuple:
+        try:
+            h, m = str(metin or PV_SAATI).split(":")
+            h, m = int(h), int(m)
+            if 0 <= h < 24 and 0 <= m < 60:
+                return h, m
+        except (ValueError, AttributeError):
+            pass
+        return 20, 0
+
+    def pv_saati(self) -> tuple:
+        return self.pv_saat_coz((getattr(self.ana, "ayar", {}) or {}).get("pv_cekim_saati", PV_SAATI))
+
+    @classmethod
+    def pv_hedef(cls, simdi: Optional[datetime] = None, saat: tuple = (20, 0)) -> date:
+        """Çekim saati geçtiyse dün, geçmediyse önceki gün (her zaman bir gün geriden)."""
         simdi = simdi or datetime.now()
-        return simdi.date() - timedelta(days=1 if simdi.hour >= PV_SAATI else 2)
+        return simdi.date() - timedelta(days=1 if (simdi.hour, simdi.minute) >= tuple(saat) else 2)
 
     @staticmethod
     def pv_son_tam() -> Optional[date]:
@@ -139,11 +154,13 @@ class OtoCekim(QObject):
         if not sablon_oku("giris_cikis") or not all(kimlik_oku()):
             self._pv_yaz("hazır değil (Personel Veri penceresinde giriş yapıp bir ayı bir kez elle listeleyin)")
             return
-        hedef = self.pv_hedef()
+        saat = self.pv_saati()
+        saat_y = f"{saat[0]:02d}:{saat[1]:02d}"
+        hedef = self.pv_hedef(saat=saat)
         son_tam = self.pv_son_tam()
         if son_tam is not None and son_tam >= hedef:
             if not self._pv_durum:
-                self._pv_yaz(f"{son_tam:%d.%m.%Y} dahil tam · sıradaki: akşam {PV_SAATI:02d}:00")
+                self._pv_yaz(f"{son_tam:%d.%m.%Y} dahil tam · sıradaki: {saat_y}")
             return
         ay1 = date(hedef.year, hedef.month, 1)
         ilk = ay1 if son_tam is None else min(son_tam + timedelta(days=1), ay1)
@@ -157,7 +174,7 @@ class OtoCekim(QObject):
             if basarili:
                 QSettings("Teknorot", "VardiyaPerformans").setValue("pveri/son_tam", h.isoformat())
                 self._pv_yeniden = None
-                self._pv_yaz(f"son çekim {datetime.now():%d.%m.%Y %H:%M}: {metin} · sıradaki: akşam {PV_SAATI:02d}:00")
+                self._pv_yaz(f"son çekim {datetime.now():%d.%m.%Y %H:%M}: {metin} · sıradaki: {saat_y}")
                 try:
                     s = self.ana.sayfalar.get("personel")
                     if s is not None and s.isVisible():

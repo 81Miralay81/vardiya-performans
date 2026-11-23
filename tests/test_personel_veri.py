@@ -132,3 +132,11 @@ def test_sablon_kasim_zinciri():
     assert ok and u == '{"bas":"01.11.2026","bit":"19.11.2026"}'
     u, ok = pv.tarih_degistir("b=2026-10-01&e=2026-11-01", date(2026, 10, 1), date(2026, 10, 31), date(2026, 2, 1), date(2026, 2, 28))
     assert ok and u == "b=2026-02-01&e=2026-03-01"
+
+
+def test_cekim_saati_hedef():
+    from datetime import datetime
+    from vardiya.oto_cekim import OtoCekim
+    assert OtoCekim.pv_saat_coz("17:30") == (17, 30) and OtoCekim.pv_saat_coz("bozuk") == (20, 0)
+    assert OtoCekim.pv_hedef(datetime(2026, 11, 23, 17, 29), (17, 30)) == date(2026, 11, 21)
+    assert OtoCekim.pv_hedef(datetime(2026, 11, 23, 17, 30), (17, 30)) == date(2026, 11, 22)

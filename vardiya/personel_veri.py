@@ -574,3 +574,67 @@ def aylar(ilk: date, son: date) -> List[Tuple[date, date]]:
 def aktif_siciller(con) -> List[int]:
     kur(con)
     return [r[0] for r in con.execute("SELECT sicilid FROM pv_personel WHERE cikis_tarih IS NULL OR cikis_tarih = '' ORDER BY ad")]
+
+
+# ====================================================================== ortak gösterim (exe ve tarayıcı)
+RENK = {"1": "#DDEBF7", "2": "#FCE4D6", "3": "#E2D9F3", "G": "#F1F6E8", "D": "#F4F4F4",
+        IZIN_TAM: "#C6EFCE", IZIN_SAAT: "#C6EFCE", GELMEDI: "#FFC7CE", EKSIK: "#F8CBAD",
+        TATIL: "#EDEDED", TATIL_CALISTI: "#D9E1F2", "gec": "#FFEB9C"}
+
+
+def izin_kisa(izin_ad: Dict[str, str], kod: str) -> str:
+    """Aynı kodu paylaşan izin türleri (ör. 01: Yıllık izin / Raporlu ödenmeyen) kısaltılarak gösterilir."""
+    ad = izin_ad.get(kod, f"İzin {kod}")
+    parca = [x.strip() for x in ad.split(" / ") if x.strip()]
+    return " / ".join(x.split()[0] for x in parca) if len(parca) > 1 else ad
+
+
+def gun_yazi(g: Gun, izin_ad: Dict[str, str], bugun: date) -> Tuple[str, str]:
+    """Bir günün hücre yazısı (iki satır) ve renk kodu."""
+    kisa = plan_kisa(g.plan)
+    saat = f"{g.giris or '--:--'}–{g.cikis or '--:--'}" if (g.giris or g.cikis) else ""
+    if g.durum == IZIN_TAM:
+        return izin_kisa(izin_ad, g.izin_kod), RENK[IZIN_TAM]
+    if g.durum == IZIN_SAAT:
+        return f"{kisa}\n{saat} (izinli)", RENK[IZIN_SAAT]
+    if g.durum == GELMEDI:
+        return f"{kisa}\ngelmedi", RENK[GELMEDI]
+    if g.durum == EKSIK:
+        return f"{kisa}\n{saat} eksik", RENK[EKSIK]
+    if g.durum == TATIL:
+        return kisa, RENK[TATIL]
+    if g.durum == RESMI:
+        return "Resmi tatil", RENK[TATIL]
+    if g.durum == TATIL_CALISTI:
+        return f"{kisa} · çalıştı\n{saat}", RENK[TATIL_CALISTI]
+    if g.durum == GELDI:
+        return f"{kisa}\n{saat}", (RENK["gec"] if (g.gec_dk or g.erken_dk) else RENK.get(g.vardiya, "#FFFFFF"))
+    return (kisa + (f"\n{saat}" if saat else "")), ("#FFFFFF" if g.gun >= bugun else RENK.get(g.vardiya, "#FFFFFF"))
+
+
+def gun_ipucu(g: Gun, izin_ad: Dict[str, str]) -> str:
+    p = [f"{g.gun:%d.%m.%Y} · plan: {g.plan}", DURUM_AD.get(g.durum, g.durum)]
+    if g.giris or g.cikis:
+        p.append(f"giriş {g.giris or '-'} · çıkış {g.cikis or '-'}")
+    if g.izin_kod:
+        p.append(f"izin: {izin_ad.get(g.izin_kod, g.izin_kod)} ({g.izin_kod})")
+    if g.gec_dk:
+        p.append(f"geç gelme: {sure_yaz(g.gec_dk)}")
+    if g.erken_dk:
+        p.append(f"erken çıkma: {sure_yaz(g.erken_dk)}")
+    if g.fazla_dk:
+        p.append(f"fazla çalışma: {sure_yaz(g.fazla_dk)}")
+    return "\n".join(p)
+
+
+def baskin_vardiya(gl: Iterable[Gun]) -> Dict[int, str]:
+    say: Dict[int, Dict[str, int]] = {}
+    for g in gl:
+        if g.vardiya in ("1", "2", "3", "G"):
+            d = say.setdefault(g.sicilid, {})
+            d[g.vardiya] = d.get(g.vardiya, 0) + 1
+    return {sid: max(d.items(), key=lambda x: x[1])[0] for sid, d in say.items()}
+
+
+def lider_mi(kisi: dict) -> bool:
+    return GRUP_LIDERI in str((kisi or {}).get("pozisyon") or "").upper()
