@@ -14,6 +14,7 @@ import queue
 import shutil
 import threading
 import time
+from datetime import timedelta
 from typing import Callable, Optional
 
 from PySide6.QtCore import QObject, QSettings, QTimer, QUrl, Qt, Signal
@@ -50,7 +51,7 @@ _YAKALA = r"""
     var x = this; x.__vpGovde = (typeof b === 'string') ? b : null;
     x.addEventListener('load', function(){
       try {
-        if (!x.responseType || x.responseType === 'text') gonder({m: (x.__vpM || {}).m, u: (x.__vpM || {}).u, b: x.__vpGovde, r: x.__vpTekrar || ''}, x.responseText);
+        if (!x.responseType || x.responseType === 'text') gonder({m: (x.__vpM || {}).m, u: (x.__vpM || {}).u, b: x.__vpGovde, r: x.__vpTekrar || '', s: location.hash}, x.responseText);
       } catch(e) {}
       if (x.__vpTekrar) { var t = ''; try { t = x.responseText || ''; } catch(e) {} console.log('VPPVT|' + x.__vpTekrar + '|' + x.status + '|' + t.length + '|' + t.charAt(0)); }
     });
@@ -62,7 +63,7 @@ _YAKALA = r"""
       var a0 = arguments[0], o = arguments[1] || {};
       var u = (a0 && a0.url) || String(a0);
       try { var h = o.headers || {}; if (h.forEach) h.forEach(function(v, k){ window.__vpB[k] = v; }); else for (var k in h) window.__vpB[k] = h[k]; } catch(e) {}
-      var meta = {m: o.method || 'GET', u: u, b: (typeof o.body === 'string') ? o.body : null, r: ''};
+      var meta = {m: o.method || 'GET', u: u, b: (typeof o.body === 'string') ? o.body : null, r: '', s: location.hash};
       return f.apply(this, arguments).then(function(r){ try { r.clone().text().then(function(t){ gonder(meta, t); }); } catch(e) {} return r; });
     };
   }
@@ -101,6 +102,28 @@ _DOLDUR = r"""
     ['keydown', 'keypress', 'keyup'].forEach(function(o){ sifre.dispatchEvent(new KeyboardEvent(o, {key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true})); });
   }, 400);
   return aday.length ? 'dolduruldu' : 'enter';
+})(%s, %s);
+"""
+
+# Ekran yolu (istekte tarih okunamıyorsa): Pdks Pivot ekranındaki iki tarih kutusuna dönemi yazar ve
+# 'Planlanan + Gerçekleşen' düğmesine basar; sayfa isteği kendisi oluşturur, program yanıtı yakalar.
+_EKRAN_DONEM = r"""
+(function(bas, bit){
+  var kutu = Array.prototype.slice.call(document.querySelectorAll('input')).filter(function(e){
+    return e.offsetParent !== null && /^\d{2}[-.\/]\d{2}[-.\/]\d{4}$/.test((e.value || '').trim()); });
+  if (kutu.length < 2) return JSON.stringify({kutu: kutu.length, dugme: 0});
+  var ayr = kutu[0].value.trim().charAt(2);
+  var ata = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+  [[kutu[0], bas.replace(/-/g, ayr)], [kutu[1], bit.replace(/-/g, ayr)]].forEach(function(x){
+    var e = x[0]; e.focus(); ata.call(e, x[1]);
+    ['input', 'change', 'keyup', 'blur'].forEach(function(o){ e.dispatchEvent(new Event(o, {bubbles: true})); });
+    try { if (window.jQuery) { jQuery(e).val(x[1]).trigger('change'); } } catch(err) {}
+  });
+  var dug = Array.prototype.slice.call(document.querySelectorAll('button, a, input[type=button], li, span, div')).filter(function(b){
+    return b.offsetParent !== null && b.children.length < 3 && /planlanan\s*\+\s*gerçekleşen/.test(((b.textContent || b.value || '') + '').toLocaleLowerCase('tr-TR')); });
+  dug.sort(function(a, b){ return (a.textContent || '').length - (b.textContent || '').length; });
+  if (dug.length) setTimeout(function(){ dug[0].click(); }, 400);
+  return JSON.stringify({kutu: kutu.length, dugme: dug.length, ayrac: ayr});
 })(%s, %s);
 """
 
@@ -436,10 +459,12 @@ class PersonelVeriPenceresi(QDialog):
             from datetime import date as _d
             from . import personel_veri as pv
             a, b = _d.fromisoformat(meta["ilk"]), _d.fromisoformat(meta["son"])
-            _, ok_u = pv.tarih_degistir(v["u"], a, b, a, b)
+            _, ok_u, nasil = pv.tarih_degistir_derin(v["u"], a, b, a, b)
             _, ok_b = pv.tarih_degistir(v["b"] or "", a, b, a, b)
-            ek = (f" · dönem {a:%d.%m.%Y}–{b:%d.%m.%Y} · tarih " + ("adreste" if ok_u else "") + (" gövdede" if ok_b else "")
-                  + ("" if ok_u or ok_b else "BULUNAMADI (otomatik ay değiştirilemez)"))
+            v["sayfa"] = meta.get("s") or ""
+            ek = (f" · dönem {a:%d.%m.%Y}–{b:%d.%m.%Y} · tarih "
+                  + (nasil if ok_u else "gövdede" if ok_b else f"istekte okunamadı ({nasil}) → otomatik çekim ekran yoluyla yapılacak")
+                  + (f" · ekran {v['sayfa']}" if v["sayfa"] else ""))
         if tur == "bakiye":
             if meta.get("sid") is None:
                 return
@@ -504,6 +529,7 @@ class PersonelVeriPenceresi(QDialog):
         self.tani(("otomatik yanıt kaydedildi: " if meta.get("r") else "kaydedildi: ") + aciklama)
         self._sablon_kaydet(tur, meta)
         if tur == "giris_cikis" and not meta.get("r"):
+            self._ekran_yanit(meta)
             self._son_veri = time.time()
             if not self._kaydir_zaman.isActive() and not self._gorevler:
                 self._kaydirma_baslat()
@@ -594,10 +620,10 @@ class PersonelVeriPenceresi(QDialog):
         e_ilk, e_son = _d.fromisoformat(s["ilk"]), _d.fromisoformat(s["son"])
         gorevler = []
         for a, b in pv.aylar(ilk, son):
-            u, ok1 = pv.tarih_degistir(s["u"], e_ilk, e_son, a, b)
+            u, ok1, _n = pv.tarih_degistir_derin(s["u"], e_ilk, e_son, a, b)
             g, ok2 = pv.tarih_degistir(s.get("b") or "", e_ilk, e_son, a, b)
             if not (ok1 or ok2):
-                return [], ("Öğrenilen istekte tarih bulunamadı; bu liste otomatik alınamıyor. Ayları elle listeleyebilirsiniz.")
+                return [], "TARIH_YOK"
             gorevler.append((f"giriş-çıkış {a:%d.%m.%Y} – {b:%d.%m.%Y}", s["m"], u, g if s.get("b") is not None else None))
         return gorevler, ""
 
@@ -639,20 +665,11 @@ class PersonelVeriPenceresi(QDialog):
             if not hazir or giris:
                 self.bilgi.setText("Önce giriş yapın (oturum açıkken program istekleri sayfanın kendi oturumuyla gönderir).")
                 return
-            gorevler, hata = self.ay_gorevleri(_d(y, 1, 1), son)
-            if hata:
-                self.tani("durdu: " + hata)
-                self.bilgi.setText(hata)
-                return
-            n_ay = len(gorevler)
-            gorevler += self.personel_gorevleri()
-            self.tani(f"{n_ay} ay ve {len(gorevler) - n_ay} personel isteği gönderilecek")
-
-            def bitti(ok, n):
-                m = f"Otomatik çekim bitti: {ok}/{n} istek başarılı ({y}: {n_ay} ay). Aynı gün ikinci kez gelirse çoğalmaz, yenisiyle güncellenir."
+            def bitti(ok, n, aciklama):
+                m = f"Otomatik çekim bitti ({y}): {aciklama}. Aynı gün ikinci kez gelirse çoğalmaz, yenisiyle güncellenir."
                 self.tani(m)
                 self.bilgi.setText(m + " Sorun varsa 'Tanı kaydını kaydet' ile dosyayı bana gönderin.")
-            self._gorev_baslat(gorevler, bitti)
+            self.donem_cek(_d(y, 1, 1), son, bitti)
         self._hazir(basla)
 
     # ------------------------------------------------------------ otomatik çekim (her akşam)
@@ -669,19 +686,95 @@ class PersonelVeriPenceresi(QDialog):
         self._hazir(sonuc)
 
     def _oto_calis(self):
-        from datetime import date as _d
         ilk, son = self._oto_aralik
-        gorevler, hata = self.ay_gorevleri(ilk, son) if ilk <= son else ([], "")
-        if hata:
-            self._otomatik_bitir(False, hata)
-            return
-        n_ay = len(gorevler)
-        gorevler += self.personel_gorevleri()
 
-        def bitti(ok, n):
-            self._otomatik_bitir(ok > 0 or n == 0, f"{ilk:%d.%m.%Y} – {son:%d.%m.%Y} ({n_ay} ay listesi"
-                                                   f"{' + personel listesi' if n > n_ay else ''}): {ok}/{n} istek başarılı")
-        self._gorev_baslat(gorevler, bitti)
+        def bitti(ok, n, aciklama):
+            self._otomatik_bitir(ok > 0 or n == 0, f"{ilk:%d.%m.%Y} – {son:%d.%m.%Y}: {aciklama}")
+        self.donem_cek(ilk, son, bitti)
+
+    # ------------------------------------------------------------ birleşik akış: aylar (istekle ya da ekran yoluyla) + personel
+    def donem_cek(self, ilk, son, bitti: Callable[[int, int, str], None]):
+        gorevler, hata = self.ay_gorevleri(ilk, son) if ilk <= son else ([], "")
+        if hata and hata != "TARIH_YOK":
+            self.tani("durdu: " + hata)
+            bitti(0, 1, hata)
+            return
+        pers = self.personel_gorevleri()
+
+        def personel_sonra(ok_ay, n_ay, yol):
+            def son_(ok, n):
+                bitti(ok_ay + ok, n_ay + n, f"{ok_ay}/{n_ay} ay ({yol}), personel {ok}/{n} istek")
+            if pers:
+                self._gorev_baslat(pers, son_)
+            else:
+                son_(0, 0)
+        if hata == "TARIH_YOK":
+            from . import personel_veri as pv
+            aylar = pv.aylar(ilk, son)
+            self.tani(f"istekte tarih okunamadığı için {len(aylar)} ay ekran yoluyla alınacak (tarih kutuları + 'Planlanan + Gerçekleşen')")
+            self._ekran_baslat(aylar, lambda ok, n: personel_sonra(ok, n, "ekran yoluyla"))
+        else:
+            self.tani(f"{len(gorevler)} ay istekle, {len(pers)} personel isteği gönderilecek")
+            self._gorev_baslat(gorevler, lambda ok, n: personel_sonra(ok, n, "istekle"))
+
+    def _ekran_baslat(self, aylar: list, bitince: Callable[[int, int], None]):
+        self._ekran_aylar = list(aylar)
+        self._ekran_say = [0, len(aylar)]
+        self._ekran_bitince = bitince
+        self._ekran_bekle = None
+        self._ekran_zaman = time.time()
+        self.b_yil.setEnabled(False)
+        s = sablon_oku("giris_cikis") or {}
+        sayfa = s.get("sayfa") or "#!/pdkspiv"
+        self.tani(f"ekran yolu: {sayfa} ekranına gidiliyor")
+        self.sayfa.runJavaScript(f"if (location.hash !== {json.dumps(sayfa)}) location.hash = {json.dumps(sayfa)};")
+        if not hasattr(self, "_ekran_zamanlayici"):
+            self._ekran_zamanlayici = QTimer(self)
+            self._ekran_zamanlayici.timeout.connect(self._ekran_tik)
+        QTimer.singleShot(7000, lambda: self._ekran_zamanlayici.start(800))
+
+    def _ekran_tik(self):
+        if self._ekran_bekle is not None:
+            if time.time() - self._ekran_zaman > 45:
+                a, b = self._ekran_bekle
+                self.tani(f"ekran yolu: {a:%m.%Y} için yanıt gelmedi (45 sn)")
+                self._ekran_bekle = None
+            return
+        if not self._ekran_aylar:
+            self._ekran_zamanlayici.stop()
+            self.b_yil.setEnabled(True)
+            fn, self._ekran_bitince = self._ekran_bitince, None
+            if fn:
+                fn(*self._ekran_say)
+            return
+        a, b = self._ekran_aylar.pop(0)
+        self._ekran_bekle = (a, b)
+        self._ekran_zaman = time.time()
+        sira = self._ekran_say[1] - len(self._ekran_aylar)
+        self.bilgi.setText(f"Ekran yoluyla alınıyor ({sira}/{self._ekran_say[1]}): {a:%d.%m.%Y} – {b:%d.%m.%Y}")
+
+        def sonuc(r, a=a):
+            try:
+                d = json.loads(r) if isinstance(r, str) else {}
+            except ValueError:
+                d = {}
+            if sira == 1 or not d.get("kutu") or not d.get("dugme"):
+                self.tani(f"ekran yolu {a:%m.%Y}: tarih kutusu {d.get('kutu', 0)}, 'Planlanan + Gerçekleşen' düğmesi {d.get('dugme', 0)}")
+        self.sayfa.runJavaScript(_EKRAN_DONEM % (json.dumps(f"{a:%d-%m-%Y}"), json.dumps(f"{b:%d-%m-%Y}")), 0, sonuc)
+
+    def _ekran_yanit(self, meta: dict):
+        """Ekran yolunda beklenen ayın listesi geldi mi (gelen dönem beklenenle örtüşüyorsa)."""
+        if getattr(self, "_ekran_bekle", None) is None or not meta.get("ilk"):
+            return
+        from datetime import date as _d
+        a, b = self._ekran_bekle
+        gi, gs = _d.fromisoformat(meta["ilk"]), _d.fromisoformat(meta["son"])
+        if gi <= a and gs >= min(b, _d.today()) - timedelta(days=0) or (gi == a):
+            self._ekran_say[0] += 1
+            self.tani(f"ekran yolu {a:%m.%Y}: alındı ({gi:%d.%m} – {gs:%d.%m})")
+            self._ekran_bekle = None
+        else:
+            self.tani(f"ekran yolu {a:%m.%Y}: gelen dönem farklı ({gi:%d.%m.%Y} – {gs:%d.%m.%Y}); tarih kutuları değişmemiş olabilir")
 
     def _otomatik_bitir(self, basarili: bool, metin: str):
         fn, self._bitince = self._bitince, None

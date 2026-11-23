@@ -46,12 +46,20 @@ BILINEN_IZINLER = {"01": "Yıllık izin / Raporlu ödenmeyen", "02": "Ücretli i
                    "19": "Doğum sonrası ücretsiz izin", "21": "Ücretsiz izin", "CUMA": "Cuma izni"}
 
 
+_KURULU: set = set()                 # şeması kurulmuş bağlantılar (her okumada yeniden kurulup kilit beklenmesin)
+
+
 def kur(con) -> None:
-    con.executescript(SEMA)
+    if id(con) in _KURULU:
+        return
+    if con.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN "
+                   "('pv_personel','pv_gun','pv_izin_tur','pv_bakiye')").fetchone()[0] < 4:
+        con.executescript(SEMA)          # yalnızca tablolar yoksa yazar (yazma kilidi gerektirir)
     kol = {r[1] for r in con.execute("PRAGMA table_info(pv_personel)")}
     if "cikis_tarih" not in kol:                      # işten çıkış tarihi (sonradan eklendi)
         con.execute("ALTER TABLE pv_personel ADD COLUMN cikis_tarih TEXT")
         con.commit()
+    _KURULU.add(id(con))
 
 
 def _simdi() -> str:
@@ -648,3 +656,58 @@ def tumunu_sil(con) -> int:
         con.execute(f"DELETE FROM {t}")
     con.commit()
     return n
+
+
+def _b64_coz(v: str):
+    """(çözülmüş metin, yeniden kodlayıcı) ya da None. Standart / URL'ye uygun base64, dolgulu ya da dolgusuz."""
+    import base64
+    import binascii
+    for urlsafe in (False, True):
+        try:
+            ham = v + "=" * (-len(v) % 4)
+            b = base64.urlsafe_b64decode(ham) if urlsafe else base64.b64decode(ham, validate=True)
+            t = b.decode("utf-8")
+        except (binascii.Error, ValueError, UnicodeDecodeError):
+            continue
+        dolgu = v.endswith("=")
+
+        def kodla(x: str, u=urlsafe, d=dolgu) -> str:
+            e = (base64.urlsafe_b64encode if u else base64.b64encode)(x.encode("utf-8")).decode()
+            return e if d else e.rstrip("=")
+        return t, kodla
+    return None
+
+
+def tarih_degistir_derin(url: str, eski_ilk: date, eski_son: date, yeni_ilk: date, yeni_son: date) -> Tuple[str, bool, str]:
+    """Önce düz metinde, olmazsa sorgu alanlarının içinde (URL çözülmüş, 'ÖNEK!' sonrası, base64 çözülmüş) tarih arar.
+    Dönüş: (yeni adres, bulundu mu, nasıl bulunduğu — tanı kaydı için, değer yazmadan)."""
+    from urllib.parse import parse_qsl, quote, unquote, urlsplit, urlunsplit
+    yeni, ok = tarih_degistir(url, eski_ilk, eski_son, yeni_ilk, yeni_son)
+    if ok:
+        return yeni, True, "adreste düz"
+    try:
+        p = urlsplit(url)
+        alanlar = parse_qsl(p.query, keep_blank_values=True)
+    except ValueError:
+        return url, False, "adres çözülemedi"
+    notlar = []
+    for i, (ad, deger) in enumerate(alanlar):
+        adaylar = [("", deger, None)]
+        if "!" in deger:
+            on, _, arka = deger.partition("!")
+            adaylar.append((on + "!", arka, None))
+        for on, govde, _ in list(adaylar):
+            c = _b64_coz(govde)
+            if c:
+                adaylar.append((on, c[0], c[1]))
+        for on, govde, kodla in adaylar:
+            g2, ok2 = tarih_degistir(govde, eski_ilk, eski_son, yeni_ilk, yeni_son)
+            if ok2:
+                alanlar[i] = (ad, on + (kodla(g2) if kodla else g2))
+                q = "&".join(f"{quote(a, safe='')}={quote(d, safe='!*()~-_.')}" for a, d in alanlar)
+                return urlunsplit((p.scheme, p.netloc, p.path, q, p.fragment)), True, \
+                    f"'{ad}' alanında" + (" base64 içinde" if kodla else "")
+        on = deger.split("!")[0] + "!" if "!" in deger else ""
+        notlar.append(f"'{ad}': {('ön ek ' + repr(on) + ' + ') if on else ''}{len(deger)} karakter"
+                      + (", base64 çözüldü ama tarih yok" if any(k for _, _, k in adaylar) else ", base64 değil"))
+    return url, False, "; ".join(notlar) or "sorgu alanı yok"
