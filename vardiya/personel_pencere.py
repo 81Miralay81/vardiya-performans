@@ -178,9 +178,10 @@ def kimlik_yaz(k: str, s: str):
 # Öğrenme sırası (ekranlar): 1) Sicil Liste · Hepsi  2) İzin Talep Formu (bir kişi, kaydetmeden)  3) Pdks Pivot · Planlanan + Gerçekleşen
 SABLON_TURLERI = {"liste_hepsi": "1. Sicil Liste · Hepsi (personel listesi ve ayrılanlar)",
                   "bakiye": "2. İzin Talep Formu (bir kişi seçip açın, kaydetmeyin): izin hakkı",
+                  "kisi_karti": "2. (aynı adımda gelir) kişi kartı: fotoğraf, işe giriş",
                   "giris_cikis": "3. Pdks Pivot · Planlanan + Gerçekleşen (bir ay listeleyin)",
                   "liste_aktif": "Sicil Liste · Aktifler", "liste_cikan": "Sicil Liste · İşten Çıkanlar"}
-ADIMLAR = ("liste_hepsi", "bakiye", "giris_cikis")
+ADIMLAR = ("liste_hepsi", "bakiye", "kisi_karti", "giris_cikis")
 
 
 def sablon_oku(tur: str) -> Optional[dict]:
@@ -465,7 +466,7 @@ class PersonelVeriPenceresi(QDialog):
             ek = (f" · dönem {a:%d.%m.%Y}–{b:%d.%m.%Y} · tarih "
                   + (nasil if ok_u else "gövdede" if ok_b else f"istekte okunamadı ({nasil}) → otomatik çekim ekran yoluyla yapılacak")
                   + (f" · ekran {v['sayfa']}" if v["sayfa"] else ""))
-        if tur == "bakiye":
+        if tur in ("bakiye", "kisi_karti"):
             if meta.get("sid") is None:
                 return
             v["sid"] = int(meta["sid"])
@@ -636,19 +637,21 @@ class PersonelVeriPenceresi(QDialog):
             s = sablon_oku(t)
             if s:
                 gorevler.append((ad, s["m"], s["u"], s.get("b")))
-        s = sablon_oku("bakiye")
-        if s and s.get("sid") is not None:
+        sablonlar = [(t, e, sablon_oku(t)) for t, e in (("bakiye", "izin bakiyesi"), ("kisi_karti", "kişi kartı"))]
+        sablonlar = [(t, e, x) for t, e, x in sablonlar if x and x.get("sid") is not None]
+        if sablonlar:
             con = vt.ac(self.db_yolu)
             try:
                 ad = {sid: p.get("ad") for sid, p in pv.personel(con).items()}
                 siciller = pv.aktif_siciller(con)
             finally:
                 con.close()
-            for sid in siciller:
-                u, ok1 = pv.kimlik_degistir(s["u"], s["sid"], sid)
-                g, ok2 = pv.kimlik_degistir(s.get("b") or "", s["sid"], sid)
-                if ok1 or ok2:
-                    gorevler.append((f"izin bakiyesi: {pv.tr_baslik(ad.get(sid) or str(sid))}", s["m"], u, g if s.get("b") is not None else None))
+            for _t, etiket, s in sablonlar:
+                for sid in siciller:
+                    u, ok1 = pv.kimlik_degistir(s["u"], s["sid"], sid)
+                    g, ok2 = pv.kimlik_degistir(s.get("b") or "", s["sid"], sid)
+                    if ok1 or ok2:
+                        gorevler.append((f"{etiket}: {pv.tr_baslik(ad.get(sid) or str(sid))}", s["m"], u, g if s.get("b") is not None else None))
         return gorevler
 
     def _yil_al(self):

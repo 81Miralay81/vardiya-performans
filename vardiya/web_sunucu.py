@@ -619,7 +619,16 @@ class Sunucu:
                 takvim.append({"gun": g.gun.isoformat(), "m": m, "r": r, "i": pv.gun_ipucu(g, izin_ad),
                                "gec": g.gec_dk, "erken": g.erken_dk, "fazla": g.fazla_dk if g.durum == pv.GELDI else 0})
         k = self._oturum_kullanici(h)
+        con = self._con()
+        try:
+            b = pv.bakiyeler(con).get(sid) or {}
+        finally:
+            con.close()
+        kimlik = ku.yetkili(k, "personel_kimlik")
         return self._json(h, {"sid": sid, "ad": pv.tr_baslik(p.get("ad") or ""), "sicilno": p.get("sicilno") or "",
+                              "giris": str(b.get("giris_tarih") or p.get("giris_tarih") or "")[:10], "kidem": b.get("kidem"),
+                              "telefon": (p.get("telefon") or "") if kimlik else "",
+                              "izin": None if not b else {k2: b.get(k2) for k2 in ("hak", "kullanilan", "devir", "kalan", "guncel")},
                               "pozisyon": pv.tr_baslik(p.get("pozisyon") or ""), "yaka": pv.tr_baslik(p.get("yaka") or ""),
                               "periyot": p.get("periyot") or "", "cikis": p.get("cikis_tarih") or "",
                               "foto": bool(p.get("foto")) and ku.yetkili(k, "personel_kimlik"),

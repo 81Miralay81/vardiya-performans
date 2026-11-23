@@ -816,6 +816,9 @@ function pvKart(){
     var b = [['Ad Soyad', '<b>' + esc(d.ad) + '</b>'], ['Sicil no', esc(d.sicilno)], ['Pozisyon', esc(d.pozisyon)], ['Yaka', esc(d.yaka)]];
     if (d.periyot) b.push(['Vardiya düzeni', esc(d.periyot)]);
     if (d.cikis) b.push(['İşten çıkış', '<b style="color:var(--kirmizi)">' + trT(d.cikis) + '</b>']);
+    if (d.giris) b.push(['İşe giriş / kıdem', trT(d.giris) + (d.kidem != null ? ' · ' + d.kidem + ' yıl' : '')]);
+    if (d.telefon) b.push(['Cep telefonu', esc(d.telefon)]);
+    if (d.izin) b.push(['Yıllık izin', 'hak ' + (d.izin.hak || 0) + ' · kullanılan ' + (d.izin.kullanilan || 0) + ' · devir ' + (d.izin.devir || 0) + ' · <b>kalan ' + (d.izin.kalan || 0) + '</b>']);
     $('pv-bilgi').innerHTML = '<table>' + b.map(function(x){ return '<tr><td style="color:var(--soluk)">' + x[0] + '</td><td>' + x[1] + '</td></tr>'; }).join('') + '</table>';
     var o = d.ozet;
     $('pv-ozet').innerHTML = o ? '<div style="font-size:22px;color:var(--lac);font-weight:800">' + (o.devam == null ? '-' : '%' + (o.devam*100).toFixed(1).replace('.', ',')) + '</div> devam (seçili dönem)<br>Planlı ' + o.planli + ' gün · geldi ' + o.geldi +
