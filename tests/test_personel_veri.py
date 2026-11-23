@@ -56,7 +56,7 @@ def test_siniflandir():
     assert pv.siniflandir(_r(plan="Hafta Tatili 08"), b).durum == pv.TATIL
     g = pv.siniflandir(_r(plan="Hafta Tatili 08", giris="07:29", cikis="16:03"), b)
     assert g.durum == pv.TATIL_CALISTI and g.fazla_dk == 514
-    assert pv.siniflandir(_r(giris="07:43"), b).durum == pv.EKSIK
+    assert pv.siniflandir(_r(giris="07:43"), b).durum == pv.GELDI      # tek okutma gelmiş sayılır
     assert pv.siniflandir(_r(gun="2026-11-20"), b).durum == pv.PLAN          # bugün kesin değil
     assert pv.siniflandir(_r(giris="08:04", cikis="16:00", g_dk=4), b).gec_dk == 0     # 5 dk tolerans
 
@@ -168,7 +168,7 @@ def test_kart_ozeti_listeler_ve_cubuk_orani():
     assert [s["gun"] for s in v["listeler"]["gelmedi"]] == ["2026-11-03"]
     assert v["listeler"]["izin"][0]["aciklama"] == "Yıllık İzin"
     assert abs(v["cubuk"][0]["oran"] - 0.5) < 1e-9          # 10 dk geç, bölümde en çok 20 dk
-    assert [k["deger"] for k in v["kutular"]] == [1, 1, 0, 1]
+    assert [k["deger"] for k in v["kutular"]] == [1, 1, 1]
     assert pv.kart_ozeti([], None, oz, {}) is None
 
 

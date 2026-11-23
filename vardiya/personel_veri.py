@@ -426,10 +426,7 @@ def siniflandir(r: dict, bugun: date, tolerans: int = VARSAYILAN_TOLERANS_DK, fa
     if a is None and b is None:
         sonuc.durum = GELMEDI
         return sonuc
-    if a is None or b is None:
-        sonuc.durum = EKSIK
-        return sonuc
-    sonuc.durum = GELDI
+    sonuc.durum = GELDI          # tek okutma da gelmiş sayılır (eksik okutmayı personel özlük düzeltiyor)
     if gd is not None and gd > tolerans:
         sonuc.gec_dk = gd
     if ed is not None and ed > tolerans:
@@ -761,7 +758,7 @@ def tarih_degistir_derin(url: str, eski_ilk: date, eski_son: date, yeni_ilk: dat
 GUN_AD = ("Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz")
 SERIT_RENK = {"geldi": "#3e9b2a", "gec": "#e0a100", "gelmedi": "#d64541", "eksik": "#e0702a", "izin": "#2a7fd1",
               "tatil": "#c9cdd6", "tatil_calisti": "#7b4fa8", "plan": "#eef0f4"}
-SERIT_AD = (("geldi", "geldi"), ("gec", "geç / erken"), ("gelmedi", "gelmedi"), ("eksik", "eksik kart"),
+SERIT_AD = (("geldi", "geldi"), ("gec", "geç / erken"), ("gelmedi", "gelmedi"),
             ("izin", "izin"), ("tatil", "tatil"), ("tatil_calisti", "tatilde çalıştı"))
 
 
@@ -784,8 +781,6 @@ def _gun_satiri(g: Gun, izin_ad: Dict[str, str]) -> dict:
         acik.append(izin_ad.get(g.izin_kod, f"İzin {g.izin_kod}") + (" (saatlik)" if g.durum == IZIN_SAAT else ""))
     if g.durum == GELMEDI:
         acik.append("habersiz / kayıtsız gelmedi")
-    if g.durum == EKSIK:
-        acik.append("yalnızca " + ("giriş" if g.giris else "çıkış") + " kaydı var")
     if g.durum == RESMI:
         acik.append("resmi tatil")
     if g.gec_dk:
@@ -819,21 +814,18 @@ def kart_ozeti(gunler_: Iterable[Gun], o: Optional[Ozet], tum: Dict[int, Ozet], 
                 "Fazla çalışma": lambda x: x.fazla_dk, "Tatilde çalıştı": lambda x: x.tatil_calisti}[ad]
         m = en(alan)
         cubuk.append({"ad": ad, "metin": metin, "oran": (deger / m) if m else 0.0, "renk": renk})
-    listeler = {"geldi": [], "gelmedi": [], "eksik": [], "izin": []}
+    listeler = {"geldi": [], "gelmedi": [], "izin": []}
     for g in gl:
         s = _gun_satiri(g, izin_ad)
         if g.durum in (GELDI, IZIN_SAAT, EKSIK):
             listeler["geldi"].append(s)
         if g.durum == GELMEDI:
             listeler["gelmedi"].append(s)
-        if g.durum == EKSIK:
-            listeler["eksik"].append(s)
         if g.durum in (IZIN_TAM, IZIN_SAAT):
             listeler["izin"].append(s)
     return {"devam": o.devam, "devam_renk": devam_rengi(o.devam), "planli": o.planli,
             "kutular": [{"k": "geldi", "ad": "Geldi", "deger": o.geldi, "ek": f" / {o.planli}", "renk": "#3e9b2a", "zemin": "#eef8ec"},
                         {"k": "gelmedi", "ad": "Gelmedi", "deger": o.gelmedi, "ek": "", "renk": "#d64541", "zemin": "#fdeeee"},
-                        {"k": "eksik", "ad": "Eksik kart", "deger": o.eksik, "ek": "", "renk": "#e0a100", "zemin": "#fdf6e3"},
                         {"k": "izin", "ad": "İzinli gün", "deger": len(listeler["izin"]), "ek": "", "renk": "#2a7fd1", "zemin": "#e9f2fc"}],
             "cubuk": cubuk,
             "serit": [{"gun": g.gun.isoformat(), "tur": _serit_turu(g), "renk": SERIT_RENK[_serit_turu(g)],

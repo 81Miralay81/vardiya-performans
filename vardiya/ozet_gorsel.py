@@ -16,7 +16,7 @@ YAZI, SOLUK, ZEMIN = QColor("#1f2433"), QColor("#6b7285"), QColor("#eef0f4")
 
 
 class OzetGorsel(QWidget):
-    kutu_tiklandi = Signal(str)          # "geldi" / "gelmedi" / "eksik" / "izin" (aynısına yeniden tıklanınca "")
+    kutu_tiklandi = Signal(str)          # "geldi" / "gelmedi" / "izin" (aynısına yeniden tıklanınca "")
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -61,11 +61,12 @@ class OzetGorsel(QWidget):
         self._yaz(p, QRectF(hr.left(), hr.top() + R * 0.56, R, 18), "devam", 11, False, SOLUK, Qt.AlignCenter)
         # --- kutular (tıklanabilir)
         x0 = hr.right() + 16
-        kg = (w - x0 - 6 * 3) / 4
-        sutun = 4 if kg >= 112 else 2                     # dar alanda kutular 2 × 2 dizilir
+        n = len(v["kutular"])
+        sutun = n if (w - x0 - 6 * (n - 1)) / n >= 104 else 1    # dar alanda kutular alt alta dizilir
         kg = (w - x0 - 6 * (sutun - 1)) / sutun
-        kh = 62.0 if sutun == 4 else 50.0
-        ky = hr.center().y() - (kh if sutun == 4 else 2 * kh + 6) / 2
+        satir_ = (n + sutun - 1) // sutun
+        kh = 62.0 if satir_ == 1 else min(50.0, (R + 10 - 6 * (satir_ - 1)) / satir_)
+        ky = hr.center().y() - (satir_ * kh + 6 * (satir_ - 1)) / 2
         for i, k in enumerate(v["kutular"]):
             sat_, sut_ = divmod(i, sutun)
             r = QRectF(x0 + sut_ * (kg + 6), ky + sat_ * (kh + 6), kg, kh)
@@ -78,18 +79,15 @@ class OzetGorsel(QWidget):
                 p.setPen(QPen(QColor("#150958"), 2.2))
                 p.setBrush(Qt.NoBrush)
                 p.drawRoundedRect(r.adjusted(1, 1, -1, -1), 9, 9)
-            ust_ = 4 if sutun == 2 else 6
-            self._yaz(p, QRectF(r.left() + 11, r.top() + ust_, r.width() - 14, 16), k["ad"], 11, renk=SOLUK)
             sayi = str(k["deger"])
-            renk = QColor(k["renk"]) if (k["k"] in ("gelmedi", "eksik") and k["deger"]) else YAZI
-            self._yaz(p, QRectF(r.left() + 11, r.top() + ust_ + 17, r.width() - 14, 28), sayi, 20, True, renk)
-            if k["ek"]:
-                f = QFont(self.font())
-                f.setPixelSize(21)
-                f.setBold(True)
-                from PySide6.QtGui import QFontMetrics
-                gx = QFontMetrics(f).horizontalAdvance(sayi)
-                self._yaz(p, QRectF(r.left() + 13 + gx, r.top() + ust_ + 22, r.width(), 22), k["ek"], 12, True, SOLUK)
+            renk = QColor(k["renk"]) if (k["k"] == "gelmedi" and k["deger"]) else YAZI
+            if satir_ == 1:                                  # yan yana: ad üstte, sayı altta
+                self._yaz(p, QRectF(r.left() + 11, r.top() + 6, r.width() - 14, 16), k["ad"], 11, renk=SOLUK)
+                self._yaz(p, QRectF(r.left() + 11, r.top() + 23, r.width() - 14, 28), sayi + k["ek"], 20, True, renk)
+            else:                                            # alt alta: ad solda, sayı sağda, tek satır
+                self._yaz(p, QRectF(r.left() + 11, r.top(), r.width() * 0.5, r.height()), k["ad"], 12, renk=SOLUK)
+                self._yaz(p, QRectF(r.left(), r.top(), r.width() - 10, r.height()), sayi + k["ek"], 18, True, renk,
+                          Qt.AlignRight | Qt.AlignVCenter)
             self._kutular.append((r, k["k"]))
         # --- çubuklar (bölümde en yüksek değere göre)
         y = hr.bottom() + 14

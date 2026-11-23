@@ -228,9 +228,9 @@ class PersonelSayfasi(QWidget):
             self.kpi_satir.addWidget(c)
         l.addLayout(self.kpi_satir)
         self.t_devam = QTableWidget()
-        self.t_devam.setColumnCount(12)
+        self.t_devam.setColumnCount(11)
         self.t_devam.setHorizontalHeaderLabels(["Personel", "Pozisyon", "Vardiya", "Planlı gün", "Geldi", "Gelmedi\n(izinsiz)",
-                                                "Eksik kart", "İzinli gün", "Geç gelme\nadet / süre", "Erken çıkma\nadet / süre",
+                                                "İzinli gün", "Geç gelme\nadet / süre", "Erken çıkma\nadet / süre",
                                                 "Fazla çalışma", "Tatilde\nçalıştı"])
         self._tablo_ayar(self.t_devam)
         self.t_devam.cellDoubleClicked.connect(lambda r, _c: self._kart_ac(self.t_devam.item(r, 0).data(Qt.UserRole)))
@@ -276,7 +276,7 @@ class PersonelSayfasi(QWidget):
         lej = QHBoxLayout()
         for ad, rk in (("1. vardiya", RENK["1"]), ("2. vardiya", RENK["2"]), ("3. vardiya", RENK["3"]), ("gündüz", RENK["G"]),
                        ("izinli", RENK[pv.IZIN_TAM]), ("geç / erken", RENK["gec"]), ("gelmedi", RENK[pv.GELMEDI]),
-                       ("eksik kart", RENK[pv.EKSIK]), ("hafta tatili", RENK[pv.TATIL]), ("tatilde çalıştı", RENK[pv.TATIL_CALISTI])):
+                       ("hafta tatili", RENK[pv.TATIL]), ("tatilde çalıştı", RENK[pv.TATIL_CALISTI])):
             e = QLabel(f"  {ad}  ")
             e.setStyleSheet(f"background:{rk}; border:1px solid #d9dee8; border-radius:3px; padding:2px;")
             lej.addWidget(e)
@@ -554,17 +554,16 @@ class PersonelSayfasi(QWidget):
             if o.gelmedi:
                 it.setBackground(QColor(RENK[pv.GELMEDI]))
             t.setItem(i, 5, it)
-            t.setItem(i, 6, _sayi(o.eksik))
             it = _sayi(o.izinli, f"{o.izinli}" + (f" (+{o.izin_saat} saatlik)" if o.izin_saat else ""))
             it.setToolTip(", ".join(f"{self._izin_ad.get(k, k)}: {n}" for k, n in sorted(o.izin_tur.items())))
-            t.setItem(i, 7, it)
+            t.setItem(i, 6, it)
             it = _hucre(f"{o.gec_adet} / {pv.sure_yaz(o.gec_dk)}" if o.gec_adet else "0", o.gec_dk)
             if o.gec_adet >= 3:
                 it.setBackground(QColor(RENK["gec"]))
-            t.setItem(i, 8, it)
-            t.setItem(i, 9, _hucre(f"{o.erken_adet} / {pv.sure_yaz(o.erken_dk)}" if o.erken_adet else "0", o.erken_dk))
-            t.setItem(i, 10, _hucre(pv.sure_yaz(o.fazla_dk) if o.fazla_dk else "0", o.fazla_dk))
-            t.setItem(i, 11, _sayi(o.tatil_calisti))
+            t.setItem(i, 7, it)
+            t.setItem(i, 8, _hucre(f"{o.erken_adet} / {pv.sure_yaz(o.erken_dk)}" if o.erken_adet else "0", o.erken_dk))
+            t.setItem(i, 9, _hucre(pv.sure_yaz(o.fazla_dk) if o.fazla_dk else "0", o.fazla_dk))
+            t.setItem(i, 10, _sayi(o.tatil_calisti))
         t.setSortingEnabled(True)
         dv = top.devam if top.planli else None
         self.kpi["kisi"].setText(str(len(kisiler)))

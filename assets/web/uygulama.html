@@ -88,7 +88,7 @@ table.tikli tr[data-i]{cursor:pointer}table.tikli tr[data-i]:hover td{background
 nav a.cikis{margin-top:8px;font-size:12px;opacity:.8}
 .og-ust{display:flex;gap:16px;align-items:center;flex-wrap:wrap}.og-halka{position:relative;width:112px;height:112px;flex:none}
 .og-halka .o{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}.og-halka b{font-size:22px;color:var(--lac)}.og-halka span{font-size:11px;color:var(--soluk)}
-.og-tas{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;flex:1;min-width:220px}@media (max-width:760px){.og-tas{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.og-tas{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;flex:1;min-width:220px}@media (max-width:760px){.og-tas{grid-template-columns:1fr}}
 .og-t{border-radius:10px;padding:7px 10px;border-left:4px solid;cursor:pointer;border-top:2px solid transparent;border-right:2px solid transparent;border-bottom:2px solid transparent}
 .og-t:hover{filter:brightness(.97)}.og-t.sec{border-top-color:var(--lac);border-right-color:var(--lac);border-bottom-color:var(--lac)}
 .og-t .s{font-size:11px;color:var(--soluk)}.og-t .d{font-size:20px;font-weight:700}.og-t .d small{font-size:12px;color:var(--soluk)}
@@ -889,7 +889,7 @@ function pvKpi(){
     (kp[0] ? ' Personel verisi: ' + trT(kp[0]) + ' – ' + trT(kp[1]) + '.' : ' Henüz personel verisi yok.');
 }
 var PV_KOL = [['ad', 'Personel'], ['pozisyon', 'Pozisyon'], ['vardiya', 'Vardiya'], ['planli', 'Planlı gün'], ['geldi', 'Geldi'], ['gelmedi', 'Gelmedi (izinsiz)'],
-              ['eksik', 'Eksik kart'], ['izinli', 'İzinli gün'], ['gec_dk', 'Geç gelme adet / süre'], ['erken_dk', 'Erken çıkma adet / süre'], ['fazla_dk', 'Fazla çalışma'], ['tatil', 'Tatilde çalıştı']];
+              ['izinli', 'İzinli gün'], ['gec_dk', 'Geç gelme adet / süre'], ['erken_dk', 'Erken çıkma adet / süre'], ['fazla_dk', 'Fazla çalışma'], ['tatil', 'Tatilde çalıştı']];
 function pvTablo(){
   var R = PV.veri.satir.slice(), k = PV.sira[0], y = PV.sira[1];
   R.sort(function(a, b){ var x = a[k], z = b[k]; return (typeof x === 'string' ? x.localeCompare(z, 'tr') : (x - z)) * y; });
@@ -898,7 +898,7 @@ function pvTablo(){
     var izin = Object.keys(r.izin).map(function(a){ return a + ': ' + r.izin[a]; }).join(', ');
     h += '<tr data-sid="' + r.sid + '"><td' + (r.cikis ? ' class="ay"' : '') + '><b>' + esc(r.ad) + '</b>' + (r.lider ? ' ★' : '') + (r.cikis ? ' · ayrıldı ' + trT(r.cikis) : '') + '</td><td>' + esc(r.pozisyon) +
       '</td><td>' + (VAD[r.vardiya] || '-') + '</td><td class="s">' + r.planli + '</td><td class="s">' + r.geldi + '</td><td class="s"' + (r.gelmedi ? ' style="background:#FFC7CE"' : '') + '>' + r.gelmedi +
-      '</td><td class="s">' + r.eksik + '</td><td class="s" title="' + esc(izin) + '">' + r.izinli + (r.izin_saat ? ' (+' + r.izin_saat + ' saatlik)' : '') +
+      '</td><td class="s" title="' + esc(izin) + '">' + r.izinli + (r.izin_saat ? ' (+' + r.izin_saat + ' saatlik)' : '') +
       '</td><td class="s"' + (r.gec_adet >= 3 ? ' style="background:#FFEB9C"' : '') + '>' + (r.gec_adet ? r.gec_adet + ' / ' + sureY(r.gec_dk) : '0') +
       '</td><td class="s">' + (r.erken_adet ? r.erken_adet + ' / ' + sureY(r.erken_dk) : '0') + '</td><td class="s">' + (r.fazla_dk ? sureY(r.fazla_dk) : '0') + '</td><td class="s">' + r.tatil + '</td></tr>';
   });
@@ -980,7 +980,7 @@ function pvKart(){
   });
 }
 // personel kartı: görsel dönem özeti (exe ile aynı veri: personel_veri.kart_ozeti)
-var SERIT_AD = [['geldi','geldi','#3e9b2a'],['gec','geç / erken','#e0a100'],['gelmedi','gelmedi','#d64541'],['eksik','eksik kart','#e0702a'],['izin','izin','#2a7fd1'],['tatil','tatil','#c9cdd6'],['tatil_calisti','tatilde çalıştı','#7b4fa8']];
+var SERIT_AD = [['geldi','geldi','#3e9b2a'],['gec','geç / erken','#e0a100'],['gelmedi','gelmedi','#d64541'],['izin','izin','#2a7fd1'],['tatil','tatil','#c9cdd6'],['tatil_calisti','tatilde çalıştı','#7b4fa8']];
 function ozetCiz(){
   var v = PV.gorsel;
   if (!v) { $('pv-ozet').innerHTML = 'Seçili dönemde kayıt yok'; $('pv-liste').style.display = 'none'; return; }
