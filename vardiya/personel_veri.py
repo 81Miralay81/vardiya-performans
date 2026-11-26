@@ -519,6 +519,29 @@ def donem_hesabi(con, ilk: date, son: date, ayar: Optional[dict] = None, bugun: 
     return gl, ozetle(gl)
 
 
+def beyaz_mi(p: Optional[dict]) -> bool:
+    """Beyaz yaka personel mi (yaka alanı 'BEYAZ YAKA')."""
+    return "BEYAZ" in str((p or {}).get("yaka") or "").replace("i", "İ").replace("ı", "I").upper()
+
+
+def yaka_suz(gl: List[Gun], kisi: Dict[int, dict], beyaz_gorur: bool):
+    """Beyaz yaka görme yetkisi yoksa beyaz yaka personeli hiç yokmuş gibi çıkarır: (günler, özet, kişiler, gizli siciller)."""
+    if beyaz_gorur:
+        return gl, ozetle(gl), kisi, set()
+    gizli = {sid for sid, p in kisi.items() if beyaz_mi(p)}
+    gl = [g for g in gl if g.sicilid not in gizli]
+    return gl, ozetle(gl), {sid: p for sid, p in kisi.items() if sid not in gizli}, gizli
+
+
+def ad_suz(adlar, kisi: Dict[int, dict], gizli: set):
+    """Grup lideri gibi ad listelerinden gizli (beyaz yaka) kişileri çıkarır."""
+    if not gizli:
+        return list(adlar)
+    from .operator_vardiya import ad_anahtar
+    g = {ad_anahtar(str(kisi[s].get("ad") or "")) for s in gizli if s in kisi}
+    return [a for a in adlar if ad_anahtar(str(a)) not in g]
+
+
 def resmi_tatilleri_ayir(gl: List[Gun]) -> List[Gun]:
     """Resmi tatil ve bayram günleri planda çalışma günü görünür ama kimse kart basmaz: o gün planlı çalışanların çoğu
     kayıtsızsa (ya da sabit resmi tatilse) 'gelmedi' sayılmaz; o gün çalışan 'tatilde çalıştı' olur."""

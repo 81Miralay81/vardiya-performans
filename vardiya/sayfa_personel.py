@@ -143,6 +143,7 @@ class PersonelSayfasi(QWidget):
         self._gunler: List[pv.Gun] = []
         self._ozet: Dict[int, pv.Ozet] = {}
         self._kisi: Dict[int, dict] = {}
+        self._gizli: set = set()            # beyaz yaka görme yetkisi yoksa gizlenen siciller
         self._bakiye: Dict[int, dict] = {}
         self._izin_ad: Dict[str, str] = {}
         bugun = date.today()
@@ -485,11 +486,13 @@ class PersonelSayfasi(QWidget):
         con = self.ana.con
         ilk, son = self.aralik.aralik()
         try:
-            self._gunler, self._ozet = pv.donem_hesabi(con, ilk, son, self.ana.ayar)
-            self._kisi = pv.personel(con)
+            gl, _ = pv.donem_hesabi(con, ilk, son, self.ana.ayar)
+            self._gunler, self._ozet, self._kisi, self._gizli = pv.yaka_suz(gl, pv.personel(con), self._yetki("personel_beyaz"))
             self._bakiye = pv.bakiyeler(con)
             self._izin_ad = pv.izin_adlari(con)
             a, b, n = pv.kapsam(con)
+            if self._gizli:
+                n = len(self._kisi)
         except Exception as e:  # noqa: BLE001
             self.alt.setText(f"Personel verisi okunamadı: {e}")
             return
@@ -752,6 +755,11 @@ class PersonelSayfasi(QWidget):
         try:
             gl, _ = pv.donem_hesabi(con, h0, h0 + timedelta(days=6), self.ana.ayar)
             liderler = pv.hafta_grup_liderleri(con, h0, self.ana.ayar)
+            gizli = getattr(self, "_gizli", set())
+            if gizli:
+                tum = pv.personel(con)
+                gl = [g for g in gl if g.sicilid not in gizli]
+                liderler = {k: pv.ad_suz(v, tum, gizli) for k, v in liderler.items()}
         except Exception:  # noqa: BLE001
             gl, liderler = [], {}
         self.t_lider.blockSignals(True)
@@ -996,7 +1004,7 @@ class PersonelSayfasi(QWidget):
             gl, _ = pv.donem_hesabi(self.ana.con, a0, son, self.ana.ayar)
         except Exception:  # noqa: BLE001
             gl = []
-        gm = {g.gun: g for g in gl if g.sicilid == sid}
+        gm = {g.gun: g for g in gl if g.sicilid == sid and sid not in getattr(self, "_gizli", set())}
         t = self.k_takvim
         t.clearContents()
         bas = a0.weekday()

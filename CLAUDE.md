@@ -60,6 +60,7 @@ Bu dosya yalnızca geliştirici (Claude) içindir; program okumaz. Her önemli d
 - **Ayrılan personel** (`cikis_tarih` dolu): sayıya, devam oranına, toplamlara, vardiya listesine, sıralamalara girmez; Sıralamalar'da ayrı "Ayrılan personel" kartı; "Ayrılanları göster" kutusu listeyi açar.
 - **Devam özeti kutuları** tıklanır: `devam_gun_listeleri` (gelmedi/gec/erken/fazla/izin gün listeleri) → altta liste; devam oranı → pasta penceresi (geldi / izinsiz gelmedi / izinli), dilim → ayrıntı. Web'de `/api/personel` → `liste`.
 - Yetki `personel_kimlik`: fotoğraf, telefon, yıllık izin (yoksa gizli). Yıllık izin satırları `izin_satirlari` (toplam = kalan + kullanılan + planlanan).
+- Yetki `personel_beyaz`: yoksa beyaz yaka personel (yaka "BEYAZ YAKA") hiç görünmez — `yaka_suz` (exe `yenile`, web `_pv_temel`), grup lideri adları `ad_suz`, foto ucu da kapalı.
 - Sınıflar: GELDI (tek okutma da), GELMEDI, IZIN_TAM, IZIN_SAAT, TATIL, TATIL_CALISTI, RESMI, PLAN. "Eksik kart" kaldırıldı.
 
 ## Geçici köprü (kopru.py) — iş bitince sil

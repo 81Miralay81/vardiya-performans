@@ -555,11 +555,17 @@ class Sunucu:
             for top, m, op, d in satirlar]})
 
     # -------------------------------------------------------------- personel durum (yalnızca yetkili kullanıcı)
-    def _pv_temel(self, con, ilk, son):
+    def _beyaz_gorur(self, h) -> bool:
+        from . import kullanici as ku
+        return ku.yetkili(self._oturum_kullanici(h), "personel_beyaz")
+
+    def _pv_temel(self, con, ilk, son, h):
+        """Beyaz yaka görme yetkisi olmayan kullanıcıdan beyaz yaka personel tamamen çıkarılır."""
         from . import personel_veri as pv
         ayar = vt.ayar_oku(con)
-        gl, oz = pv.donem_hesabi(con, ilk, son, ayar)
-        return ayar, gl, oz, pv.personel(con), pv.izin_adlari(con)
+        gl, _oz = pv.donem_hesabi(con, ilk, son, ayar)
+        gl, oz, kisi, _gizli = pv.yaka_suz(gl, pv.personel(con), self._beyaz_gorur(h))
+        return ayar, gl, oz, kisi, pv.izin_adlari(con)
 
     def api_personel(self, h, q):
         from . import personel_veri as pv
@@ -568,8 +574,9 @@ class Sunucu:
         son = _tarih(q, "son", bugun - timedelta(days=1))
         con = self._con()
         try:
-            ayar, gl, oz, kisi, izin_ad = self._pv_temel(con, ilk, son)
-            kap = pv.kapsam(con)
+            ayar, gl, oz, kisi, izin_ad = self._pv_temel(con, ilk, son, h)
+            kap = list(pv.kapsam(con))
+            kap[2] = len(kisi)
         finally:
             con.close()
         bv = pv.baskin_vardiya(gl)
@@ -597,8 +604,10 @@ class Sunucu:
         pzt = pzt - timedelta(days=pzt.weekday())
         con = self._con()
         try:
-            ayar, gl, _oz, kisi, izin_ad = self._pv_temel(con, pzt, pzt + timedelta(days=6))
+            ayar, gl, _oz, kisi, izin_ad = self._pv_temel(con, pzt, pzt + timedelta(days=6), h)
             lider = pv.hafta_grup_liderleri(con, pzt, ayar)
+            gizli = pv.yaka_suz([], pv.personel(con), self._beyaz_gorur(h))[3]
+            lider = {k: pv.ad_suz(v, pv.personel(con), gizli) for k, v in lider.items()}
         finally:
             con.close()
         bv = pv.baskin_vardiya(gl)
@@ -633,7 +642,7 @@ class Sunucu:
         ay_son = date(ay.year + (ay.month == 12), ay.month % 12 + 1, 1) - timedelta(days=1)
         con = self._con()
         try:
-            _ayar, gl_donem, oz, kisi, izin_ad = self._pv_temel(con, ilk, son)
+            _ayar, gl_donem, oz, kisi, izin_ad = self._pv_temel(con, ilk, son, h)
             ayar2 = vt.ayar_oku(con)
             gl_ay, _ = pv.donem_hesabi(con, ay, ay_son, ayar2)
         finally:
@@ -680,6 +689,8 @@ class Sunucu:
             p = pv.personel(con).get(sid) or {}
         finally:
             con.close()
+        if pv.beyaz_mi(p) and not self._beyaz_gorur(h):
+            p = {}
         try:
             veri = base64.b64decode(p.get("foto") or "")
         except Exception:  # noqa: BLE001

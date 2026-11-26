@@ -218,3 +218,14 @@ def test_izin_satirlari_toplam_kalan_kullanilan():
     assert s["Toplam izin hakkı"].startswith("134 gün") and "devreden 112" in s["Toplam izin hakkı"]
     assert s["Kullanılan izin"].startswith("14.5 gün") and "<b>119.5 gün</b>" in s["Kalan izin"] and "23.11.2026" in s["Kalan izin"]
     assert pv.izin_satirlari({}) == []
+
+
+def test_beyaz_yaka_yetkisiz_gizlenir():
+    from datetime import date
+    from vardiya import personel_veri as pv
+    kisi = {1: {"ad": "ALİ", "yaka": "MAVI YAKA"}, 2: {"ad": "VELİ", "yaka": "BEYAZ YAKA"}}
+    gl = [pv.Gun(sicilid=s, gun=date(2026, 10, 1), plan="08:00-16:00", vardiya="1", durum=pv.GELDI) for s in (1, 2)]
+    gl2, oz, k2, gizli = pv.yaka_suz(gl, kisi, False)
+    assert set(k2) == {1} and gizli == {2} and all(g.sicilid == 1 for g in gl2) and 2 not in oz
+    assert pv.ad_suz(["Ali", "Veli"], kisi, gizli) == ["Ali"]
+    assert set(pv.yaka_suz(gl, kisi, True)[2]) == {1, 2}

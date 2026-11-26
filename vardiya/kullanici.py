@@ -22,6 +22,7 @@ EKRANLAR = (("performans", "Performans"), ("calisma", "Çalışma"), ("durus", "
             ("kayitlar", "Kayıtlar"), ("veri", "Veri Aktar: Cormind'den veri çekme"), ("ayar", "Ayarlar"))
 OZELLIKLER = (("personel_veri", "Personel verisi çekme (Personel Veri penceresi)"),
               ("personel_kimlik", "Personel kimlik bilgileri (fotoğraf, telefon, yıllık izin)"),
+              ("personel_beyaz", "Beyaz yaka personeli görme (Personel Durum: liste, kart, sıralamalar)"),
               ("grup_lideri", "Grup liderini düzeltme (Vardiya listesi)"),
               ("excel", "Excel'e aktarma"))
 SAYFALAR = EKRANLAR + OZELLIKLER
