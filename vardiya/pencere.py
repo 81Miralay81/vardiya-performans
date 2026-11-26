@@ -19,15 +19,16 @@ from .sayfa_gecmis import GecmisSayfasi
 from .sayfa_kayitlar import KayitlarSayfasi
 from .sayfa_operator import OperatorSayfasi
 from .sayfa_performans import PerformansSayfasi
+from .sayfa_hatali import HataliSayfasi
 from .sayfa_personel import PersonelSayfasi
 from .sayfa_rapor import RaporSayfasi
 from .sayfa_veri import VeriSayfasi
 from .surum import SURUM
 from . import guncelleme
 
-MENU = (("veri", "Veri Aktar"), ("kayitlar", "Kayıtlar"), ("performans", "Performans"), ("calisma", "Çalışma"), ("durus", "Genel Duruş"), ("mola", "Mola"),
+MENU = (("veri", "Veri Aktar"), ("kayitlar", "Kayıtlar"), ("performans", "Performans"), ("hatali", "Hatalı Duruşlar"), ("calisma", "Çalışma"), ("durus", "Genel Duruş"), ("mola", "Mola"),
         ("operator", "Operatör"), ("personel", "Personel Durum"), ("rapor", "Raporlar"), ("gecmis", "Geçmiş"), ("ayar", "Ayarlar"))
-DONEMLI = {"performans", "calisma", "durus", "mola", "operator"}
+DONEMLI = {"performans", "hatali", "calisma", "durus", "mola", "operator"}
 
 
 class AnaPencere(QMainWindow):
@@ -133,6 +134,7 @@ class AnaPencere(QMainWindow):
             "veri": VeriSayfasi(self),
             "kayitlar": KayitlarSayfasi(self),
             "performans": PerformansSayfasi(self),
+            "hatali": HataliSayfasi(self),
             "calisma": AnalizSayfasi(self, 0),
             "durus": AnalizSayfasi(self, 1),
             "mola": AnalizSayfasi(self, 2),
@@ -409,7 +411,7 @@ class AnaPencere(QMainWindow):
             QApplication.restoreOverrideCursor()
         # Yalnızca o an açık olan sayfa yenilenir; diğerleri açıldıklarında (sayfa_ac) kendileri yenilenir.
         acik = self.yigin.currentWidget()
-        for a in ("performans", "calisma", "durus", "mola", "operator"):
+        for a in ("performans", "hatali", "calisma", "durus", "mola", "operator"):
             if self.sayfalar[a] is acik:
                 self.sayfalar[a].yenile()
         self.sayfalar["veri"].yenile()

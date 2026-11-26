@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import re
 from datetime import date, datetime, timedelta
 from typing import Dict, Iterable, List, Optional, Tuple
 
@@ -20,6 +21,8 @@ VARSAYILAN_AYAR = {
     "hesap_kurali": "gunluk",
     "hesap_yontemi": "vardiya",
     "operator_haric_durus": [],
+    "hatali_durus_turleri": [],                # Ayarlar: bu duruşlarda operatör ve iş (ürün kodu) olmamalı; varsa hatalı duruş
+    "hatali_durus_en_az_dk": 5,                # bundan kısa hatalı duruşlar listelenmez
     "cormind_adres": "http://192.168.0.39",
     "cormind_makine_idleri": [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 18, 19, 20, 21, 22, 23, 24, 25, 26, 28, 29, 30, 31, 32, 33, 34, 35, 80, 15],
     "vardiya_dk": 480,
@@ -117,18 +120,41 @@ def gun_ozet_yenile(con: sqlite3.Connection, ilk: Optional[str] = None, son: Opt
     con.commit()
 
 
-def aralik_satirlari(con: sqlite3.Connection, kolonlar: str, ilk: date, son: date, ek: str = "", ek_arg: tuple = ()):
+HATALI_EK = " (hatalı)"         # hariç tutulan duruş türünde operatör ya da iş (ürün kodu) varsa: hariç tutulmaz, bu ekle görünür
+_IS_VAR = ("((operator IS NOT NULL AND trim(operator) <> '') OR "
+           "(urun_kodu IS NOT NULL AND trim(urun_kodu) NOT IN ('', '-')))")
+
+
+def haric_duruslar(con: sqlite3.Connection) -> List[str]:
+    """Ayarlar'da 'raporlardan ve hesaptan hariç tutulacak' diye seçilen duruş türleri."""
+    try:
+        r = con.execute("SELECT deger FROM ayar WHERE anahtar = 'operator_haric_durus'").fetchone()
+        return [str(x) for x in (json.loads(r[0]) if r and r[0] else []) if x]
+    except (sqlite3.Error, ValueError, TypeError):
+        return []
+
+
+def aralik_satirlari(con: sqlite3.Connection, kolonlar: str, ilk: date, son: date, ek: str = "", ek_arg: tuple = (),
+                     hatali_etiket: bool = False):
     """[ilk, son] günlerine değen kayıtlar; tüm tablo taranmaz. Aralıkta (ya da bir gün önce) başlayanlar başlangıç dizininden,
-    daha önce başlayıp içeri uzanan uzun kayıtlar küçük 'uzun kayıt' dizininden okunur."""
+    daha önce başlayıp içeri uzanan uzun kayıtlar küçük 'uzun kayıt' dizininden okunur.
+    hatali_etiket: hariç tutulan bir duruş türünde makinede operatör ya da iş (ürün kodu) görünüyorsa tür adına
+    HATALI_EK eklenir; böylece o kayıt hariç tutulmaz, normal duruş gibi hesaba ve raporlara girer (Kayıtlar ekranı ham kalır)."""
     bas = ilk.strftime("%Y-%m-%d 00:00:00")
     bit = (son + timedelta(days=1)).strftime("%Y-%m-%d 00:00:00")
     once = (ilk - timedelta(days=1)).strftime("%Y-%m-%d 00:00:00")
     ek = f" AND ({ek})" if ek else ""
+    sec, sec_arg = kolonlar, ()
+    haric = haric_duruslar(con) if hatali_etiket else []
+    if haric and re.search(r"\btip\b", kolonlar):
+        yer = ", ".join("?" * len(haric))
+        sec = re.sub(r"\btip\b", f"CASE WHEN tip IN ({yer}) AND {_IS_VAR} THEN tip || '{HATALI_EK}' ELSE tip END AS tip", kolonlar, count=1)
+        sec_arg = tuple(haric)
     return con.execute(
-        f"SELECT {kolonlar} FROM kayit WHERE baslangic >= ? AND baslangic < ? AND bitis >= ?{ek} "
-        f"UNION ALL SELECT {kolonlar} FROM kayit WHERE julianday(bitis) - julianday(baslangic) > 1 "
+        f"SELECT {sec} FROM kayit WHERE baslangic >= ? AND baslangic < ? AND bitis >= ?{ek} "
+        f"UNION ALL SELECT {sec} FROM kayit WHERE julianday(bitis) - julianday(baslangic) > 1 "
         f"AND baslangic < ? AND bitis >= ?{ek}",
-        (once, bit, bas) + tuple(ek_arg) + (once, bas) + tuple(ek_arg))
+        sec_arg + (once, bit, bas) + tuple(ek_arg) + sec_arg + (once, bas) + tuple(ek_arg))
 
 
 # ------------------------------------------------------------------ ayarlar
@@ -339,7 +365,7 @@ def kayitlari_getir(con: sqlite3.Connection, ilk: date, son: date, kirp: bool = 
     bit = (son + timedelta(days=1)).strftime("%Y-%m-%d 00:00:00")
     alt, ust = datetime(ilk.year, ilk.month, ilk.day), datetime(son.year, son.month, son.day) + timedelta(days=1)
     sonuc = []
-    for r in aralik_satirlari(con, "makine, tip, baslangic, bitis", ilk, son):
+    for r in aralik_satirlari(con, "makine, tip, baslangic, bitis", ilk, son, hatali_etiket=True):
         if kirp:
             b0, b1 = _kirp(r["baslangic"], r["bitis"], alt, ust)
         else:
@@ -354,7 +380,7 @@ def kayitlari_getir_operatorlu(con: sqlite3.Connection, ilk: date, son: date, ki
     bit = (son + timedelta(days=1)).strftime("%Y-%m-%d 00:00:00")
     alt, ust = datetime(ilk.year, ilk.month, ilk.day), datetime(son.year, son.month, son.day) + timedelta(days=1)
     sonuc = []
-    for r in aralik_satirlari(con, "operator, makine, tip, baslangic, bitis", ilk, son):
+    for r in aralik_satirlari(con, "operator, makine, tip, baslangic, bitis", ilk, son, hatali_etiket=True):
         if kirp:
             b0, b1 = _kirp(r["baslangic"], r["bitis"], alt, ust)
         else:

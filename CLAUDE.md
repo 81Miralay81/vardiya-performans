@@ -67,13 +67,14 @@ Bu dosya yalnızca geliştirici (Claude) içindir; program okumaz. Her önemli d
 - Eşik altı makineler "çalışmayan makineleri gösterme" ayarına bağlı (`calismayan_makineler`).
 - Sınıflar: GELDI (tek okutma da), GELMEDI, IZIN_TAM, IZIN_SAAT, TATIL, TATIL_CALISTI, RESMI, PLAN. "Eksik kart" kaldırıldı.
 
-## Bekleyen iş planı (26.11, kullanıcı onayı "başla" bekliyor)
-1. Ayarlar "Raporlardan hariç tutulacak duruşlar" (çoklu seçim). Seçilen duruşlar raporlarda görünmez VE HESAPTAN DA ÇIKAR (o süre yokmuş gibi; çalışma % değişir). İstisna: duruş sırasında operatör adı ya da ürün kodu (urun_kodu, "-"/boş değilse iş var) varsa gizlenmez → hatalı duruş.
-2. Ayarlar "Hatalı duruş kontrolü yapılacak duruşlar" (ör. İŞ EMRİ PLAN YOK, ÇALIŞMIYOR): bu duruşlarda operatör ve ürün kodu olmamalı; varsa hatalı.
-3. Performans altında "Hatalı duruşlar" sekmesi: makine grafiği → (vardiya kırılımı | "operatör var" / "operatör yok ama iş var" ikiye ayrık) → duruş adı → operatör → gün/vardiya → gant.
-4. Tüm gantlarda seçili ayrıntı kırmızı taralı yarı saydam çerçeve (zoomla uzar, altını kapatmaz). Gant görünümü modernleşecek.
-5. Performans "Operatör yok" tıklanınca sor: bu makinede mi / tüm makinelerde mi; bu makine → doğrudan gant (operatörsüz kısımlar çerçeveli).
-- Kalan izin gösterimi (a/b/c) kararı bekliyor.
+## Hariç / hatalı duruşlar (26.11, yan dalda hazır)
+- `operator_haric_durus` (Ayarlar > Duruşlar kartı, Operatör sayfasındaki seçimle aynı anahtar): hesaptan ve raporlardan çıkar (`HesapAyar.haric`, `durus_dokumu`).
+  Operatör ya da ürün kodu varsa `vt.aralik_satirlari(..., hatali_etiket=True)` tür adına `HATALI_EK` (" (hatalı)") ekler → hariç tutulmaz. Kayıtlar ekranı ham.
+- `hatali_durus.py`: `tespit` (kontrol türleri = `hatali_durus_turleri` ∪ hariç; `hatali_durus_en_az_dk` alt eşik 5), tür "operator" / "is"; kırılım yardımcıları; `zaman_bloklari`.
+- `sayfa_hatali.py` (menü "Hatalı Duruşlar", yetki = performans): makine → vardiya | operatör var | operatör yok·iş var | duruş adı | gün → liste → gant.
+- Gant (`zaman_cizelgesi.py`): modern görünüm; vurgulu bloklar kırmızı taralı yarı saydam çerçeve (yan yana olanlar birleşir, zoomla büyür).
+- Performans "Operatör yok" tıklanınca soru: bu makine → doğrudan gant / tüm makineler → 4. seviye.
+- Web sürümünde Hatalı Duruşlar sayfası henüz yok. Kalan izin gösterimi (a/b/c) kararı bekliyor.
 
 ## Geçici köprü (kopru.py) — iş bitince sil
 - Gizli depo `81Miralay81/vp-kopru` (yerel klon `/home/claude/vp-kopru`). Ben `komut/<PC>.json` (ya da `komut/hepsi.json`) yazarım; program `sonuc/<PC>/<id>.json` yazar, bağlanınca `sonuc/<PC>/canli.json`.

@@ -493,13 +493,28 @@ class PerformansSayfasi(QWidget):
         gunler = self.ana.donem_gunleri()
         if not gunler:
             return
+        from .kirilim import OPERATOR_YOK
+        self._tek_makine = None
+        if ad == OPERATOR_YOK and self._secili:              # operatörsüz: bu makinede mi, tüm makinelerde mi?
+            from PySide6.QtWidgets import QMessageBox
+            k = QMessageBox(self)
+            k.setWindowTitle("Operatör yok")
+            k.setText(f"'{self._tip}' duruşunun operatörsüz kısmı nasıl gösterilsin?")
+            b_bu = k.addButton(f"Bu makinede ({self._secili}) · zaman çizelgesi", QMessageBox.AcceptRole)
+            b_tum = k.addButton("Tüm makinelerde · kırılım", QMessageBox.ActionRole)
+            k.addButton("Vazgeç", QMessageBox.RejectRole)
+            k.exec()
+            if k.clickedButton() is b_bu:
+                self._tek_makine = self._secili
+            elif k.clickedButton() is not b_tum:
+                return
         self._op = ad
         self._om_secili = self._oz_secili = None
         self._op_veri = {}
         self.k_gantt.hide()
         self.o_baslik.setText(f"{ad} · {self._tip}")
         self.o_alt.setText("hesaplanıyor…")
-        self.k_op.show()
+        self.k_op.setVisible(not self._tek_makine)
         for w in (self.g_ko, self.g_om, self.g_oz):
             w.update()
         self._sc.ensureWidgetVisible(self.k_op, 0, 30)
@@ -527,6 +542,14 @@ class PerformansSayfasi(QWidget):
         from .kirilim import operator_ayrinti
         gunler = self.ana.donem_gunleri()
         self._op_veri = operator_ayrinti(kayit, min(gunler), max(gunler), self._tip, self._op)
+        tek = getattr(self, "_tek_makine", None)
+        if tek:                                                  # yalnızca bu makine: doğrudan zaman çizelgesi
+            self._op_veri["makine"] = [(m, x) for m, x in self._op_veri["makine"] if m == tek]
+            self._op_veri["bloklar"] = {m: v for m, v in self._op_veri["bloklar"].items() if m == tek}
+            if self._op_veri["makine"]:
+                self._cizelge_ac("om_makine", tek)
+                self.z_alt.setText(f"{tek} · operatörsüz '{self._tip}' kırmızı taralı çerçeveli · tüm dönem · tekerlekle yakınlaştırın")
+            return
         top = sum(x for _m, x in self._op_veri["makine"])
         self.o_alt.setText(f"toplam {cizim._saat_dk(top)} saat · {len(self._op_veri['makine'])} makine · makine ya da zaman çubuğuna tıklayın: "
                            "zaman çizelgesi · aynı operatöre yeniden tıklarsanız kapanır")

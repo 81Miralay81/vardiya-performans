@@ -26,7 +26,7 @@ OZELLIKLER = (("personel_veri", "Personel verisi çekme (Personel Veri penceresi
               ("grup_lideri", "Grup liderini düzeltme (Vardiya listesi)"),
               ("excel", "Excel'e aktarma"))
 SAYFALAR = EKRANLAR + OZELLIKLER
-MENU_YETKI = {"performans": "performans", "calisma": "calisma", "durus": "durus", "mola": "mola",
+MENU_YETKI = {"performans": "performans", "hatali": "performans", "calisma": "calisma", "durus": "durus", "mola": "mola",
               "operator": "operator", "personel": "personel", "rapor": "rapor", "gecmis": "gecmis", "kayitlar": "kayitlar",
               "veri": "veri", "ayar": "ayar"}
 SURUM_ISARET = "_v2"     # bu işaret yoksa yetkiler eski (gruplu) düzende kaydedilmiştir

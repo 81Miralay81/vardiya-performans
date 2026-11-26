@@ -506,6 +506,37 @@ class AyarSayfasi(QWidget):
         ic.addWidget(kp)
         ic.addWidget(kd)
 
+        # ------------------------------------------------ hariç tutulan ve hatalı duruşlar
+        kh = kart()
+        kh.layout().addWidget(etiket("DURUŞLAR: HARİÇ TUTULANLAR VE HATALI DURUŞ KONTROLÜ", "KartBaslik"))
+        kh.layout().addWidget(etiket(
+            "Soldaki listede işaretlenen duruşlar (ör. İŞ EMRİ PLAN YOK) hiçbir raporda görünmez ve hesaptan da çıkar: o süre "
+            "yokmuş gibi sayılır, çalışma oranı kalan süreye göre hesaplanır. Ancak o sırada makinede operatör kayıtlıysa ya da "
+            "iş (ürün kodu) varsa o parça hariç tutulmaz; adı '(hatalı)' ekiyle normal duruş gibi sayılır ve Hatalı Duruşlar "
+            "sayfasında listelenir.\nSağdaki listede işaretlenen duruşlarda makinede operatör ve iş olmamalıdır; varsa Hatalı "
+            "Duruşlar sayfasında gösterilir. Alt eşikten kısa hatalı duruşlar listeye ve grafiğe girmez. Kaydet'e basınca geçerli olur.",
+            "AltBaslik"))
+        hl = QHBoxLayout()
+        self.dur_haric, self.dur_hatali = QListWidget(), QListWidget()
+        for baslik, lst in (("Raporlardan ve hesaptan hariç tutulacak duruşlar", self.dur_haric),
+                            ("Hatalı duruş kontrolü yapılacak duruşlar", self.dur_hatali)):
+            v = QVBoxLayout()
+            v.addWidget(etiket(baslik, "KartBaslik"))
+            lst.setMinimumHeight(220)
+            lst.setStyleSheet("QListWidget::item { padding: 3px; }")
+            v.addWidget(lst)
+            hl.addLayout(v, 1)
+        kh.layout().addLayout(hl)
+        he = QHBoxLayout()
+        he.addWidget(QLabel("Hatalı duruş alt eşiği (bundan kısa olanlar listelenmez):"))
+        self.hatali_esik = QSpinBox()
+        self.hatali_esik.setRange(0, 240)
+        self.hatali_esik.setSuffix(" dk")
+        he.addWidget(self.hatali_esik)
+        he.addStretch(1)
+        kh.layout().addLayout(he)
+        ic.addWidget(kh)
+
         # ------------------------------------------------ Outlook ve yapay zekâ (idari rapor)
         from PySide6.QtWidgets import QFormLayout as _QF, QLineEdit as _QL
         from . import yapay
@@ -631,6 +662,22 @@ class AyarSayfasi(QWidget):
                                     + ("" if vt.sozluk_hazir(self.ana.con) else
                                        " · liste hazırlanıyor (eski kayıtlar taranıyor), birazdan tamamlanır…"))
 
+    def _durus_listeleri_doldur(self):
+        from .operatorlu_durus import durus_turleri
+        turler = durus_turleri(self.ana.con)
+        for lst, anahtar in ((self.dur_haric, "operator_haric_durus"), (self.dur_hatali, "hatali_durus_turleri")):
+            secili = set(self.ana.ayar.get(anahtar) or [])
+            lst.clear()
+            for ad in sorted(set(turler) | secili, key=lambda x: x.casefold()):
+                it = self._QListWidgetItem(ad)
+                it.setFlags(it.flags() | Qt.ItemIsUserCheckable)
+                it.setCheckState(Qt.Checked if ad in secili else Qt.Unchecked)
+                lst.addItem(it)
+
+    @staticmethod
+    def _isaretliler(lst) -> list:
+        return [lst.item(i).text() for i in range(lst.count()) if lst.item(i).checkState() == Qt.Checked]
+
     def _op_tur_doldur(self):
         from .operatorlu_durus import durus_turleri
         haric = set(self.ana.ayar.get("op_durus_haric") or [])
@@ -697,6 +744,7 @@ class AyarSayfasi(QWidget):
             self._listeler_kirli = False
             self._personel_doldur()
             self._op_tur_doldur()
+            self._durus_listeleri_doldur()
             self._sozluk_bekle()
 
     def oto_bagla(self, oto):
@@ -733,6 +781,7 @@ class AyarSayfasi(QWidget):
             self._listeler_kirli = False
             self._personel_doldur()
             self._op_tur_doldur()
+            self._durus_listeleri_doldur()
         a = self.ana.ayar
         self.esik.setValue(round(a["esik"] * 100))
         self.kural.setCurrentIndex(max(0, self.kural.findData(a.get("hesap_kurali", "gunluk"))))
@@ -760,6 +809,7 @@ class AyarSayfasi(QWidget):
         h, m = OtoCekim.pv_saat_coz(a.get("pv_cekim_saati", PV_SAATI))
         self.pv_saat.setTime(QTime(h, m))
         self._esles_yukle()
+        self.hatali_esik.setValue(int(a.get("hatali_durus_en_az_dk", 5)))
         self._lider_yukle()
         from PySide6.QtCore import QDate
         from .oto_cekim import PV_EN_ESKI, PV_SABAH
@@ -984,6 +1034,11 @@ class AyarSayfasi(QWidget):
         vt.ayar_yaz(con, "pv_fazla_en_az_dk", self.pv_fazla.value())
         vt.ayar_yaz(con, "pv_cekim_saati", self.pv_saat.time().toString("HH:mm"))
         vt.ayar_yaz(con, "op_eslestirme", self._esles_oku())
+        if self.dur_haric.count():
+            vt.ayar_yaz(con, "operator_haric_durus", self._isaretliler(self.dur_haric))
+        if self.dur_hatali.count():
+            vt.ayar_yaz(con, "hatali_durus_turleri", self._isaretliler(self.dur_hatali))
+        vt.ayar_yaz(con, "hatali_durus_en_az_dk", self.hatali_esik.value())
         lt = dict(self.ana.ayar.get("pv_lider_tur") or {})
         for r in range(self.t_lider.rowCount()):
             c = self.t_lider.cellWidget(r, 2)

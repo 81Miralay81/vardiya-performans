@@ -28,7 +28,7 @@ def durus_kirilimi(con, ilk: date, son: date, makine: str, tip: str) -> Dict[str
     alt = datetime(ilk.year, ilk.month, ilk.day)
     ust = datetime(son.year, son.month, son.day) + timedelta(days=1)
     ham = []
-    for r in vt.aralik_satirlari(con, "operator, makine, tip, baslangic, bitis", ilk, son, "makine = ?", (makine,)):
+    for r in vt.aralik_satirlari(con, "operator, makine, tip, baslangic, bitis", ilk, son, "makine = ?", (makine,), hatali_etiket=True):
         ham.append((r["operator"], r["makine"], r["tip"], vt.zaman(r["baslangic"]), vt.zaman(r["bitis"])))
     gset = {ilk + timedelta(days=i) for i in range((son - ilk).days + 1)}
     vard: Dict[int, float] = {1: 0.0, 2: 0.0, 3: 0.0}
@@ -203,7 +203,7 @@ def donem_kayitlari(con, ilk: date, son: date) -> List[Tuple[str, str, str, date
     alt = datetime(ilk.year, ilk.month, ilk.day)
     ust = datetime(son.year, son.month, son.day) + timedelta(days=1)
     ham = [(r["operator"], r["makine"], r["tip"], vt.zaman(r["baslangic"]), vt.zaman(r["bitis"]))
-           for r in vt.aralik_satirlari(con, "operator, makine, tip, baslangic, bitis", ilk, son)]
+           for r in vt.aralik_satirlari(con, "operator, makine, tip, baslangic, bitis", ilk, son, hatali_etiket=True)]
     from .operator_vardiya import bagla
     dogru = bagla(con, operator_dogrula(ham, alt, ust), ilk, son, vt.ayar_oku(con))
     return [(operator_adi(op) or "", m, t, max(a, alt), min(b, ust)) for op, m, t, a, b in dogru if b > alt and a < ust]

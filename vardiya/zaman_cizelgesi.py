@@ -6,14 +6,16 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QPainter, QPen
+from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPen
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QToolTip, QVBoxLayout, QWidget
 
 from . import tema
 from .hesap import CALISIYOR, MOLA
 
 GUNLER = ("Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz")
-RENK_CALISMA, RENK_DURUS, RENK_MOLA = "#DCEFCB", "#9DC3E6", "#C9CDD6"
+RENK_CALISMA, RENK_DURUS, RENK_MOLA = "#B7DE9C", "#A7C7EE", "#D3D7E0"
+VURGU = "#D64541"                     # seçili ayrıntının kırmızı taralı çerçevesi
+SATIR_H = 38.0
 EN_KUCUK_SN = 15 * 60
 
 
@@ -43,7 +45,7 @@ class Cizelge(QWidget):
         self.t0, self.t1 = _sn(t0), _sn(t1)
         self.v0, self.v1 = (_sn(gorunum[0]), _sn(gorunum[1])) if gorunum else (self.t0, self.t1)
         self.isaret = (_sn(isaret[0]), _sn(isaret[1])) if isaret else None
-        self.setMinimumHeight(60 + 40 * max(1, len(satirlar)))
+        self.setMinimumHeight(int(60 + SATIR_H * max(1, len(satirlar))))
         self._yayinla()
 
     def gorunum(self, v0: float, v1: float):
@@ -82,23 +84,34 @@ class Cizelge(QWidget):
     # ------------------------------------------------------------ çizim
     def paintEvent(self, _):  # noqa: N802
         p = QPainter(self)
-        p.setRenderHint(QPainter.Antialiasing, False)
+        p.setRenderHint(QPainter.Antialiasing, True)
         p.fillRect(self.rect(), QColor("white"))
         a = self._alan()
         if not self.satirlar:
             p.setPen(QColor(tema.YAZI_SOLUK))
             p.drawText(self.rect(), Qt.AlignCenter, "Kayıt yok")
             return
+        p.fillRect(QRectF(a.left(), 0, a.width(), a.top() - 2), QColor("#F5F6FA"))      # zaman ekseni bandı
         self._eksen(p, a)
-        sh = min(40.0, a.height() / len(self.satirlar))
+        sh = min(SATIR_H, a.height() / len(self.satirlar))
         f = QFont(tema.FONT_AILESI, 9)
         f.setBold(True)
+        cerceve: List[QRectF] = []
         for i, m in enumerate(self.satirlar):
             y = a.top() + i * sh
+            if i % 2:
+                p.fillRect(QRectF(0, y, self.width(), sh), QColor("#FAFBFD"))
+            etk = QRectF(4, y + 6, 80, sh - 12)                                       # makine adı: yuvarlak etiket
+            p.setPen(Qt.NoPen)
+            p.setBrush(QColor("#EEF0FA"))
+            p.drawRoundedRect(etk, 6, 6)
             p.setFont(f)
             p.setPen(QColor(tema.LACIVERT))
-            p.drawText(QRectF(4, y, 84, sh), Qt.AlignVCenter | Qt.AlignLeft, m)
-            p.fillRect(QRectF(a.left(), y + 5, a.width(), sh - 10), QColor("#F5F7FA"))
+            p.drawText(etk.adjusted(6, 0, -4, 0), Qt.AlignVCenter | Qt.AlignLeft, m)
+            p.setPen(Qt.NoPen)
+            p.setBrush(QColor("#F1F3F8"))
+            p.drawRoundedRect(QRectF(a.left(), y + 7, a.width(), sh - 14), 4, 4)
+            satir_cerceve: List[List[float]] = []
             for b0, b1, tip, st, op, vurgu in self.bloklar.get(m, []):
                 x0, x1 = self._x(_sn(b0)), self._x(_sn(b1))
                 if x1 < a.left() or x0 > a.right():
@@ -107,12 +120,35 @@ class Cizelge(QWidget):
                 renk = QColor(self.renk if vurgu else (RENK_CALISMA if st == CALISIYOR else RENK_MOLA if st == MOLA else RENK_DURUS))
                 if not vurgu and self.isaret is not None:
                     renk.setAlpha(150)
-                p.fillRect(QRectF(x0, y + 5, max(1.0, x1 - x0), sh - 10), renk)
+                r = QRectF(x0, y + 7, max(1.0, x1 - x0), sh - 14)
+                p.setBrush(renk)
+                if r.width() > 4:
+                    p.drawRoundedRect(r, 3, 3)
+                else:
+                    p.fillRect(r, renk)
+                if vurgu:                                                              # yan yana vurgular tek çerçeve olur
+                    if satir_cerceve and x0 - satir_cerceve[-1][1] <= 2:
+                        satir_cerceve[-1][1] = max(satir_cerceve[-1][1], x1)
+                    else:
+                        satir_cerceve.append([x0, x1])
+            for x0, x1 in satir_cerceve:
+                w = max(8.0, x1 - x0)
+                cx = (x0 + x1) / 2
+                cerceve.append(QRectF(cx - w / 2, y + 3, w, sh - 6))
+        for r in cerceve:                                    # kırmızı taralı, yarı saydam: altındaki kayıtlar görünür
+            p.setPen(Qt.NoPen)
+            p.setBrush(QColor(214, 69, 65, 28))
+            p.drawRoundedRect(r, 4, 4)
+            p.setBrush(QBrush(QColor(214, 69, 65, 120), Qt.BDiagPattern))
+            p.drawRoundedRect(r, 4, 4)
+            p.setPen(QPen(QColor(VURGU), 2))
+            p.setBrush(Qt.NoBrush)
+            p.drawRoundedRect(r, 4, 4)
         if self.isaret:
             x0, x1 = self._x(self.isaret[0]), self._x(self.isaret[1])
             p.setPen(QPen(QColor(tema.LACIVERT), 1.5, Qt.DashLine))
-            p.setBrush(QColor(21, 9, 88, 18))
-            p.drawRect(QRectF(max(x0, a.left()), a.top(), max(2, min(x1, a.right()) - max(x0, a.left())), len(self.satirlar) * sh))
+            p.setBrush(QColor(21, 9, 88, 14))
+            p.drawRoundedRect(QRectF(max(x0, a.left()), a.top(), max(2, min(x1, a.right()) - max(x0, a.left())), len(self.satirlar) * sh), 4, 4)
         if self._secim:
             x0, x1 = sorted(self._secim)
             p.setPen(QPen(QColor(tema.LACIVERT), 1))
@@ -138,9 +174,12 @@ class Cizelge(QWidget):
                 p.setPen(QPen(QColor("#AEB6C6" if gun_basi else "#E3E7EF"), 1))
                 p.drawLine(QPointF(x, a.top() - 4), QPointF(x, a.bottom()))
                 metin = (f"{GUNLER[t.weekday()]} {t:%d.%m}" if bic == "gun" else
-                         (f"{GUNLER[t.weekday()]} {t:%d.%m} 00:00" if gun_basi else t.strftime(bic)))
-                p.setPen(QColor(tema.YAZI_SOLUK))
-                p.drawText(QRectF(x + 3, 4, 140, 20), Qt.AlignLeft | Qt.AlignVCenter, metin)
+                         (f"{GUNLER[t.weekday()]} {t:%d.%m}" if gun_basi else t.strftime(bic)))
+                fk = QFont(tema.FONT_AILESI, 8)
+                fk.setBold(gun_basi)
+                p.setFont(fk)
+                p.setPen(QColor(tema.LACIVERT if gun_basi else tema.YAZI_SOLUK))
+                p.drawText(QRectF(x + 4, 4, 140, 20), Qt.AlignLeft | Qt.AlignVCenter, metin)
             t += timedelta(seconds=adim)
 
     # ------------------------------------------------------------ fare
@@ -194,7 +233,7 @@ class Cizelge(QWidget):
         a = self._alan()
         if not self.satirlar or not a.contains(pt):
             return None
-        sh = min(40.0, a.height() / len(self.satirlar))
+        sh = min(SATIR_H, a.height() / len(self.satirlar))
         i = int((pt.y() - a.top()) // sh)
         if not 0 <= i < len(self.satirlar):
             return None
@@ -247,6 +286,8 @@ class ZamanCizelgesi(QWidget):
 
     def ayarla(self, satirlar, bloklar, t0, t1, renk, tip, gorunum=None, isaret=None):
         self.cizelge.ayarla(satirlar, bloklar, t0, t1, renk, gorunum, isaret)
-        self.lejant.setText(f"<span style='color:{renk}'>■</span> {tip} (seçili)  <span style='color:{RENK_DURUS}'>■</span> diğer duruşlar  "
-                            f"<span style='color:#9aa1ad'>■</span> mola  <span style='color:#9cc77a'>■</span> çalışma")
+        self.lejant.setText(f"<span style='color:{renk}'>■</span> {tip} (seçili)  "
+                            f"<span style='color:{VURGU}'>▧</span> kırmızı taralı çerçeve: seçili ayrıntı  "
+                            f"<span style='color:{RENK_DURUS}'>■</span> diğer duruşlar  "
+                            f"<span style='color:{RENK_MOLA}'>■</span> mola  <span style='color:{RENK_CALISMA}'>■</span> çalışma")
         self.lejant.setTextFormat(Qt.RichText)
