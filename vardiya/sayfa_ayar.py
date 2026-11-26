@@ -510,16 +510,15 @@ class AyarSayfasi(QWidget):
         kh = kart()
         kh.layout().addWidget(etiket("DURUŞLAR: HARİÇ TUTULANLAR VE HATALI DURUŞ KONTROLÜ", "KartBaslik"))
         kh.layout().addWidget(etiket(
-            "Soldaki listede işaretlenen duruşlar (ör. İŞ EMRİ PLAN YOK) hiçbir raporda görünmez ve hesaptan da çıkar: o süre "
-            "yokmuş gibi sayılır, çalışma oranı kalan süreye göre hesaplanır. Ancak o sırada makinede operatör kayıtlıysa ya da "
-            "iş (ürün kodu) varsa o parça hariç tutulmaz; adı '(hatalı)' ekiyle normal duruş gibi sayılır ve Hatalı Duruşlar "
-            "sayfasında listelenir.\nSağdaki listede işaretlenen duruşlarda makinede operatör ve iş olmamalıdır; varsa Hatalı "
-            "Duruşlar sayfasında gösterilir. Alt eşikten kısa hatalı duruşlar listeye ve grafiğe girmez. Kaydet'e basınca geçerli olur.",
+            "1. liste: işaretlenen duruşlar (ör. İŞ EMRİ PLAN YOK) hiçbir raporda görünmez ve hesaptan da çıkar; o süre yokmuş gibi "
+            "sayılır. Ama o sırada makinede operatör ya da iş (ürün kodu) varsa o parça çıkarılmaz, '(hatalı)' ekiyle duruş sayılır.\n"
+            "2. liste: işaretlenen duruşlarda (ör. ÇALIŞMIYOR) makinede operatör ve iş olmamalı; varsa Hatalı Duruşlar sayfasında "
+            "gösterilir (1. listedekiler de kontrol edilir). Alt eşikten kısa olanlar gösterilmez. Kaydet'e basınca geçerli olur.",
             "AltBaslik"))
         hl = QHBoxLayout()
         self.dur_haric, self.dur_hatali = QListWidget(), QListWidget()
-        for baslik, lst in (("Raporlardan ve hesaptan hariç tutulacak duruşlar", self.dur_haric),
-                            ("Hatalı duruş kontrolü yapılacak duruşlar", self.dur_hatali)):
+        for baslik, lst in (("1. Hariç tutulacak duruşlar (raporda görünmez, hesaptan çıkar)", self.dur_haric),
+                            ("2. Hatalı duruş kontrolü (operatör ya da iş olmamalı)", self.dur_hatali)):
             v = QVBoxLayout()
             v.addWidget(etiket(baslik, "KartBaslik"))
             lst.setMinimumHeight(220)
