@@ -61,6 +61,10 @@ Bu dosya yalnızca geliştirici (Claude) içindir; program okumaz. Her önemli d
 - **Devam özeti kutuları** tıklanır: `devam_gun_listeleri` (gelmedi/gec/erken/fazla/izin gün listeleri) → altta liste; devam oranı → pasta penceresi (geldi / izinsiz gelmedi / izinli), dilim → ayrıntı. Web'de `/api/personel` → `liste`.
 - Yetki `personel_kimlik`: fotoğraf, telefon, yıllık izin (yoksa gizli). Yıllık izin satırları `izin_satirlari` (toplam = kalan + kullanılan + planlanan).
 - Yetki `personel_beyaz`: yoksa beyaz yaka personel (yaka "BEYAZ YAKA") hiç görünmez — `yaka_suz` (exe `yenile`, web `_pv_temel`), grup lideri adları `ad_suz`, foto ucu da kapalı.
+- **Vardiya adları (kullanıcının numarası)**: 1. vardiya 00–08, 2. vardiya 08–16, 3. vardiya 16–00. İç kodlar personel verisinden: "1"=08–16, "2"=16–00, "3"=00–08 → ekranda `VARDIYA_AD`/`VARDIYA_KISA`, sıra `VARDIYA_SIRA` ("3","1","2","G"). "24" yazılmaz (`plan_kisa` 16–00).
+- **Kayan çıkış**: 16–00 vardiyasının gece yarısından sonraki çıkışı kaynakta ertesi güne yazılır → `kayan_cikislari_duzelt` (donem_hesabi içinde) önceki güne taşır.
+- **Operatör esnemesi**: plan ± `pv_fazla_en_az_dk` (yarım saat) kendi vardiyası; dışı ≥5 dk → "(mesai)". Geç gelme / erken çıkma tespitini ETKİLEMEZ (onlar kaynaktaki g_dk/e_dk + 5 dk tolerans).
+- Eşik altı makineler "çalışmayan makineleri gösterme" ayarına bağlı (`calismayan_makineler`).
 - Sınıflar: GELDI (tek okutma da), GELMEDI, IZIN_TAM, IZIN_SAAT, TATIL, TATIL_CALISTI, RESMI, PLAN. "Eksik kart" kaldırıldı.
 
 ## Geçici köprü (kopru.py) — iş bitince sil

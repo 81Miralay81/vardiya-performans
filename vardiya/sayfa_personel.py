@@ -179,7 +179,7 @@ class PersonelSayfasi(QWidget):
         ust.addWidget(QLabel("Vardiya"))
         self.f_vardiya = QComboBox()
         self.f_vardiya.addItem("Tümü", "")
-        for k in ("1", "2", "3", "G"):
+        for k in pv.VARDIYA_SIRA:
             self.f_vardiya.addItem(pv.VARDIYA_AD[k], k)
         self.f_vardiya.currentIndexChanged.connect(lambda *_: self._ciz())
         ust.addWidget(self.f_vardiya)
@@ -330,7 +330,7 @@ class PersonelSayfasi(QWidget):
         l.addLayout(ust)
         l.addWidget(etiket("Bu haftanın grup liderleri (hücreye çift tıklayıp düzeltebilirsiniz; adları virgülle ayırın)", "KartBaslik"))
         self.t_lider = QTableWidget(1, 4)
-        self.t_lider.setHorizontalHeaderLabels([pv.VARDIYA_AD[k] for k in ("1", "2", "3", "G")])
+        self.t_lider.setHorizontalHeaderLabels([pv.VARDIYA_AD[k] for k in pv.VARDIYA_SIRA])
         self.t_lider.verticalHeader().hide()
         self.t_lider.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.t_lider.setFixedHeight(64)
@@ -636,7 +636,7 @@ class PersonelSayfasi(QWidget):
                 it0.setToolTip(f"İşten çıkış: {pv._tr(self._cikis(sid))}")
             t.setItem(i, 0, it0)
             t.setItem(i, 1, QTableWidgetItem(pv.tr_baslik(p.get("pozisyon") or "")))
-            t.setItem(i, 2, _hucre({"1": "1 (08–16)", "2": "2 (16–24)", "3": "3 (24–08)", "G": "Gündüz"}.get(bv.get(sid), "-"),
+            t.setItem(i, 2, _hucre(pv.VARDIYA_KISA.get(bv.get(sid), "-"),
                                    bv.get(sid, "Z")))
             t.setItem(i, 3, _sayi(o.planli))
             t.setItem(i, 4, _sayi(o.geldi))
@@ -737,7 +737,7 @@ class PersonelSayfasi(QWidget):
             for sid in sids:
                 o = self._ozet[sid]
                 satir.append((sid, [pv.tr_baslik(self._ad(sid)), pv.tr_baslik(self._kisi.get(sid, {}).get("pozisyon") or ""),
-                                    {"1": "1 (08–16)", "2": "2 (16–24)", "3": "3 (24–08)", "G": "Gündüz"}.get(bv.get(sid), "-"),
+                                    pv.VARDIYA_KISA.get(bv.get(sid), "-"),
                                     str(o.planli), str(o.geldi), str(o.gelmedi), str(o.izinli),
                                     "-" if o.devam is None else f"%{o.devam * 100:.1f}".replace(".", ",")]))
             baslik.setText(f"Personel listesi: {len(sids)} kişi  ·  satıra çift tıklayın: personel kartı")
@@ -810,7 +810,7 @@ class PersonelSayfasi(QWidget):
         except Exception:  # noqa: BLE001
             gl, liderler = [], {}
         self.t_lider.blockSignals(True)
-        for j, k in enumerate(("1", "2", "3", "G")):
+        for j, k in enumerate(pv.VARDIYA_SIRA):
             self.t_lider.setItem(0, j, QTableWidgetItem(", ".join(pv.tr_baslik(x) for x in liderler.get(k, []))))
         self.t_lider.blockSignals(False)
         v, pz = self.f_vardiya.currentData(), self.f_poz.currentData()
@@ -831,7 +831,7 @@ class PersonelSayfasi(QWidget):
             if pz and str(self._kisi.get(sid, {}).get("pozisyon") or "") != pz:
                 continue
             satirlar.append(sid)
-        sira = {"1": 0, "2": 1, "3": 2, "G": 3}
+        sira = {k: i for i, k in enumerate(pv.VARDIYA_SIRA)}
         satirlar.sort(key=lambda s: (sira.get(bask.get(s, "Z"), 9), not self._lider_mi(s), self._ad(s)))
         t = self.t_vardiya
         t.clearSpans()
@@ -850,7 +850,7 @@ class PersonelSayfasi(QWidget):
         bugun = date.today()
         for i, sid in enumerate(satir_listesi):
             if sid is None or sid < 0:
-                ad = "Diğer" if sid is None else pv.VARDIYA_AD[("1", "2", "3", "G")[-sid - 1]]
+                ad = "Diğer" if sid is None else pv.VARDIYA_AD[pv.VARDIYA_SIRA[-sid - 1]]
                 it = QTableWidgetItem(ad)
                 f = it.font()
                 f.setBold(True)
@@ -906,7 +906,7 @@ class PersonelSayfasi(QWidget):
     def _lider_degisti(self, _it):
         duz = dict(self.ana.ayar.get("pv_grup_lider") or {})
         duz[self._hafta.isoformat()] = {k: [x.strip() for x in (self.t_lider.item(0, j).text() if self.t_lider.item(0, j) else "")
-                                            .split(",") if x.strip()] for j, k in enumerate(("1", "2", "3", "G"))}
+                                            .split(",") if x.strip()] for j, k in enumerate(pv.VARDIYA_SIRA)}
         vt.ayar_yaz(self.ana.con, "pv_grup_lider", duz)
         self.ana.ayar["pv_grup_lider"] = duz
 

@@ -871,7 +871,7 @@ function durumAl(){
 
 // ------------------------------------------------------------------ PERSONEL DURUM
 var PV = {veri: null, sekme: 'devam', sira: ['ad', 1], pzt: null, sid: null, ay: null};
-var VAD = {'1': '1 (08–16)', '2': '2 (16–24)', '3': '3 (24–08)', 'G': 'Gündüz'};
+var VAD = {'1': '2 (08–16)', '2': '3 (16–00)', '3': '1 (00–08)', 'G': 'Gündüz'};
 function sureY(dk){ dk = Math.round(dk || 0); return dk < 60 ? dk + ' dk' : Math.floor(dk/60) + ' sa' + (dk % 60 ? ' ' + String(dk%60).padStart(2,'0') + ' dk' : ''); }
 function trT(s){ return s ? s.split('-').reverse().join('.') : ''; }
 document.querySelectorAll('#pv-sekme button').forEach(function(b){ b.onclick = function(){ pvSekme(b.dataset.p); }; });
@@ -1011,7 +1011,7 @@ function pvHafta(){
     if (d.hata) return;
     var p = gun(d.pzt), gunler = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
     $('pv-hbas').textContent = 'Hafta: ' + trT(iso(p)) + ' – ' + trT(iso(ekle(p, 6)));
-    $('pv-lider').innerHTML = '<b>Grup liderleri:</b> ' + ['1', '2', '3', 'G'].map(function(k){ return esc(d.vardiya_ad[k]) + ': ' + (d.lider[k].length ? esc(d.lider[k].join(', ')) : '-'); }).join(' · ');
+    $('pv-lider').innerHTML = '<b>Grup liderleri:</b> ' + ['3', '1', '2', 'G'].map(function(k){ return esc(d.vardiya_ad[k]) + ': ' + (d.lider[k].length ? esc(d.lider[k].join(', ')) : '-'); }).join(' · ');
     var h = '<tr><th>Personel</th>' + gunler.map(function(g, i){ return '<th>' + g + ' ' + ekle(p, i).getDate() + '</th>'; }).join('') + '</tr>', once = null;
     d.satir.forEach(function(r){
       if (r.vardiya !== once) { h += '<tr class="bas"><td colspan="8">' + esc(d.vardiya_ad[r.vardiya] || 'Diğer') + '</td></tr>'; once = r.vardiya; }

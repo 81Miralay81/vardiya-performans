@@ -148,8 +148,9 @@ class AyarSayfasi(QWidget):
         k.layout().addLayout(f)
         self.gizle = QCheckBox("Çalışmayan makineleri grafiklerde ve raporlarda gösterme")
         self.gizle.setToolTip("İşaretli: seçili dönemde hiç çalışmayan makineler (çalışma payı %1'in altında, ör. tamamı İŞ EMRİ PLAN YOK, "
-                              "ya da hiç kaydı olmayan) Performans, Çalışma sayfası ve makine raporu grafiklerinde çıkmaz.\n"
-                              "İşaretsiz: Ayarlar'daki makine listesinin tamamı görünür; kaydı olmayan makine boş sütun olur.\n"
+                              "ya da hiç kaydı olmayan) ve eşik altında kalıp hesaba girmeyen makineler Performans, Çalışma sayfası ve makine raporu "
+                              "grafiklerinde çıkmaz.\n"
+                              "İşaretsiz: Ayarlar'daki makine listesinin tamamı görünür; kaydı olmayan makine boş sütun, eşik altı makine soluk/taralı olur.\n"
                               "Cormind rapor sistemi bu seçenekten etkilenmez.")
         k.layout().addWidget(self.gizle)
         ic.addWidget(k)
@@ -219,7 +220,8 @@ class AyarSayfasi(QWidget):
         ke.layout().addWidget(etiket("OPERATÖR EŞLEŞTİRME", "KartBaslik"))
         ke.layout().addWidget(etiket("Makine kayıtlarındaki operatör adı personel listesindeki adla kendiliğinden eşleştirilir (büyük/küçük harf ve "
                                      "Türkçe karakter farkı gözetilmez). Eşleşmeyenleri burada elle eşleştirin. Operatör, Performans ve Operatör "
-                                     "sayfalarında yalnızca kendi vardiyasında görünür; kendi vardiyası dışında 'fazla çalışma en az' süresinden uzun "
+                                     "sayfalarında yalnızca kendi vardiyasında görünür. Vardiya başında ve sonunda 'fazla çalışma en az' süresi kadar "
+                                     "esneme vardır (ör. yarım saat önce giriş, yarım saat sonra çıkış mesai sayılmaz); bunun dışında "
                                      "çalıştıysa '(mesai)' olarak ayrı listelenir. Personel listesinde olmayanlar '(kalıphane dışı)' diye işaretlenir.",
                                      "AltBaslik"))
         self.t_esles = QTableWidget(0, 2)

@@ -614,7 +614,7 @@ class Sunucu:
         gm: dict = {}
         for g in gl:
             gm.setdefault(g.sicilid, {})[g.gun] = g
-        sira = {"1": 0, "2": 1, "3": 2, "G": 3}
+        sira = {k: i for i, k in enumerate(pv.VARDIYA_SIRA)}
         satir = []
         for sid in sorted([s for s in gm if not kisi.get(s, {}).get("cikis_tarih")], key=lambda s: (sira.get(bv.get(s, ""), 9), not pv.lider_mi(kisi.get(s, {})), str(kisi.get(s, {}).get("ad", "")))):
             gunler = []

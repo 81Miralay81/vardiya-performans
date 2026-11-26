@@ -467,7 +467,8 @@ def durus_dokumu(kayitlar: Iterable[Tuple[str, str, datetime, datetime]], gunler
 
 
 def calismayan_makineler(sonuc: Optional["DonemSonuc"], sinir: float = 0.01) -> set:
-    """Seçili dönemde hiç çalışmayan makineler (çalışma payı %1'in altında): Ayarlar'daki seçenekle grafiklerden çıkarılır."""
+    """Seçili dönemde hiç çalışmayan makineler (çalışma payı %1'in altında) ve kaydı olup hiçbir vardiyada eşiği geçemeyen
+    (eşik altı, hesaba girmeyen) makineler: Ayarlar'daki "çalışmayan makineleri gösterme" seçeneğiyle grafiklerden çıkarılır."""
     if not sonuc:
         return set()
     gizli = set()
@@ -476,8 +477,7 @@ def calismayan_makineler(sonuc: Optional["DonemSonuc"], sinir: float = 0.01) -> 
             gizli.add(m)
     for m, e in sonuc.esik_alti.items():
         if m not in sonuc.makine_ort or sonuc.makine_ort[m][0] is None:
-            if e[0] < sinir:
-                gizli.add(m)
+            gizli.add(m)                          # eşik altı: hesaba girmez, seçenek açıkken grafikte de görünmez
     return gizli
 
 

@@ -134,14 +134,18 @@ def plan_bilgi(plan: str) -> Tuple[str, Optional[Tuple[int, int]], Optional[Tupl
     return tur, a, b
 
 
-VARDIYA_AD = {"1": "1. vardiya 08–16", "2": "2. vardiya 16–24", "3": "3. vardiya 24–08", "G": "Gündüz 08–18", "D": "Diğer"}
+# İç kodlar personel verisinden gelir (1=08–16, 2=16–00, 3=00–08); ekranda fabrikanın numarası yazılır:
+# 1. vardiya 00–08, 2. vardiya 08–16, 3. vardiya 16–00.
+VARDIYA_AD = {"1": "2. vardiya 08–16", "2": "3. vardiya 16–00", "3": "1. vardiya 00–08", "G": "Gündüz 08–18", "D": "Diğer"}
+VARDIYA_KISA = {"1": "2 (08–16)", "2": "3 (16–00)", "3": "1 (00–08)", "G": "Gündüz"}
+VARDIYA_SIRA = ("3", "1", "2", "G")          # ekranda 1., 2., 3. vardiya, sonra gündüz
 
 
 def plan_kisa(plan: str) -> str:
     p = (plan or "").replace("(CUMA)", "").strip()
     m = SAAT_ARALIK.search(p)
     if m and "tatil" not in p.lower():
-        return f"{int(m.group(1)):02d}–{int(m.group(3)):02d}"
+        return f"{int(m.group(1)) % 24:02d}–{int(m.group(3)) % 24:02d}"
     if "tatil" in p.lower():
         return "HT"
     if "cumartesi" in p.lower():
@@ -515,7 +519,9 @@ def donem_hesabi(con, ilk: date, son: date, ayar: Optional[dict] = None, bugun: 
     tol = int(ayar.get("pv_tolerans_dk", VARSAYILAN_TOLERANS_DK))
     fz = int(ayar.get("pv_fazla_en_az_dk", VARSAYILAN_FAZLA_EN_AZ_DK))
     bugun = bugun or date.today()
-    gl = resmi_tatilleri_ayir([siniflandir(r, bugun, tol, fz) for r in gunler(con, ilk, son)])
+    satir = kayan_cikislari_duzelt(gunler(con, ilk, son + timedelta(days=1)))
+    satir = [r for r in satir if r["gun"] <= son.isoformat()]
+    gl = resmi_tatilleri_ayir([siniflandir(r, bugun, tol, fz) for r in satir])
     return gl, ozetle(gl)
 
 
@@ -540,6 +546,42 @@ def ad_suz(adlar, kisi: Dict[int, dict], gizli: set):
     from .operator_vardiya import ad_anahtar
     g = {ad_anahtar(str(kisi[s].get("ad") or "")) for s in gizli if s in kisi}
     return [a for a in adlar if ad_anahtar(str(a)) not in g]
+
+
+KAYAN_CIKIS_SON_DK = 4 * 60     # gece yarısından sonra bu saate kadar okutulan çıkış önceki günün 16–00 vardiyasına aittir
+
+
+def kayan_cikislari_duzelt(satirlar: List[dict]) -> List[dict]:
+    """16:00–24:00 vardiyasının gece yarısından sonra okutulan çıkışı kaynakta ertesi günün hücresine yazılır
+    (ör. Çarşamba vardiyası, Perşembe 00:06 çıkış). Ertesi günün kendi vardiyası öğleden sonra başlıyorsa ve o günde
+    giriş yokken sabaha karşı tek bir çıkış görünüyorsa, bu çıkış önceki günün vardiyasına taşınır."""
+    kisi: Dict[int, Dict[str, dict]] = defaultdict(dict)
+    for r in satirlar:
+        kisi[r["sicilid"]][str(r["gun"])] = r
+    for gunler_ in kisi.values():
+        for gs, r in gunler_.items():
+            try:
+                d = date.fromisoformat(gs)
+            except ValueError:
+                continue
+            onceki = gunler_.get((d - timedelta(days=1)).isoformat())
+            if onceki is None or r.get("giris") or not r.get("cikis"):
+                continue
+            c = _dk(r.get("cikis"))
+            tur_o, _a, b_o = plan_bilgi(onceki.get("plan") or "")
+            tur, a, _b = plan_bilgi(r.get("plan") or "")
+            if c is None or c > KAYAN_CIKIS_SON_DK or b_o is None or b_o[0] % 24 != 0:
+                continue
+            if tur_o in ("T",) or onceki.get("cikis"):
+                continue
+            if a is not None and a[0] * 60 + a[1] <= c + 60:
+                continue                              # ertesi günün kendi vardiyası bu saatte başlıyor: onun çıkışı/girişi
+            onceki["cikis"] = r["cikis"]
+            onceki["e_dk"] = -c                       # vardiya 24:00'te biter: 00:06 çıkış = 6 dk geç çıkış
+            onceki["gercek"] = 1
+            r["cikis"] = None
+            r["e_dk"] = 0
+    return satirlar
 
 
 def resmi_tatilleri_ayir(gl: List[Gun]) -> List[Gun]:

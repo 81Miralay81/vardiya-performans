@@ -1,11 +1,11 @@
 """Operatörü kendi vardiyasına bağlama (Cormind makine kayıtları + personel verisindeki vardiya planı).
 
 Makine kayıtlarında operatörün yalnızca ADI yazar. Ad personel listesiyle eşleştirilir (büyük/küçük harf ve Türkçe karakter
-farkı gözetilmez; Ayarlar'daki elle eşleştirme önceliklidir). Eşleşen kişinin o günkü planlı vardiya saatleri dışında kalan
-kayıt parçaları:
-  - aynı gün aynı vardiya diliminde toplam süre mesai eşiğini (Ayarlar > Personel veri > fazla çalışma en az) geçiyorsa
-    "<ad> (mesai)" adıyla ayrı listelenir,
-  - geçmiyorsa (vardiya devri gibi kısa taşmalar) o parça operatörsüz sayılır.
+farkı gözetilmez; Ayarlar'daki elle eşleştirme önceliklidir). Kişinin o günkü planlı vardiyası
+esnemeyle birlikte kendi vardiyası sayılır: giriş en çok yarım saat önce, çıkış en çok yarım saat sonra olabilir
+(süre Ayarlar > Personel veri > "fazla çalışma en az"). Bu esnemenin dışında kalan kayıt parçaları:
+  - aynı gün aynı vardiya diliminde toplam süre birkaç dakikayı geçiyorsa "<ad> (mesai)" adıyla ayrı listelenir,
+  - geçmiyorsa (ör. kapanmamış kayıt) kişinin kendi adıyla kalır.
 Personel listesinde bulunmayan operatör "<ad> (kalıphane dışı)" olarak işaretlenir.
 Personel verisi olmayan günlerde (ör. kaynakta veri başlamadan önce) kayıtlara dokunulmaz.
 """
@@ -16,6 +16,7 @@ from datetime import date, datetime, timedelta
 from typing import Dict, Iterable, List, Optional, Tuple
 
 MESAI = " (mesai)"
+MESAI_EN_AZ_DK = 5            # esneme dışındaki bundan kısa taşmalar mesai sayılmaz
 DISARI = " (kalıphane dışı)"
 _TR = str.maketrans("ÇĞİIÖŞÜçğıiöşüÂâÎîÛû", "CGIIOSUCGIIOSUAAIIUU")
 
@@ -58,6 +59,8 @@ class Eslestirici:
         from . import personel_veri as pv
         ayar = ayar or {}
         self.esik_sn = 60.0 * float(ayar.get("pv_fazla_en_az_dk", pv.VARSAYILAN_FAZLA_EN_AZ_DK))
+        self.esneme = timedelta(seconds=self.esik_sn)      # vardiya başı/sonu esnemesi (mesai sayılmaz)
+        self.mesai_en_az_sn = MESAI_EN_AZ_DK * 60.0
         self.kisiler = pv.personel(con)
         self.tam: Dict[str, int] = {}
         self.kisa: Dict[str, List[int]] = defaultdict(list)
@@ -86,10 +89,10 @@ class Eslestirici:
         return aday[0] if len(aday) == 1 else None
 
     def kendi_mi(self, sid: int, t0: datetime, t1: datetime) -> bool:
-        """[t0, t1) kişinin planlı vardiya penceresi içinde mi (önceki günün gece vardiyası dahil)."""
+        """[t0, t1) kişinin planlı vardiya penceresi (± esneme) içinde mi (önceki günün gece vardiyası dahil)."""
         for g in (t0.date(), t0.date() - timedelta(days=1)):
             p = self.pencere.get(sid, {}).get(g)
-            if p and p[0] <= t0 and t1 <= p[1]:
+            if p and p[0] - self.esneme <= t0 and t1 <= p[1] + self.esneme:
                 return True
         return False
 
@@ -122,7 +125,7 @@ def vardiyaya_bagla(kayit: Iterable[Tuple[str, str, str, datetime, datetime]], e
         for g in (a.date() - timedelta(days=1), a.date(), b.date()):
             p = es.pencere.get(sid, {}).get(g)
             if p:
-                sinir += [p[0], p[1]]
+                sinir += [p[0] - es.esneme, p[1] + es.esneme]
             gun0 = datetime(g.year, g.month, g.day)
             sinir += [gun0 + timedelta(hours=h) for h in (0, 8, 16, 24)]
         for x, y in _dilimle(a, b, sinir):
@@ -134,10 +137,10 @@ def vardiyaya_bagla(kayit: Iterable[Tuple[str, str, str, datetime, datetime]], e
     for op, m, tip, a, b, sid, kendi in parca:
         if sid is None or kendi:
             sonuc.append((op, m, tip, a, b))
-        elif yabanci_sure[(sid, a.date(), a.hour // 8 + 1)] >= es.esik_sn:
+        elif yabanci_sure[(sid, a.date(), a.hour // 8 + 1)] >= es.mesai_en_az_sn:
             sonuc.append((op + MESAI, m, tip, a, b))
         else:
-            sonuc.append(("", m, tip, a, b))
+            sonuc.append((op, m, tip, a, b))
     return sonuc
 
 
