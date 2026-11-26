@@ -18,7 +18,6 @@ import os
 import socket
 import sqlite3
 import threading
-import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timedelta
@@ -144,7 +143,13 @@ class Kopru(QObject):
                     self._yazilacak = "bekliyor"
             except urllib.error.HTTPError as e:
                 if e.code == 404:
-                    self._yazilacak = "bekliyor (henüz komut yok)"
+                    # 404 iki anlama gelir: komut dosyası yok ya da anahtar depoyu hiç göremiyor (GitHub gizli depoda 404 döner)
+                    try:
+                        _istek("GET", "README.md")
+                        self._yazilacak = f"bekliyor (henüz komut yok · bu bilgisayarın adı: {self.pc})"
+                    except urllib.error.HTTPError:
+                        self._hata.emit("anahtar 'vp-kopru' deposunu göremiyor (404): anahtarın 'Repository access' kısmında "
+                                        "vp-kopru seçili ve 'Contents' izni 'Read and write' olmalı")
                 else:
                     self._hata.emit(f"HTTP {e.code} (anahtarın 'vp-kopru' deposuna okuma-yazma izni olmalı)")
             except Exception as e:  # noqa: BLE001
