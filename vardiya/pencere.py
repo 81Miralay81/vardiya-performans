@@ -370,8 +370,13 @@ class AnaPencere(QMainWindow):
 
     def yenile(self):
         import time as _t
+        from .bekleme import Bekleme
         QApplication.setOverrideCursor(Qt.WaitCursor)
         bekle, t0, n_kayit = None, _t.perf_counter(), 0
+        bk = Bekleme(self, "Dönem hesaplanıyor", "seçilen günlerin kayıtları okunup vardiya hesabı yapılıyor", gecikme_ms=0) \
+            if self.isVisible() and (self.donem.aralik()[1] - self.donem.aralik()[0]).days <= 31 else None
+        if bk:
+            QApplication.processEvents()
         try:
             secili = self.donem.gunler()
             ilk, son = self.donem.aralik()
@@ -409,6 +414,8 @@ class AnaPencere(QMainWindow):
                 self.alt_bilgi.setText("Henüz veri yok")
         finally:
             QApplication.restoreOverrideCursor()
+            if bk:
+                bk.bitir()
         # Yalnızca o an açık olan sayfa yenilenir; diğerleri açıldıklarında (sayfa_ac) kendileri yenilenir.
         acik = self.yigin.currentWidget()
         for a in ("performans", "hatali", "calisma", "durus", "mola", "operator"):

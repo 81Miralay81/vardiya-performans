@@ -11,7 +11,7 @@ from typing import Callable, Dict, List, Optional
 from PySide6.QtCore import QRectF, Qt, QThread, QTimer, Signal
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QScrollArea, QSizePolicy, QToolTip, QVBoxLayout, QWidget
 
-from . import cizim, cizim_ek, tema
+from . import bekleme, cizim, cizim_ek, tema
 from .hesap import VARDIYALAR, calismayan_makineler, cormind_hesabi, durus_dokumu
 from .sayfa_ortak import CizimWidget, etiket, kart
 
@@ -439,11 +439,14 @@ class PerformansSayfasi(QWidget):
         self.k_kirilim.show()
         for w in (self.g_detay, self.g_kv, self.g_ko):
             w.update()
-        self._sc.ensureWidgetVisible(self.k_kirilim, 0, 30)
+        bekleme.kaydir(self._sc, self.k_kirilim)
         if anahtar in onbellek:                         # aynı dönemde daha önce hesaplandı: anında
             self._kirilim_geldi(m, tip, onbellek[anahtar])
             return
         is_ = _KirilimIs(self.ana.db_yolu, min(gunler), max(gunler), m, tip, self)
+        from .bekleme import Bekleme
+        bk = Bekleme(self, "Kırılım hazırlanıyor", f"{m} · {tip}: vardiya ve operatör dağılımı hesaplanıyor")
+        is_.finished.connect(bk.bitir)
         is_.bitti.connect(self._kirilim_geldi)
         is_.finished.connect(is_.deleteLater)
         self._kirilim_is = is_
@@ -517,13 +520,17 @@ class PerformansSayfasi(QWidget):
         self.k_op.setVisible(not self._tek_makine)
         for w in (self.g_ko, self.g_om, self.g_oz):
             w.update()
-        self._sc.ensureWidgetVisible(self.k_op, 0, 30)
+        bekleme.kaydir(self._sc, self.k_op)
         anahtar = (min(gunler), max(gunler))
         bellek = getattr(self, "_donem_kayit", None)
         if bellek and bellek[0] == anahtar:
             self._op_hesapla(bellek[1])
             return
         is_ = _DonemKayitIs(self.ana.db_yolu, anahtar[0], anahtar[1], self)
+        from .bekleme import Bekleme
+        bk = Bekleme(self, "Operatör ayrıntısı hazırlanıyor",
+                     f"{anahtar[0]:%d.%m} – {anahtar[1]:%d.%m} arasında tüm makinelerin kayıtları okunuyor (bir kez; sonra anında açılır)")
+        is_.finished.connect(bk.bitir)
         is_.bitti.connect(self._donem_kayit_geldi)
         is_.finished.connect(is_.deleteLater)
         self._donem_is = is_
@@ -601,7 +608,7 @@ class PerformansSayfasi(QWidget):
         self.z_alt.setText(baslik + " · satırlar: bu duruşun görüldüğü makineler")
         self.zc.ayarla(satirlar, bloklar, t0, t1, tema.durus_rengi(self._tip or ""), self._tip or "", gorunum)
         self.k_gantt.show()
-        self._sc.ensureWidgetVisible(self.k_gantt, 0, 30)
+        bekleme.kaydir(self._sc, self.k_gantt)
 
     def _sup_olaylar(self) -> list:
         if not self._secili or self._sup_v is None:
@@ -624,7 +631,7 @@ class PerformansSayfasi(QWidget):
         self.g_sup.setFixedHeight(max(220, 112 * n))
         self.k_supheli.show()
         self.g_sup.update()
-        self._sc.ensureWidgetVisible(self.k_supheli, 0, 30)
+        bekleme.kaydir(self._sc, self.k_supheli)
 
     def _supheli_kapat(self):
         self._sup_v = None
@@ -656,7 +663,7 @@ class PerformansSayfasi(QWidget):
         self._detay_yaz()
         for w in (self.g_makine, self.g_detay):
             w.update()
-        self._sc.ensureWidgetVisible(self.k_detay, 0, 30)
+        bekleme.kaydir(self._sc, self.k_detay)
 
     def _detay_yaz(self):
         m = self._secili

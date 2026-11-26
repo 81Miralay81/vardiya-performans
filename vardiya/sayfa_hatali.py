@@ -1,12 +1,14 @@
 """Hatalı Duruşlar sayfası (Performans altında, Çalışma sayfası gibi dönem çubuğuyla).
 
-Kırılım sırası:
-  1. Makine bazlı hatalı duruş süresi (tek grafik) — makineye tıklayın.
-  2. Seçili makine: vardiyaya göre | "Operatör var" (operatöre göre) | "Operatör yok · iş var" (ürün koduna göre),
-     altında duruş adına göre ve zamana (güne) göre — bir sütuna tıklamak süzgeç olur (yeniden tıklayınca kalkar).
-  3. Süzgece uyan olayların listesi — satıra çift tıklayın: zaman çizelgesi o olaya yakınlaşır.
-  4. Zaman çizelgesi (gant): makinenin tüm kayıtları; süzgece uyan hatalı duruşlar kırmızı taralı çerçeveli.
-Kurallar ve tanımlar hatali_durus.py'dedir; seçimler Ayarlar > Duruşlar kartındadır.
+Hatalı duruş: Ayarlar'da seçilen duruşlar (ör. İŞ EMRİ PLAN YOK) sürerken makinede operatör kayıtlı ya da iş (ürün kodu)
+görünmesi. Doğru olan kısım gösterilmez; yalnızca bu durumların süresi.
+
+Kırılım sırası (her seviye bir öncekine tıklayınca altta açılır, aynı yere yeniden tıklamak kapatır):
+  1. Makine bazlı hatalı duruş süresi.
+  2. Seçili makine: vardiyaya göre | duruş adına göre.
+  3. Seçilen vardiya / duruş: operatöre göre | işe (ürün koduna) göre.
+  4. Seçilen operatör / iş: zaman çizelgesi (gant), o hatalı duruşlar kırmızı taralı çerçeveli; altında olay listesi.
+Veri okuma arka planda yapılır (pencere donmaz, bekleme kartı görünür). Kurallar hatali_durus.py'dedir.
 """
 from __future__ import annotations
 
@@ -17,8 +19,8 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QAbstractItemView, QFrame, QHBoxLayout, QHeaderView, QLabel, QPushButton, QScrollArea, QTableWidget,
                                QTableWidgetItem, QVBoxLayout, QWidget)
 
-from . import cizim, cizim_ek, hatali_durus as hd, tema
-from .sayfa_ortak import etiket, kart
+from . import bekleme, cizim, cizim_ek, hatali_durus as hd, tema
+from .sayfa_ortak import etiket
 from .sayfa_performans import TikliCizim, _kart_baslikli
 
 KUTU = (("toplam", "Toplam hatalı duruş", "#D64541"), ("adet", "Olay sayısı", "#2B3A8F"),
@@ -26,13 +28,17 @@ KUTU = (("toplam", "Toplam hatalı duruş", "#D64541"), ("adet", "Olay sayısı"
         (hd.TUR_IS, hd.TUR_AD[hd.TUR_IS], hd.TUR_RENK[hd.TUR_IS]), ("makine", "Makine", "#3E9B2A"))
 
 
-def _acik(renk: str, t: float) -> str:
-    r, g, b = (int(renk[i:i + 2], 16) for i in (1, 3, 5))
-    return "#%02x%02x%02x" % tuple(int(x + (255 - x) * t) for x in (r, g, b))
-
-
 def _sa(saat: float) -> str:
     return f"{cizim._saat_dk(saat)} sa"
+
+
+def _kapat_dugmesi(satir, fn):
+    b = QPushButton("✕")
+    b.setToolTip("Kapat")
+    b.setFixedSize(28, 26)
+    b.setCursor(Qt.PointingHandCursor)
+    b.clicked.connect(fn)
+    satir.addWidget(b)
 
 
 class HataliSayfasi(QWidget):
@@ -42,7 +48,10 @@ class HataliSayfasi(QWidget):
         self._olaylar: List[hd.Olay] = []
         self._donem: Optional[Tuple[date, date]] = None
         self._makine: Optional[str] = None
-        self._suzgec: Optional[Tuple[str, str]] = None       # (tür, değer): vardiya / operator / is / durus / gun
+        self._s1: Optional[Tuple[str, str]] = None         # 2. seviye seçimi: ("vardiya", "1. Vardiya") | ("durus", ad)
+        self._s2: Optional[Tuple[str, str]] = None         # 3. seviye seçimi: (TUR_OPERATOR, ad) | (TUR_IS, ürün kodu)
+        self._liste: List[hd.Olay] = []
+        self._is_no = 0
         dis = QVBoxLayout(self)
         dis.setContentsMargins(26, 22, 26, 22)
         sc = QScrollArea()
@@ -60,7 +69,7 @@ class HataliSayfasi(QWidget):
         self.aciklama = etiket("", "AltBaslik")
         kok.addWidget(self.aciklama)
 
-        # ------------------------------------------------ özet kutuları (renkli)
+        # ------------------------------------------------ özet kutuları
         ust = QHBoxLayout()
         ust.setSpacing(10)
         self.kutu = {}
@@ -81,7 +90,7 @@ class HataliSayfasi(QWidget):
             ust.addWidget(f, 1)
         kok.addLayout(ust)
 
-        # ------------------------------------------------ 1. makine bazlı
+        # ------------------------------------------------ 1. makine
         k1, _b, self.m_alt, _s = _kart_baslikli("Makine bazlı hatalı duruşlar", "bir makineye tıklayın")
         self.g_makine = TikliCizim(lambda p, r, b: cizim_ek.kirilim_grafigi(
             p, r, [(m, x, "#D64541") for m, x in hd.makineye_gore(self._olaylar)], None, b, "makine", self._makine), 300, 320)
@@ -90,104 +99,100 @@ class HataliSayfasi(QWidget):
         k1.layout().addWidget(self.g_makine)
         kok.addWidget(k1)
 
-        # ------------------------------------------------ 2. makine kırılımı
-        k2, self.k_baslik, self.k_alt, s2 = _kart_baslikli("Kırılım", "")
+        # ------------------------------------------------ 2. vardiya | duruş adı
+        k2, self.k2_baslik, self.k2_alt, s2 = _kart_baslikli("Kırılım", "")
         self.g_v = self._grafik(lambda: [(a, x, tema.LACIVERT) for a, x in hd.vardiyaya_gore(self._makine_olaylari())],
-                                "Vardiyaya göre", "vardiya")
+                                "Vardiyaya göre (tıklayın)", "vardiya", 1)
         self.g_d = self._grafik(lambda: [(a, x, tema.durus_rengi(a)) for a, x in hd.durusa_gore(self._makine_olaylari())],
-                                "Duruş adına göre", "durus")
-        self.g_op = self._grafik(lambda: [(a, x, hd.TUR_RENK[hd.TUR_OPERATOR]) for a, x in hd.operatore_gore(self._makine_olaylari())],
-                                 "Operatör var (operatöre göre)", hd.TUR_OPERATOR)
-        self.g_is = self._grafik(lambda: [(a, x, hd.TUR_RENK[hd.TUR_IS]) for a, x in hd.ise_gore(self._makine_olaylari())],
-                                 "Operatör yok · iş var (ürün koduna göre)", hd.TUR_IS)
-        self.g_gun = TikliCizim(lambda p, r, b: cizim_ek.zaman_grafigi(
-            p, r, hd.gune_gore(self._makine_olaylari(), *self._donem) if self._donem else [], "gun", "Zamana göre (güne tıklayın)",
-            b, self._suzgec[1] if self._suzgec and self._suzgec[0] == "gun" else None, "#D64541"), 280, 320)
-        self.g_gun.tiklandi.connect(lambda a, _k: self._suz("gun", a))
-        for sol, sag in ((self.g_v, self.g_d), (self.g_op, self.g_is)):        # ikişer yan yana
-            sat = QHBoxLayout()
-            sat.setSpacing(12)
-            sat.addWidget(sol, 1)
-            sat.addWidget(sag, 1)
-            k2.layout().addLayout(sat)
-        k2.layout().addWidget(self.g_gun)
-        b_k = QPushButton("✕")
-        b_k.setToolTip("Kapat")
-        b_k.setFixedSize(28, 26)
-        b_k.clicked.connect(self._makine_kapat)
-        s2.addWidget(b_k)
+                                "Duruş adına göre (tıklayın)", "durus", 1)
+        k2.layout().addLayout(self._ikili(self.g_v, self.g_d))
+        _kapat_dugmesi(s2, self._makine_kapat)
         k2.hide()
-        self.k_kirilim = k2
+        self.k2 = k2
         kok.addWidget(k2)
 
-        # ------------------------------------------------ 3. olay listesi
-        k3, self.l_baslik, self.l_alt, s3 = _kart_baslikli("Hatalı duruş listesi", "")
-        self.b_suz = QPushButton("Süzgeci kaldır")
-        self.b_suz.setObjectName("Hizli")
-        self.b_suz.clicked.connect(lambda: self._suz(None, None))
-        s3.addWidget(self.b_suz)
+        # ------------------------------------------------ 3. operatör | iş
+        k3, self.k3_baslik, self.k3_alt, s3 = _kart_baslikli("Kırılım", "")
+        self.g_op = self._grafik(lambda: [(a, x, hd.TUR_RENK[hd.TUR_OPERATOR]) for a, x in hd.operatore_gore(self._s1_olaylari())],
+                                 "Operatör var · operatöre göre (tıklayın)", hd.TUR_OPERATOR, 2)
+        self.g_is = self._grafik(lambda: [(a, x, hd.TUR_RENK[hd.TUR_IS]) for a, x in hd.ise_gore(self._s1_olaylari())],
+                                 "Operatör yok · iş var · ürün koduna göre (tıklayın)", hd.TUR_IS, 2)
+        k3.layout().addLayout(self._ikili(self.g_op, self.g_is))
+        _kapat_dugmesi(s3, self._s1_kapat)
+        k3.hide()
+        self.k3 = k3
+        kok.addWidget(k3)
+
+        # ------------------------------------------------ 4. zaman çizelgesi + olay listesi
+        from .zaman_cizelgesi import ZamanCizelgesi
+        k4, self.z_baslik, self.z_alt, s4 = _kart_baslikli("Zaman çizelgesi", "")
+        self.zc = ZamanCizelgesi()
+        k4.layout().addWidget(self.zc)
         self.tablo = QTableWidget()
-        self.tablo.setColumnCount(9)
-        self.tablo.setHorizontalHeaderLabels(["Tarih", "Vardiya", "Duruş", "Başlangıç", "Bitiş", "Süre", "Hata türü", "Operatör",
-                                              "Ürün kodu · iş emri"])
+        self.tablo.setColumnCount(8)
+        self.tablo.setHorizontalHeaderLabels(["Tarih", "Vardiya", "Duruş", "Başlangıç", "Bitiş", "Süre", "Operatör", "Ürün kodu · iş emri"])
         self.tablo.verticalHeader().hide()
         self.tablo.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.tablo.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.tablo.setAlternatingRowColors(True)
         self.tablo.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
         self.tablo.horizontalHeader().setStretchLastSection(True)
-        self.tablo.setMinimumHeight(220)
-        self.tablo.setMaximumHeight(320)
+        self.tablo.setMinimumHeight(160)
+        self.tablo.setMaximumHeight(260)
         self.tablo.cellDoubleClicked.connect(self._olaya_git)
-        k3.layout().addWidget(self.tablo)
-        k3.hide()
-        self.k_liste = k3
-        kok.addWidget(k3)
-
-        # ------------------------------------------------ 4. zaman çizelgesi
-        from .zaman_cizelgesi import ZamanCizelgesi
-        k4, self.z_baslik, self.z_alt, s4 = _kart_baslikli("Zaman çizelgesi", "")
-        self.zc = ZamanCizelgesi()
-        k4.layout().addWidget(self.zc)
-        b_z = QPushButton("✕")
-        b_z.setToolTip("Kapat")
-        b_z.setFixedSize(28, 26)
-        b_z.clicked.connect(lambda: self.k_gantt.hide())
-        s4.addWidget(b_z)
+        k4.layout().addWidget(etiket("Olaylar · satıra çift tıklayın: çizelge o olaya yakınlaşır", "AltBaslik"))
+        k4.layout().addWidget(self.tablo)
+        _kapat_dugmesi(s4, self._s2_kapat)
         k4.hide()
-        self.k_gantt = k4
+        self.k4 = k4
         kok.addWidget(k4)
         kok.addStretch(1)
 
     # ---------------------------------------------------------------- yardımcılar
-    def _grafik(self, veri, baslik: str, tur: str) -> TikliCizim:
-        g = TikliCizim(lambda p, r, b: cizim_ek.kirilim_grafigi(
-            p, r, veri(), baslik, b, tur, self._suzgec[1] if self._suzgec and self._suzgec[0] == tur else None), 300, 300)
-        g.tiklandi.connect(lambda a, _k, t=tur: self._suz(t, a))
+    @staticmethod
+    def _ikili(sol, sag) -> QHBoxLayout:
+        sat = QHBoxLayout()
+        sat.setSpacing(12)
+        sat.addWidget(sol, 1)
+        sat.addWidget(sag, 1)
+        return sat
+
+    def _grafik(self, veri, baslik: str, tur: str, seviye: int) -> TikliCizim:
+        def secili():
+            s = self._s1 if seviye == 1 else self._s2
+            return s[1] if s and s[0] == tur else None
+        g = TikliCizim(lambda p, r, b: cizim_ek.kirilim_grafigi(p, r, veri(), baslik, b, tur, secili()), 300, 300)
+        g.tiklandi.connect(lambda a, _k: (self._s1_sec if seviye == 1 else self._s2_sec)(tur, a))
         return g
 
     def _makine_olaylari(self) -> List[hd.Olay]:
         return [o for o in self._olaylar if o.makine == self._makine]
 
-    def _suzulmus(self) -> List[hd.Olay]:
+    def _s1_olaylari(self) -> List[hd.Olay]:
         lst = self._makine_olaylari()
-        if not self._suzgec:
+        if not self._s1:
             return lst
-        tur, d = self._suzgec
+        tur, d = self._s1
         if tur == "vardiya":
             v = int(str(d).split(".")[0])
             return [o for o in lst if hd.olay_vardiyada(o, v)]
+        return [o for o in lst if o.tip == d]
+
+    def _s2_olaylari(self) -> List[hd.Olay]:
+        lst = self._s1_olaylari()
+        if not self._s2:
+            return lst
+        tur, d = self._s2
         if tur == hd.TUR_OPERATOR:
             return [o for o in lst if o.tur == hd.TUR_OPERATOR and o.operator == d]
-        if tur == hd.TUR_IS:
-            return [o for o in lst if o.tur == hd.TUR_IS and o.is_ad == d]
-        if tur == "durus":
-            return [o for o in lst if o.tip == d]
-        if tur == "gun":
-            g = date.fromisoformat(str(d)[:10])
-            g0 = datetime(g.year, g.month, g.day)
-            return [o for o in lst if o.bas < g0 + timedelta(days=1) and o.bit > g0]
-        return lst
+        return [o for o in lst if o.tur == hd.TUR_IS and o.is_ad == d]
+
+    @staticmethod
+    def _s_yazi(s) -> str:
+        if not s:
+            return ""
+        tur, d = s
+        return {"vardiya": "", "durus": "", hd.TUR_OPERATOR: "operatör ", hd.TUR_IS: "iş "}.get(tur, "") + str(d)
 
     def _makine_ipucu(self, m) -> str:
         lst = [o for o in self._olaylar if o.makine == m]
@@ -196,74 +201,81 @@ class HataliSayfasi(QWidget):
         return (f"<b>{m}</b><br>{len(lst)} hatalı duruş · {_sa(op + is_)}<br>{hd.TUR_AD[hd.TUR_OPERATOR]}: {_sa(op)}"
                 f"<br>{hd.TUR_AD[hd.TUR_IS]}: {_sa(is_)}<br><span style='color:#8a90a2'>tıklayın: kırılım</span>")
 
-    # ---------------------------------------------------------------- davranış
-    def _makine_sec(self, m):
-        if m == self._makine and self.k_kirilim.isVisible():
-            self._makine_kapat()
-            return
-        self._makine, self._suzgec = m, None
-        lst = self._makine_olaylari()
-        self.k_baslik.setText(f"{m} · hatalı duruşlar")
-        self.k_alt.setText(f"{len(lst)} olay · {_sa(sum(o.saat for o in lst))} · bir sütuna tıklayın: liste ve zaman çizelgesi o seçime "
-                           "göre süzülür (yeniden tıklayınca kalkar)")
-        self.k_kirilim.show()
-        self.k_liste.show()
-        self._liste_yaz()
-        self._gantt_yaz()
-        self._ciz()
-        self._sc.ensureWidgetVisible(self.k_kirilim, 0, 30)
-
-    def _makine_kapat(self):
-        self._makine, self._suzgec = None, None
-        for k in (self.k_kirilim, self.k_liste, self.k_gantt):
-            k.hide()
-        self.g_makine.update()
-
-    def _suz(self, tur, deger):
-        if tur is None or (self._suzgec == (tur, deger)):
-            self._suzgec = None
-        else:
-            self._suzgec = (tur, deger)
-        self._liste_yaz()
-        self._gantt_yaz()
-        self._ciz()
-        if self._suzgec:
-            self._sc.ensureWidgetVisible(self.k_liste, 0, 30)
-
     def _ciz(self):
-        for g in (self.g_makine, self.g_v, self.g_op, self.g_is, self.g_d, self.g_gun):
+        for g in (self.g_makine, self.g_v, self.g_d, self.g_op, self.g_is):
             g.update()
 
-    def _suzgec_yazi(self) -> str:
-        if not self._suzgec:
-            return "süzgeç yok (makinenin tüm hatalı duruşları)"
-        tur, d = self._suzgec
-        ad = {"vardiya": "vardiya", hd.TUR_OPERATOR: "operatör", hd.TUR_IS: "operatörsüz iş", "durus": "duruş", "gun": "gün"}[tur]
-        if tur == "gun":
-            d = date.fromisoformat(str(d)[:10]).strftime("%d.%m.%Y")
-        return f"süzgeç: {ad} = {d}"
+    # ---------------------------------------------------------------- seviyeler
+    def _makine_sec(self, m):
+        if m == self._makine and self.k2.isVisible():
+            self._makine_kapat()
+            return
+        self._makine, self._s1, self._s2 = m, None, None
+        lst = self._makine_olaylari()
+        self.k2_baslik.setText(f"{m} · hatalı duruşlar")
+        self.k2_alt.setText(f"{len(lst)} olay · {_sa(sum(o.saat for o in lst))} · vardiyaya ya da duruşa tıklayın: altta operatör ve iş kırılımı")
+        self.k3.hide()
+        self.k4.hide()
+        self.k2.show()
+        self._ciz()
+        bekleme.kaydir(self._sc, self.k2)
 
+    def _makine_kapat(self):
+        self._makine, self._s1, self._s2 = None, None, None
+        for k in (self.k2, self.k3, self.k4):
+            k.hide()
+        self._ciz()
+
+    def _s1_sec(self, tur, deger):
+        if self._s1 == (tur, deger) and self.k3.isVisible():
+            self._s1_kapat()
+            return
+        self._s1, self._s2 = (tur, deger), None
+        lst = self._s1_olaylari()
+        self.k3_baslik.setText(f"{self._makine} · {self._s_yazi(self._s1)}")
+        op = sum(o.saat for o in lst if o.tur == hd.TUR_OPERATOR)
+        is_ = sum(o.saat for o in lst if o.tur == hd.TUR_IS)
+        self.k3_alt.setText(f"{len(lst)} olay · operatör var {_sa(op)} · operatör yok, iş var {_sa(is_)} · bir sütuna tıklayın: zaman çizelgesi")
+        self.k4.hide()
+        self.k3.show()
+        self._ciz()
+        bekleme.kaydir(self._sc, self.k3)
+
+    def _s1_kapat(self):
+        self._s1, self._s2 = None, None
+        self.k3.hide()
+        self.k4.hide()
+        self._ciz()
+
+    def _s2_sec(self, tur, deger):
+        if self._s2 == (tur, deger) and self.k4.isVisible():
+            self._s2_kapat()
+            return
+        self._s2 = (tur, deger)
+        self._ciz()
+        self._liste_yaz()
+        self._gantt_yaz()
+
+    def _s2_kapat(self):
+        self._s2 = None
+        self.k4.hide()
+        self._ciz()
+
+    # ---------------------------------------------------------------- 4. seviye
     def _liste_yaz(self):
-        lst = self._suzulmus()
-        self.l_baslik.setText(f"{self._makine} · hatalı duruş listesi")
-        self.l_alt.setText(f"{len(lst)} olay · {_sa(sum(o.saat for o in lst))} · {self._suzgec_yazi()} · satıra çift tıklayın: "
-                           "zaman çizelgesi o olaya yakınlaşır")
-        self.b_suz.setVisible(bool(self._suzgec))
+        lst = self._s2_olaylari()
         t = self.tablo
         t.setSortingEnabled(False)
         t.setRowCount(len(lst))
         for i, o in enumerate(lst):
             dk = int(round(o.saat * 60))
-            deg = [f"{o.bas:%d.%m.%Y}", f"{o.vardiya}. vardiya", o.tip, f"{o.bas:%H:%M}", f"{o.bit:%d.%m %H:%M}" if o.bit.date() != o.bas.date()
-                   else f"{o.bit:%H:%M}", f"{dk // 60}:{dk % 60:02d}", hd.TUR_AD[o.tur], o.operator or "-",
-                   " · ".join(x for x in (o.urun, o.is_emri) if x) or "-"]
+            deg = [f"{o.bas:%d.%m.%Y}", f"{o.vardiya}. vardiya", o.tip, f"{o.bas:%H:%M}",
+                   f"{o.bit:%d.%m %H:%M}" if o.bit.date() != o.bas.date() else f"{o.bit:%H:%M}", f"{dk // 60}:{dk % 60:02d}",
+                   o.operator or "-", " · ".join(x for x in (o.urun, o.is_emri) if x) or "-"]
             for j, x in enumerate(deg):
                 it = QTableWidgetItem(x)
                 if j == 0:
                     it.setData(Qt.UserRole, i)
-                if j == 6:
-                    it.setForeground(Qt.white)
-                    it.setBackground(_q(hd.TUR_RENK[o.tur]))
                 t.setItem(i, j, it)
         self._liste = lst
 
@@ -271,21 +283,32 @@ class HataliSayfasi(QWidget):
         if not self._makine or not self._donem:
             return
         ilk, son = self._donem
-        lst = self._suzulmus()
-        try:
-            bloklar = hd.zaman_bloklari(self.ana.con, self._makine, ilk, son, lst)
-        except Exception as e:  # noqa: BLE001
-            self.z_alt.setText(f"Zaman çizelgesi okunamadı: {e}")
-            return
-        t0 = datetime(ilk.year, ilk.month, ilk.day)
-        t1 = datetime(son.year, son.month, son.day) + timedelta(days=1)
-        if gorunum is None and self._suzgec and self._suzgec[0] == "gun":
-            g = date.fromisoformat(str(self._suzgec[1])[:10])
-            gorunum = (datetime(g.year, g.month, g.day), datetime(g.year, g.month, g.day) + timedelta(days=1))
-        self.z_baslik.setText(f"{self._makine} · zaman çizelgesi")
-        self.z_alt.setText(f"{self._suzgec_yazi()} · kırmızı taralı çerçeve: hatalı duruş · yakınlaştırınca çerçeve de büyür")
-        self.zc.ayarla([self._makine], bloklar, t0, t1, "#F2A7A3", "hatalı duruş", gorunum)
-        self.k_gantt.show()
+        m, lst = self._makine, self._s2_olaylari()
+        self._is_no += 1
+        no = self._is_no
+        yazi = f"{m} · {self._s_yazi(self._s1)} · {self._s_yazi(self._s2)}"
+
+        def bitti(sonuc):
+            if no != self._is_no:
+                return                                      # bu arada başka seçim yapıldı
+            if isinstance(sonuc, Exception):
+                self.z_alt.setText(f"Zaman çizelgesi okunamadı: {sonuc}")
+                return
+            t0 = datetime(ilk.year, ilk.month, ilk.day)
+            t1 = datetime(son.year, son.month, son.day) + timedelta(days=1)
+            gor = gorunum
+            if gor is None and lst:                         # ilk açılışta seçili olayların olduğu aralığa yakınlaş
+                a, b = min(o.bas for o in lst), max(o.bit for o in lst)
+                pay = max(timedelta(hours=1), (b - a) * 0.08)
+                gor = (max(t0, a - pay), min(t1, b + pay))
+            self.z_baslik.setText(f"{yazi} · zaman çizelgesi")
+            self.z_alt.setText(f"{len(lst)} olay · {_sa(sum(o.saat for o in lst))} · kırmızı taralı çerçeve: hatalı duruş · tekerlek: yakınlaştır")
+            self.zc.ayarla([m], sonuc, t0, t1, "#F2A7A3", "hatalı duruş", gor)
+            self.k4.show()
+            bekleme.kaydir(self._sc, self.k4)
+        bekleme.arka_planda(self, self.ana.db_yolu, "Zaman çizelgesi hazırlanıyor",
+                            f"{m} makinesinin {ilk:%d.%m} – {son:%d.%m} kayıtları okunuyor",
+                            lambda con: hd.zaman_bloklari(con, m, ilk, son, lst), bitti)
 
     def _olaya_git(self, satir, _sutun):
         it = self.tablo.item(satir, 0)
@@ -293,8 +316,8 @@ class HataliSayfasi(QWidget):
             return
         o = self._liste[int(it.data(Qt.UserRole))]
         pay = max(timedelta(minutes=30), (o.bit - o.bas) * 0.5)
-        self._gantt_yaz((o.bas - pay, o.bit + pay))
-        self._sc.ensureWidgetVisible(self.k_gantt, 0, 30)
+        self.zc.cizelge.gorunum((o.bas - pay).timestamp(), (o.bit + pay).timestamp())
+        bekleme.kaydir(self._sc, self.k4)
 
     # ---------------------------------------------------------------- dönem
     def yenile(self):
@@ -304,18 +327,31 @@ class HataliSayfasi(QWidget):
         esik = ayar.get("hatali_durus_en_az_dk", hd.VARSAYILAN_EN_AZ_DK)
         self.aciklama.setText(
             "Kontrol edilen duruşlar: " + (", ".join(turler) if turler else "— Ayarlar > Duruşlar kartında seçin —")
-            + f". Bu duruşlarda makinede operatör ve iş (ürün kodu) olmamalı; varsa hatalı sayılır. {esik} dk'dan kısa olanlar "
-            "listelenmez. Mor: duruş sırasında operatör kayıtlı · turuncu: operatör yok ama iş var.")
+            + f". Bu duruşlar sürerken makinede operatör kayıtlıysa (mor) ya da iş / ürün kodu görünüyorsa (turuncu) o süre burada "
+            f"gösterilir; doğru olan kısım gösterilmez. {esik} dk'dan kısa olanlar listelenmez.")
         if not gunler or not turler:
-            self._olaylar, self._donem = [], None
-        else:
-            self._donem = (min(gunler), max(gunler))
-            try:
-                self._olaylar = hd.tespit(self.ana.con, self._donem[0], self._donem[1], ayar, ayar.get("makineler") or None)
-            except Exception as e:  # noqa: BLE001
-                self._olaylar = []
-                self.aciklama.setText(f"Hatalı duruşlar okunamadı: {e}")
-        lst = self._olaylar
+            self._donem = None
+            self._olaylar_geldi([])
+            return
+        self._donem = (min(gunler), max(gunler))
+        ilk, son = self._donem
+        makineler = ayar.get("makineler") or None
+        self._is_no += 1
+        no = self._is_no
+
+        def bitti(sonuc):
+            if no != self._is_no:
+                return
+            if isinstance(sonuc, Exception):
+                self.aciklama.setText(f"Hatalı duruşlar okunamadı: {sonuc}")
+                sonuc = []
+            self._olaylar_geldi(sonuc)
+        bekleme.arka_planda(self, self.ana.db_yolu, "Hatalı duruşlar hazırlanıyor",
+                            f"{ilk:%d.%m.%Y} – {son:%d.%m.%Y} arasındaki kayıtlar kontrol ediliyor",
+                            lambda con: hd.tespit(con, ilk, son, ayar, makineler), bitti)
+
+    def _olaylar_geldi(self, lst):
+        self._olaylar = lst
         op = sum(o.saat for o in lst if o.tur == hd.TUR_OPERATOR)
         is_ = sum(o.saat for o in lst if o.tur == hd.TUR_IS)
         self.kutu["toplam"].setText(_sa(op + is_))
@@ -323,16 +359,11 @@ class HataliSayfasi(QWidget):
         self.kutu[hd.TUR_OPERATOR].setText(_sa(op))
         self.kutu[hd.TUR_IS].setText(_sa(is_))
         self.kutu["makine"].setText(str(len({o.makine for o in lst})))
-        self.m_alt.setText("bir makineye tıklayın: vardiya, operatör ve iş kırılımı" if lst else "seçili dönemde hatalı duruş yok")
+        self.m_alt.setText("bir makineye tıklayın: vardiya ve duruş kırılımı" if lst else "seçili dönemde hatalı duruş yok")
         if self._makine and not any(o.makine == self._makine for o in lst):
             self._makine_kapat()
         elif self._makine:
-            self._suzgec = None
-            self._liste_yaz()
-            self._gantt_yaz()
+            m = self._makine
+            self._makine = None
+            self._makine_sec(m)
         self._ciz()
-
-
-def _q(renk: str):
-    from PySide6.QtGui import QColor
-    return QColor(renk)

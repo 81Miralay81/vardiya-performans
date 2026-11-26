@@ -540,6 +540,11 @@ class OperatorSayfasi(QWidget):
                 QApplication.restoreOverrideCursor()
 
     def yenile(self):
+        from .bekleme import bekle
+        with bekle(self, "Operatör listesi hazırlanıyor", "seçilen dönemin operatörlü kayıtları okunuyor"):
+            self._yenile_ic()
+
+    def _yenile_ic(self):
         if not self.isVisible():
             self._kirli = True
             return

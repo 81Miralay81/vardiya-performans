@@ -533,6 +533,11 @@ class PersonelSayfasi(QWidget):
         return True if f is None else f(anahtar)
 
     def yenile(self):
+        from .bekleme import bekle
+        with bekle(self, "Personel durumu hazırlanıyor", "personel verisi okunup hesaplanıyor"):
+            self._yenile_ic()
+
+    def _yenile_ic(self):
         con = self.ana.con
         ilk, son = self.aralik.aralik()
         try:

@@ -74,6 +74,8 @@ Bu dosya yalnızca geliştirici (Claude) içindir; program okumaz. Her önemli d
 - `sayfa_hatali.py` (menü "Hatalı Duruşlar", yetki = performans): makine → vardiya | operatör var | operatör yok·iş var | duruş adı | gün → liste → gant.
 - Gant (`zaman_cizelgesi.py`): modern görünüm; vurgulu bloklar kırmızı taralı yarı saydam çerçeve (yan yana olanlar birleşir, zoomla büyür).
 - Performans "Operatör yok" tıklanınca soru: bu makine → doğrudan gant / tüm makineler → 4. seviye.
+- Hatalı sayfa akışı: makine → (vardiya | duruş adı) → (operatöre göre | işe göre) → gant + olay listesi; veri `bekleme.arka_planda` ile.
+- `bekleme.py`: ortak bekleme kartı (`Bekleme`, `bekle` bağlam yöneticisi, `arka_planda` iş parçacığı, `kaydir` yumuşak kaydırma). Performans kırılımları, Operatör/Personel yenileme, dönem hesabı kullanır.
 - Web sürümünde Hatalı Duruşlar sayfası henüz yok. Kalan izin gösterimi (a/b/c) kararı bekliyor.
 
 ## Geçici köprü (kopru.py) — iş bitince sil

@@ -73,9 +73,12 @@ def kirilim_grafigi(p: QPainter, rect: QRectF, liste: List[tuple], baslik: Optio
             p.drawRect(QRectF(cx - gen / 2, alan.bottom() - h, gen, h))
         if bolgeler is not None and kisim:
             bolgeler.append((QRectF(cx - slot / 2, alan.top(), slot, alan.height() + 36 * s), ad, kisim))
-        if slot >= 34 * s:                       # dar sütunlarda değer yazılmaz (üst üste biner)
+        if slot >= 34 * s:                       # dar sütunlarda yalnızca yüzde yazılır (üst üste binmesin)
             _yaz(p, QRectF(cx - slot / 2, alan.bottom() - h - 32 * s, slot, 30 * s), f"{_saat_dk(saat)} sa\n%{saat / toplam * 100:.0f}",
                  10.5 * s, True, ORTA, tema.YAZI)
+        elif slot >= 16 * s:
+            _yaz(p, QRectF(cx - slot / 2 - 6 * s, alan.bottom() - h - 16 * s, slot + 12 * s, 14 * s), f"%{saat / toplam * 100:.0f}",
+                 8.5 * s, True, ORTA, tema.YAZI)
         if slot >= 34 * s:
             _yaz(p, QRectF(cx - slot / 2, alan.bottom() + 3 * s, slot, 34 * s), etiket_iki_satir(ad), (10.5 if slot > 80 * s else 9.5) * s,
                  True, ORTA, tema.YAZI)
