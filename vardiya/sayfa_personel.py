@@ -7,8 +7,8 @@ from datetime import date, timedelta
 from typing import Dict, List, Optional
 
 from PySide6.QtCore import QRectF, Qt, Signal
-from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPixmap
-from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QFileDialog, QGridLayout, QHBoxLayout, QHeaderView, QLabel,
+from PySide6.QtGui import QColor, QFont, QPainter, QPen, QPixmap
+from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QFileDialog, QFrame, QGridLayout, QHBoxLayout, QHeaderView, QLabel,
                                QPushButton, QScrollArea, QTableWidget, QTableWidgetItem, QTabWidget, QVBoxLayout, QWidget)
 
 from . import personel_veri as pv, tema, veritabani as vt
@@ -228,29 +228,78 @@ class PersonelSayfasi(QWidget):
         self.kpi_kart = {}
         for k, ad in (("kisi", "personel"), ("devam", "devam oranı"), ("gelmedi", "izinsiz gelmeme (gün)"),
                       ("gec", "geç gelme"), ("erken", "erken çıkma"), ("fazla", "fazla çalışma"), ("izin", "izinli gün")):
-            c = kart(kenar=10)
-            d = etiket("-", "KartDeger")
-            c.layout().addWidget(d)
-            c.layout().addWidget(etiket(ad + ("  ⧉" if k == "devam" else "  ▾"), "KartBaslik"))
+            c = QFrame()
+            c.setObjectName("KpiKart")
+            cl = QVBoxLayout(c)
+            cl.setContentsMargins(14, 10, 12, 10)
+            cl.setSpacing(2)
+            d = QLabel("-")
+            b = QLabel(ad + "  ▾")
+            cl.addWidget(d)
+            cl.addWidget(b)
             c.setCursor(Qt.PointingHandCursor)
-            c.setToolTip("Tıklayın: grafik penceresi" if k == "devam" else "Tıklayın: altta liste (yeniden tıklayınca kapanır)")
+            c.setToolTip("Tıklayın: altta grafik ve ayrıntı (yeniden tıklayınca kapanır)" if k == "devam"
+                         else "Tıklayın: altta liste (yeniden tıklayınca kapanır)")
             c.mousePressEvent = (lambda _e, k=k: self._kpi_tik(k))
             self.kpi[k] = d
-            self.kpi_kart[k] = c
+            self.kpi_kart[k] = (c, d, b)
             self.kpi_satir.addWidget(c)
         l.addLayout(self.kpi_satir)
         self._kpi_secili = ""
-        self.kpi_panel = kart()                      # kutuya tıklanınca açılan liste
-        self.kpi_panel_baslik = etiket("", "KartBaslik", kelime=False)
-        self.kpi_panel.layout().addWidget(self.kpi_panel_baslik)
+        self._dilim_secili = ""
+        self.kpi_panel = QFrame()                    # kutuya tıklanınca altta açılan bölüm
+        self.kpi_panel.setObjectName("KpiPanel")
+        pl = QVBoxLayout(self.kpi_panel)
+        pl.setContentsMargins(16, 14, 16, 14)
+        pl.setSpacing(10)
+        self.kpi_grafik = QWidget()                  # yalnızca devam oranında: halka + renkli dilim kutuları
+        gl_ = QHBoxLayout(self.kpi_grafik)
+        gl_.setContentsMargins(0, 0, 0, 0)
+        gl_.setSpacing(22)
+        self.pasta = _Pasta([], None)
+        self.pasta.tiklandi.connect(self._dilim_sec)
+        gl_.addWidget(self.pasta)
+        sag = QVBoxLayout()
+        sag.setSpacing(10)
+        self.dilim_kutu = {}
+        satir = QHBoxLayout()
+        satir.setSpacing(10)
+        for k, ad in (("geldi", "Geldi"), ("gelmedi", "İzinsiz gelmedi"), ("izin", "İzinli (tam gün)")):
+            f = QFrame()
+            f.setObjectName("DilimKutu")
+            fl = QVBoxLayout(f)
+            fl.setContentsMargins(14, 10, 14, 10)
+            fl.setSpacing(1)
+            a, v, y = QLabel(ad), QLabel("-"), QLabel("")
+            for x in (a, v, y):
+                fl.addWidget(x)
+            f.setCursor(Qt.PointingHandCursor)
+            f.mousePressEvent = (lambda _e, k=k: self._dilim_sec(k))
+            self.dilim_kutu[k] = (f, a, v, y)
+            satir.addWidget(f, 1)
+        sag.addStretch(1)
+        sag.addLayout(satir)
+        self.devam_formul = QLabel("")
+        self.devam_formul.setStyleSheet(f"color:{tema.YAZI_SOLUK}; font-size:12px; background:#f5f6fa; border-radius:8px; padding:8px 12px;")
+        sag.addWidget(self.devam_formul)
+        ip = QLabel("Dilime ya da kutuya tıklayın: ayrıntısı aşağıda listelenir")
+        ip.setStyleSheet(f"color:{tema.YAZI_SOLUK}; font-size:11px;")
+        sag.addWidget(ip)
+        sag.addStretch(1)
+        gl_.addLayout(sag, 1)
+        pl.addWidget(self.kpi_grafik)
+        self.kpi_panel_baslik = QLabel("")
+        self.kpi_panel_baslik.setStyleSheet(f"font-weight:700; font-size:13px; color:{tema.LACIVERT};")
+        pl.addWidget(self.kpi_panel_baslik)
         self.kpi_tablo = QTableWidget()
         self._tablo_ayar(self.kpi_tablo)
-        self.kpi_tablo.setMaximumHeight(300)
+        self.kpi_tablo.setMaximumHeight(320)
         self.kpi_tablo.cellDoubleClicked.connect(lambda r, _c: self._kart_ac(self.kpi_tablo.item(r, 0).data(Qt.UserRole))
                                                  if self.kpi_tablo.item(r, 0) else None)
-        self.kpi_panel.layout().addWidget(self.kpi_tablo)
+        pl.addWidget(self.kpi_tablo)
         self.kpi_panel.hide()
         l.addWidget(self.kpi_panel)
+        self._kpi_stil()
         self.t_devam = QTableWidget()
         self.t_devam.setColumnCount(11)
         self.t_devam.setHorizontalHeaderLabels(["Personel", "Pozisyon", "Vardiya", "Planlı gün", "Geldi", "Gelmedi\n(izinsiz)",
@@ -615,7 +664,7 @@ class PersonelSayfasi(QWidget):
         self.kpi["fazla"].setText(f"{top.fazla_dk // 60} sa")
         self.kpi["izin"].setText(str(top.izinli))
         if self._kpi_secili and self.kpi_panel.isVisible():
-            self._kpi_doldur(self.kpi_tablo, self.kpi_panel_baslik, self._kpi_secili)
+            self._kpi_panel_doldur()
         tol = self.ana.ayar.get("pv_tolerans_dk", pv.VARSAYILAN_TOLERANS_DK)
         fz = self.ana.ayar.get("pv_fazla_en_az_dk", pv.VARSAYILAN_FAZLA_EN_AZ_DK)
         self.devam_not.setText(f"Geç gelme / erken çıkma: {tol} dk tolerans. Fazla çalışma: vardiya bitişinden en az {fz} dk sonra çıkış "
@@ -628,18 +677,56 @@ class PersonelSayfasi(QWidget):
         sids = [s for s in self._secili_kisiler() if not self._cikis(s)]
         return sids, pv.devam_gun_listeleri(self._gunler, self._kisi, self._izin_ad, sids)
 
+    def _kpi_stil(self):
+        for k, (c, d, b) in self.kpi_kart.items():
+            rk = KPI_RENK[k]
+            if k == self._kpi_secili:
+                c.setStyleSheet(f"QFrame#KpiKart {{ background:{_acik(rk, .86)}; border:2px solid {rk}; border-left:6px solid {rk}; border-radius:12px; }}")
+            else:
+                c.setStyleSheet(f"QFrame#KpiKart {{ background:{tema.KART}; border:1px solid {tema.CIZGI}; border-left:6px solid {rk}; border-radius:12px; }}"
+                                f"QFrame#KpiKart:hover {{ background:{_acik(rk, .93)}; }}")
+            d.setStyleSheet(f"font-size:26px; font-weight:800; color:{rk}; background:transparent; border:none;")
+            b.setStyleSheet(f"font-size:12px; font-weight:600; color:{tema.YAZI_SOLUK}; background:transparent; border:none;")
+        self.kpi_panel.setStyleSheet(f"QFrame#KpiPanel {{ background:{tema.KART}; border:1px solid {tema.CIZGI}; border-radius:14px; }}")
+        for k, (f, a, v, y) in self.dilim_kutu.items():
+            rk = DILIM_RENK[k]
+            sec = k == self._dilim_secili
+            f.setStyleSheet(f"QFrame#DilimKutu {{ background:{_acik(rk, .80 if sec else .90)}; border:{2 if sec else 1}px solid {rk if sec else _acik(rk, .6)}; "
+                            f"border-left:6px solid {rk}; border-radius:12px; }} QFrame#DilimKutu:hover {{ background:{_acik(rk, .82)}; }}")
+            a.setStyleSheet(f"font-size:12px; font-weight:700; color:{rk}; background:transparent; border:none;")
+            v.setStyleSheet(f"font-size:24px; font-weight:800; color:{tema.YAZI}; background:transparent; border:none;")
+            y.setStyleSheet(f"font-size:12px; color:{tema.YAZI_SOLUK}; background:transparent; border:none;")
+
     def _kpi_tik(self, k: str):
-        if k == "devam":
-            self._devam_penceresi()
-            return
         self._kpi_secili = "" if self._kpi_secili == k else k
-        for a, c in self.kpi_kart.items():
-            c.setStyleSheet(f"QFrame#Kart {{ border: 2px solid {tema.LACIVERT}; background: #eef0fa; }}" if a == self._kpi_secili else "")
+        self._dilim_secili = ""
+        self._kpi_stil()
         if not self._kpi_secili:
             self.kpi_panel.hide()
             return
-        self._kpi_doldur(self.kpi_tablo, self.kpi_panel_baslik, k)
+        self._kpi_panel_doldur()
         self.kpi_panel.show()
+
+    def _kpi_panel_doldur(self):
+        k = self._kpi_secili
+        devam = k == "devam"
+        self.kpi_grafik.setVisible(devam)
+        if devam:
+            self._devam_grafik()
+            liste = {"geldi": "kisi", "gelmedi": "gelmedi", "izin": "izin"}.get(self._dilim_secili)
+            self.kpi_panel_baslik.setVisible(bool(liste))
+            self.kpi_tablo.setVisible(bool(liste))
+            if liste:
+                self._kpi_doldur(self.kpi_tablo, self.kpi_panel_baslik, liste)
+        else:
+            self.kpi_panel_baslik.show()
+            self.kpi_tablo.show()
+            self._kpi_doldur(self.kpi_tablo, self.kpi_panel_baslik, k)
+
+    def _dilim_sec(self, k: str):
+        self._dilim_secili = "" if self._dilim_secili == k else k
+        self._kpi_stil()
+        self._kpi_panel_doldur()
 
     def _kpi_doldur(self, t, baslik, k: str):
         sids, lst = self._kpi_listeleri()
@@ -680,67 +767,27 @@ class PersonelSayfasi(QWidget):
         t.resizeColumnsToContents()
         t.setSortingEnabled(True)
 
-    def _devam_penceresi(self):
-        from PySide6.QtWidgets import QDialog
-        sids, lst = self._kpi_listeleri()
-        top = pv.Ozet(0)
+    def _devam_grafik(self):
+        sids, _lst = self._kpi_listeleri()
+        planli = gelmedi = izinli = 0
         for sid in sids:
             o = self._ozet[sid]
-            top.planli += o.planli
-            top.gelmedi += o.gelmedi
-            top.izinli += o.izinli
-        geldi = max(0, top.planli - top.izinli - top.gelmedi)
-        payda = top.planli - top.izinli
+            planli += o.planli
+            gelmedi += o.gelmedi
+            izinli += o.izinli
+        geldi = max(0, planli - izinli - gelmedi)
+        payda = planli - izinli
         oran = geldi / payda if payda > 0 else None
-        d = QDialog(self)
-        d.setWindowTitle("Devam oranı")
-        d.resize(900, 640)
-        l = QVBoxLayout(d)
-        l.addWidget(etiket("Devam oranı", "SayfaBaslik"))
-        l.addWidget(etiket("Dilime ya da satıra tıklayın: ayrıntı aşağıda açılır (yeniden tıklayınca kapanır)", "AltBaslik"))
-        ust = QHBoxLayout()
-        dilim = [("geldi", "Geldi", geldi, tema.YESIL), ("gelmedi", "İzinsiz gelmedi", top.gelmedi, tema.KIRMIZI),
-                 ("izin", "İzinli (tam gün)", top.izinli, "#2a7fd1")]
-        pasta = _Pasta(dilim, oran)
-        ust.addWidget(pasta)
-        sag = QVBoxLayout()
-        dugme = {}
-        toplam = sum(x[2] for x in dilim) or 1
-        for k, ad, n, rk in dilim:
-            b = QPushButton(f"■  {ad}    {n} gün · %{n / toplam * 100:.1f}".replace(".", ","))
-            b.setStyleSheet(f"QPushButton {{ text-align:left; padding:6px 10px; border:none; color:{tema.YAZI}; }}"
-                            f"QPushButton:checked {{ background:#eef0fa; border-radius:6px; }}")
-            b.setCheckable(True)
-            sag.addWidget(b)
-            dugme[k] = b
-        sag.addWidget(etiket(f"Devam oranı = gelinen gün ÷ (planlı gün − izinli gün)\n"
-                             f"%{(oran or 0) * 100:.1f} = {geldi} ÷ ({top.planli} − {top.izinli})".replace(".", ","), "AltBaslik"))
-        sag.addStretch(1)
-        ust.addLayout(sag, 1)
-        l.addLayout(ust)
-        alt_baslik = etiket("", "KartBaslik", kelime=False)
-        alt_t = QTableWidget()
-        self._tablo_ayar(alt_t)
-        alt_t.cellDoubleClicked.connect(lambda r, _c: (d.accept(), self._kart_ac(alt_t.item(r, 0).data(Qt.UserRole))) if alt_t.item(r, 0) else None)
-        alt_baslik.hide()
-        alt_t.hide()
-        l.addWidget(alt_baslik)
-        l.addWidget(alt_t, 1)
-
-        def sec(k):
-            yeni = "" if pasta.secili == k else k
-            pasta.secili = yeni
-            pasta.update()
-            for a, b in dugme.items():
-                b.setChecked(a == yeni)
-            alt_baslik.setVisible(bool(yeni))
-            alt_t.setVisible(bool(yeni))
-            if yeni:
-                self._kpi_doldur(alt_t, alt_baslik, {"geldi": "kisi", "gelmedi": "gelmedi", "izin": "izin"}[yeni])
-        pasta.tiklandi.connect(sec)
-        for k, b in dugme.items():
-            b.clicked.connect(lambda _=False, k=k: sec(k))
-        d.exec()
+        deg = {"geldi": geldi, "gelmedi": gelmedi, "izin": izinli}
+        toplam = sum(deg.values()) or 1
+        self.pasta.dilim = [(k, "", deg[k], DILIM_RENK[k]) for k in ("geldi", "gelmedi", "izin")]
+        self.pasta.oran, self.pasta.secili = oran, self._dilim_secili
+        self.pasta.update()
+        for k, (_f, _a, v, y) in self.dilim_kutu.items():
+            v.setText(f"{deg[k]} gün")
+            y.setText(f"%{deg[k] / toplam * 100:.1f}".replace(".", ",") + " · tıklayın: ayrıntı")
+        yz = "-" if oran is None else f"%{oran * 100:.1f}".replace(".", ",")
+        self.devam_formul.setText(f"Devam oranı = gelinen gün ÷ (planlı gün − izinli gün)   ·   {yz} = {geldi} ÷ ({planli} − {izinli})")
 
     # ---------------------------------------------------------------- vardiya listesi
     def _hafta_git(self, gun: int):
@@ -1075,54 +1122,71 @@ class PersonelSayfasi(QWidget):
 
 
 
+KPI_RENK = {"kisi": "#2b3a8f", "devam": "#3e9b2a", "gelmedi": "#d64541", "gec": "#d99a00", "erken": "#e0702a",
+            "fazla": "#7b4fa8", "izin": "#2a7fd1"}
+DILIM_RENK = {"geldi": "#3e9b2a", "gelmedi": "#d64541", "izin": "#2a7fd1"}
+
+
+def _acik(renk: str, t: float) -> str:
+    """Rengi beyazla karıştırır (t=0 aynı renk, t=1 beyaz)."""
+    r, g, b = (int(renk[i:i + 2], 16) for i in (1, 3, 5))
+    return "#%02x%02x%02x" % tuple(int(x + (255 - x) * t) for x in (r, g, b))
+
+
 class _Pasta(QWidget):
-    """Devam oranı penceresindeki halka grafik; dilime tıklanınca tiklandi(anahtar)."""
+    """Devam oranı halkası; dilime tıklanınca tiklandi(anahtar). Seçili dilim öne çıkar, diğerleri soluklaşır."""
     tiklandi = Signal(str)
+    BOY = 250
 
     def __init__(self, dilim, oran, parent=None):
         super().__init__(parent)
         self.dilim, self.oran, self.secili = dilim, oran, ""
-        self.setFixedSize(280, 280)
+        self.setFixedSize(self.BOY, self.BOY)
         self.setCursor(Qt.PointingHandCursor)
         self._acilar = []
 
     def paintEvent(self, _e):  # noqa: N802
-        from PySide6.QtCore import QRectF
-        from PySide6.QtGui import QPainter, QPen, QFont
         import math
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
+        B = self.BOY
+        m = B / 2
         top = sum(x[2] for x in self.dilim) or 1
         a = 90.0
         self._acilar = []
+        p.setPen(QPen(QColor("#eef0f5"), 34, Qt.SolidLine, Qt.FlatCap))
+        p.drawEllipse(QRectF(30, 30, B - 60, B - 60))
+        bosluk = 1.6 if sum(1 for x in self.dilim if x[2] > 0) > 1 else 0
         for k, _ad, n, rk in self.dilim:
             span = 360.0 * n / top
             if span <= 0:
                 continue
-            orta = math.radians(a - span / 2)
-            cik = 10 if self.secili == k else 0
-            r = QRectF(20 + cik * math.cos(orta), 20 - cik * math.sin(orta), 240, 240)
-            p.setPen(QPen(QColor(rk), 52, Qt.SolidLine, Qt.FlatCap))
-            p.drawArc(r.adjusted(26, 26, -26, -26), int(a * 16), int(-span * 16))
+            sec = self.secili == k
+            renk = QColor(rk) if (not self.secili or sec) else QColor(_acik(rk, .55))
+            kal = 42 if sec else 34
+            p.setPen(QPen(renk, kal, Qt.SolidLine, Qt.FlatCap))
+            ciz = max(span - bosluk, 0.6)
+            p.drawArc(QRectF(30, 30, B - 60, B - 60), int((a - bosluk / 2) * 16), int(-ciz * 16))
             self._acilar.append((k, a - span, a))
             a -= span
         p.setPen(QColor(tema.LACIVERT))
         f = QFont(self.font())
-        f.setPixelSize(28)
+        f.setPixelSize(30)
         f.setBold(True)
         p.setFont(f)
-        p.drawText(QRectF(0, 110, 280, 40), Qt.AlignCenter, "-" if self.oran is None else f"%{self.oran * 100:.1f}".replace(".", ","))
+        p.drawText(QRectF(0, m - 26, B, 40), Qt.AlignCenter, "-" if self.oran is None else f"%{self.oran * 100:.1f}".replace(".", ","))
         f.setPixelSize(12)
         f.setBold(False)
         p.setFont(f)
         p.setPen(QColor(tema.YAZI_SOLUK))
-        p.drawText(QRectF(0, 146, 280, 20), Qt.AlignCenter, "devam")
+        p.drawText(QRectF(0, m + 12, B, 20), Qt.AlignCenter, "devam oranı")
+        _ = math
 
     def mousePressEvent(self, e):  # noqa: N802
         import math
-        x, y = e.position().x() - 140, 140 - e.position().y()
-        r = math.hypot(x, y)
-        if not (60 <= r <= 130):
+        m = self.BOY / 2
+        x, y = e.position().x() - m, m - e.position().y()
+        if not (m - 70 <= math.hypot(x, y) <= m - 5):
             return
         aci = math.degrees(math.atan2(y, x))
         for k, a0, a1 in self._acilar:
