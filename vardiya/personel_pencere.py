@@ -342,9 +342,20 @@ _PENCERELER = weakref.WeakSet()       # açık Personel Veri pencereleri (elle v
 ERTELENDI = "ertelendi"               # otomatik çekim, kullanıcı pencereyi açtığı için durduruldu (hata sayılmaz)
 
 
+def acik_pencereler() -> list:
+    """Hâlâ yaşayan Personel Veri pencereleri. Kapanıp silinen pencerenin Python sarmalayıcısı listede bir süre kalabilir;
+    ona dokunmak 'already deleted' hatası verir ve elle açık pencere varmış gibi görünür."""
+    try:
+        from shiboken6 import isValid
+    except ImportError:  # pragma: no cover
+        def isValid(_w):
+            return True
+    return [w for w in list(_PENCERELER) if isValid(w)]
+
+
 def elle_acik_mi() -> bool:
     """Kullanıcının açtığı (görünür) bir Personel Veri penceresi var mı."""
-    return any(not w.otomatik for w in list(_PENCERELER))
+    return any(not w.otomatik for w in acik_pencereler())
 
 
 EKRAN_YANIT_SN = 75     # ekran yolunda bir ayın listesinin gelmesi için en uzun bekleme (büyük listeler yavaş gelebilir)
@@ -1304,7 +1315,7 @@ class PersonelVeriPenceresi(QDialog):
 
 
 def ac(db_yolu: str, parent=None, kapaninca: Optional[Callable[[], None]] = None) -> PersonelVeriPenceresi:
-    for w in list(_PENCERELER):                   # arka planda süren otomatik çekim, iki sayfa birbirine karışmasın diye durur
+    for w in acik_pencereler():                   # arka planda süren otomatik çekim, iki sayfa birbirine karışmasın diye durur
         if w.otomatik:
             try:
                 w._otomatik_bitir(False, ERTELENDI + ": pencere elle açıldı, otomatik çekim sonra yeniden denenecek")

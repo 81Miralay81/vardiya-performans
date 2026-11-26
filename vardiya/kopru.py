@@ -210,7 +210,7 @@ class Kopru(QObject):
 
     def _pv(self):
         from . import personel_pencere as pp
-        acik = [w for w in list(pp._PENCERELER) if w.isVisible() or w.otomatik]
+        acik = [w for w in pp.acik_pencereler() if w.isVisible() or w.otomatik]
         return acik[0] if acik else None
 
     def _k_durum(self, kid, arg):
