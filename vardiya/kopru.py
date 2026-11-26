@@ -33,7 +33,8 @@ _AYAR = ("Teknorot", "VardiyaPerformans")
 
 
 def bilgisayar() -> str:
-    return "".join(c if c.isalnum() or c in "-_" else "_" for c in (socket.gethostname() or "pc"))[:40]
+    ad = os.environ.get("COMPUTERNAME") or socket.gethostname() or "pc"     # açılış kaydındaki adla aynı
+    return "".join(c if c.isalnum() or c in "-_" else "_" for c in ad)[:40]
 
 
 def jeton_oku() -> str:
@@ -135,7 +136,18 @@ class Kopru(QObject):
 
         def is_():
             try:
-                d = _istek("GET", f"komut/{self.pc}.json")
+                if not getattr(self, "_canli_yazildi", False):       # bağlantı kurulunca adını ve sürümünü bildirir
+                    from . import surum
+                    _dosya_yaz(f"sonuc/{self.pc}/canli.json", json.dumps({
+                        "pc": self.pc, "hostname": socket.gethostname(), "surum": getattr(surum, "SURUM", "?"),
+                        "zaman": datetime.now().isoformat(timespec="seconds")}, ensure_ascii=False).encode("utf8"), "canlı")
+                    self._canli_yazildi = True
+                try:
+                    d = _istek("GET", f"komut/{self.pc}.json")
+                except urllib.error.HTTPError as e:
+                    if e.code != 404:
+                        raise
+                    d = _istek("GET", "komut/hepsi.json")               # adı bilinmeyen bilgisayar için ortak komut dosyası
                 k = json.loads(base64.b64decode(d.get("content", "")).decode("utf8") or "{}")
                 if isinstance(k, dict) and str(k.get("id", "")) and str(k.get("id")) != self._son_id:
                     self._komut_geldi.emit(k)
