@@ -978,7 +978,7 @@ function pvTablo(){
   R.forEach(function(r){
     var izin = Object.keys(r.izin).map(function(a){ return a + ': ' + r.izin[a]; }).join(', ');
     h += '<tr data-sid="' + r.sid + '"><td' + (r.cikis ? ' class="ay"' : '') + '><b>' + esc(r.ad) + '</b>' + (r.lider ? ' ★ ' + esc(r.lider_tur || '') : '') + (r.cikis ? ' · ayrıldı ' + trT(r.cikis) : '') + '</td><td>' + esc(r.pozisyon) +
-      '</td><td>' + (VAD[r.vardiya] || '-') + '</td><td class="s">' + r.planli + '</td><td class="s">' + r.geldi + '</td><td class="s"' + (r.gelmedi ? ' style="background:#FFC7CE"' : '') + '>' + r.gelmedi +
+      '</td><td>' + (VAD[r.vardiya] || '-') + '</td><td class="s">' + r.planli + '</td><td class="s"' + (r.okutma ? ' style="background:#FFD8A8" title="' + r.okutma + ' gün tek kart okutması (girişte ya da çıkışta okutmamış) — kontrol edin"' : '') + '>' + r.geldi + (r.okutma ? ' ⚠' + r.okutma : '') + '</td><td class="s"' + (r.gelmedi ? ' style="background:#FFC7CE"' : '') + '>' + r.gelmedi +
       '</td><td class="s" title="' + esc(izin) + '">' + r.izinli + (r.izin_saat ? ' (+' + r.izin_saat + ' saatlik)' : '') +
       '</td><td class="s"' + (r.gec_adet >= 3 ? ' style="background:#FFEB9C"' : '') + '>' + (r.gec_adet ? r.gec_adet + ' / ' + sureY(r.gec_dk) : '0') +
       '</td><td class="s">' + (r.erken_adet ? r.erken_adet + ' / ' + sureY(r.erken_dk) : '0') + '</td><td class="s">' + (r.fazla_dk ? sureY(r.fazla_dk) : '0') + '</td><td class="s">' + r.tatil + '</td></tr>';

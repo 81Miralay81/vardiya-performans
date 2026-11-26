@@ -589,7 +589,7 @@ class Sunucu:
                           "planli": o.planli, "geldi": o.geldi, "gelmedi": o.gelmedi, "eksik": o.eksik, "izinli": o.izinli,
                           "izin_saat": o.izin_saat, "izin": {pv.izin_kisa(izin_ad, k): n for k, n in o.izin_tur.items()},
                           "gec_adet": o.gec_adet, "gec_dk": o.gec_dk, "erken_adet": o.erken_adet, "erken_dk": o.erken_dk,
-                          "fazla_dk": o.fazla_dk, "tatil": o.tatil_calisti,
+                          "fazla_dk": o.fazla_dk, "tatil": o.tatil_calisti, "okutma": o.okutma,
                           "devam": None if o.devam is None else round(o.devam, 4)})
         satir.sort(key=lambda r: r["ad"])
         liste = pv.devam_gun_listeleri(gl, kisi, izin_ad, [r["sid"] for r in satir])

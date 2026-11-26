@@ -353,7 +353,8 @@ class PersonelSayfasi(QWidget):
         tablo_menusu(self.t_vardiya)
         l.addWidget(self.t_vardiya, 1)
         lej = QHBoxLayout()
-        for ad, rk in (("1. vardiya", RENK["1"]), ("2. vardiya", RENK["2"]), ("3. vardiya", RENK["3"]), ("gündüz", RENK["G"]),
+        for ad, rk in (("1. vardiya", RENK["3"]), ("2. vardiya", RENK["1"]), ("3. vardiya", RENK["2"]), ("gündüz", RENK["G"]),
+                       ("tek okutma", RENK["okutma"]),
                        ("izinli", RENK[pv.IZIN_TAM]), ("geç / erken", RENK["gec"]), ("gelmedi", RENK[pv.GELMEDI]),
                        ("hafta tatili", RENK[pv.TATIL]), ("tatilde çalıştı", RENK[pv.TATIL_CALISTI])):
             e = QLabel(f"  {ad}  ")
@@ -639,7 +640,12 @@ class PersonelSayfasi(QWidget):
             t.setItem(i, 2, _hucre(pv.VARDIYA_KISA.get(bv.get(sid), "-"),
                                    bv.get(sid, "Z")))
             t.setItem(i, 3, _sayi(o.planli))
-            t.setItem(i, 4, _sayi(o.geldi))
+            it = _sayi(o.geldi, f"{o.geldi}  ⚠{o.okutma}" if o.okutma else str(o.geldi))
+            if o.okutma:
+                it.setBackground(QColor(RENK["okutma"]))
+                it.setToolTip(f"{o.okutma} gün tek kart okutması (girişte ya da çıkışta okutmamış) — kontrol edin:\n" + "\n".join(
+                    f"{g.gun:%d.%m.%Y}: {pv.okutma_yazi(g)}" for g in self._gunler if g.sicilid == sid and pv.okutma_eksik(g)))
+            t.setItem(i, 4, it)
             it = _sayi(o.gelmedi)
             if o.gelmedi:
                 it.setBackground(QColor(RENK[pv.GELMEDI]))
@@ -885,6 +891,8 @@ class PersonelSayfasi(QWidget):
         while self.lider_tur_kutu.count():
             w = self.lider_tur_kutu.takeAt(0).widget()
             if w is not None:
+                w.hide()                    # silinene kadar sayfanın sol üstünde boş kutu gibi görünmesin
+                w.setParent(None)
                 w.deleteLater()
         duzenle = self._yetki("grup_lideri")
         for sid in sorted((s for s in self._kisi if self._lider_mi(s) and not self._cikis(s)), key=self._ad):

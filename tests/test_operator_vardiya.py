@@ -75,3 +75,15 @@ def test_cnc_liderleri_mekanik_haric_ve_vardiya_eslemesi():
     assert d[(date(2026, 11, 25), 1)] == ["Bülent Güngör"]                    # 24–08 ertesi günün 1. vardiyası
     d = pv.cnc_liderleri(con, [date(2026, 11, 24)], {"pv_lider_tur": {"3": "Mekanik"}})
     assert (date(2026, 11, 24), 2) not in d                                    # mekanik lider Performans'ta yok
+
+
+def test_tek_okutma_uyarisi():
+    r = {"sicilid": 1, "gun": "2026-11-25", "plan": "16:00-24:00", "giris": None, "cikis": "00:06", "e_dk": -6, "gercek": 1}
+    g = pv.siniflandir(r, date(2026, 11, 27))
+    assert pv.okutma_eksik(g) == "giriş" and pv.okutma_yazi(g) == "⚠ girişte kart okutulmamış"
+    m, renk = pv.gun_yazi(g, {}, date(2026, 11, 27))
+    assert "giriş okutulmadı" in m and renk == pv.RENK["okutma"]
+    assert "kontrol edin" in pv.gun_ipucu(g, {})
+    assert pv.ozetle([g])[1].okutma == 1
+    g2 = pv.siniflandir(dict(r, giris="15:50"), date(2026, 11, 27))
+    assert pv.okutma_eksik(g2) == "" and pv.ozetle([g2])[1].okutma == 0

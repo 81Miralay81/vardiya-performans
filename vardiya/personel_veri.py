@@ -478,6 +478,7 @@ class Ozet:
     erken_dk: int = 0
     fazla_dk: int = 0
     tatil_calisti: int = 0
+    okutma: int = 0                     # tek kart okutmalı gün (girişte ya da çıkışta okutmamış)
     izin_tur: Dict[str, int] = field(default_factory=dict)
 
     @property
@@ -501,6 +502,7 @@ def ozetle(gunler_: Iterable[Gun]) -> Dict[int, Ozet]:
         o.izinli += g.durum == IZIN_TAM
         o.izin_saat += g.durum == IZIN_SAAT
         o.tatil_calisti += g.durum == TATIL_CALISTI
+        o.okutma += bool(okutma_eksik(g))
         if g.durum in (IZIN_TAM, IZIN_SAAT) and g.izin_kod:
             o.izin_tur[g.izin_kod] = o.izin_tur.get(g.izin_kod, 0) + 1
         if g.gec_dk:
@@ -704,7 +706,19 @@ def aktif_siciller(con) -> List[int]:
 # ====================================================================== ortak gösterim (exe ve tarayıcı)
 RENK = {"1": "#DDEBF7", "2": "#FCE4D6", "3": "#E2D9F3", "G": "#F1F6E8", "D": "#F4F4F4",
         IZIN_TAM: "#C6EFCE", IZIN_SAAT: "#C6EFCE", GELMEDI: "#FFC7CE", EKSIK: "#F8CBAD",
-        TATIL: "#EDEDED", TATIL_CALISTI: "#D9E1F2", "gec": "#FFEB9C"}
+        TATIL: "#EDEDED", TATIL_CALISTI: "#D9E1F2", "gec": "#FFEB9C", "okutma": "#FFD8A8"}
+
+
+def okutma_eksik(g: "Gun") -> str:
+    """Gelmiş sayılan günde tek kart okutması: 'giriş' (girişte okutmamış) / 'çıkış' (çıkışta okutmamış) / ''."""
+    if g.durum not in (GELDI, TATIL_CALISTI) or bool(g.giris) == bool(g.cikis):
+        return ""
+    return "giriş" if not g.giris else "çıkış"
+
+
+def okutma_yazi(g: "Gun") -> str:
+    e = okutma_eksik(g)
+    return f"⚠ {'girişte' if e == 'giriş' else 'çıkışta'} kart okutulmamış" if e else ""
 
 
 _KISA = (("yıllık", "Yıllık"), ("raporlu ödenmeyen", "Rapor"), ("raporlu ödenen", "Rapor (ücretli)"), ("rapor", "Rapor"),
@@ -745,6 +759,8 @@ def gun_yazi(g: Gun, izin_ad: Dict[str, str], bugun: date) -> Tuple[str, str]:
     if g.durum == TATIL_CALISTI:
         return f"{kisa} · çalıştı\n{saat}", RENK[TATIL_CALISTI]
     if g.durum == GELDI:
+        if okutma_eksik(g):
+            return f"{kisa}\n{saat}\n⚠ {okutma_eksik(g)} okutulmadı", RENK["okutma"]
         return f"{kisa}\n{saat}", (RENK["gec"] if (g.gec_dk or g.erken_dk) else RENK.get(g.vardiya, "#FFFFFF"))
     return (kisa + (f"\n{saat}" if saat else "")), ("#FFFFFF" if g.gun >= bugun else RENK.get(g.vardiya, "#FFFFFF"))
 
@@ -761,6 +777,8 @@ def gun_ipucu(g: Gun, izin_ad: Dict[str, str]) -> str:
         p.append(f"erken çıkma: {sure_yaz(g.erken_dk)}")
     if g.fazla_dk:
         p.append(f"fazla çalışma: {sure_yaz(g.fazla_dk)}")
+    if okutma_eksik(g):
+        p.append(okutma_yazi(g) + " (yalnızca " + ("çıkış" if okutma_eksik(g) == "giriş" else "giriş") + " var) — kontrol edin")
     return "\n".join(p)
 
 
@@ -878,6 +896,8 @@ def _gun_satiri(g: Gun, izin_ad: Dict[str, str]) -> dict:
         acik.append(f"{sure_yaz(g.erken_dk)} erken çıktı")
     if g.fazla_dk:
         acik.append(f"+{sure_yaz(g.fazla_dk)} fazla")
+    if okutma_eksik(g):
+        acik.append(okutma_yazi(g))
     return {"gun": g.gun.isoformat(), "tarih": f"{g.gun:%d.%m.%Y} {GUN_AD[g.gun.weekday()]}", "plan": plan_kisa(g.plan) or g.plan or "-",
             "saat": (f"{g.giris or '--:--'} – {g.cikis or '--:--'}" if (g.giris or g.cikis) else "-"),
             "aciklama": ", ".join(acik), "tur": _serit_turu(g)}
