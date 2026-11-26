@@ -1294,6 +1294,12 @@ class PersonelVeriPenceresi(QDialog):
         self.close()
 
     def closeEvent(self, e):  # noqa: N802
+        fn, self._bitince = getattr(self, "_bitince", None), None
+        if fn and getattr(self, "otomatik", False):       # otomatik çekim bitmeden kapandı: zamanlayıcı beklemede kalmasın
+            try:
+                fn(False, "otomatik çekim yarıda kaldı (pencere kapandı)")
+            except Exception:  # noqa: BLE001
+                pass
         try:
             self._giris_zaman.stop()
             self._kaydir_zaman.stop()

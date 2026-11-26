@@ -18,6 +18,7 @@ from . import veritabani as vt
 
 GECE_SAATI = 1                             # her gece 01:00
 PV_SAATI = "20:00"                         # personel verisi akşam çekimi: dün yeniden çekilir ve teyit edilir (Ayarlar'dan değişir)
+PV_EN_UZUN_DK = 30                          # otomatik personel çekimi bundan uzun sürerse takılmış sayılır, kapatılıp yeniden denenir
 PV_SABAH = "08:29"                         # personel verisi sabah çekimi: dün + bugün o ana kadar, eksikler tamamlanır
 PV_EN_ESKI = "2026-07-01"                  # kaynak sistemde bundan eski veri yok (Ayarlar'dan değişir)
 YENIDEN_DK = 30
@@ -185,8 +186,34 @@ class OtoCekim(QObject):
         except ValueError:
             return None
 
+    def _pv_takildi_mi(self) -> bool:
+        """Önceki otomatik çekim hâlâ sürüyor mu? Penceresi kendiliğinden kapanmış (silinmiş) ya da çok uzun süredir bitmemişse
+        takılmış sayılır ve temizlenir; yoksa sonraki çekimler (akşam, ertesi sabah) hiç başlamaz."""
+        w = self._pv_pencere
+        if w is None:
+            return False
+        try:
+            from shiboken6 import isValid
+            canli = isValid(w)
+        except Exception:  # noqa: BLE001
+            canli = True
+        bas = getattr(self, "_pv_basla", None)
+        if canli and (bas is None or datetime.now() - bas < timedelta(minutes=PV_EN_UZUN_DK)):
+            return True                                   # gerçekten sürüyor: bekle
+        from . import teshis
+        neden = "penceresi kapanmış" if not canli else f"{PV_EN_UZUN_DK} dakikadır bitmedi"
+        teshis.adim(f"personel veri otomatik çekim takıldı ({neden}): temizlendi, yeniden denenecek")
+        if canli:
+            try:
+                w._bitince = None
+                w.close()
+            except Exception:  # noqa: BLE001
+                pass
+        self._pv_pencere = None
+        return False
+
     def pv_kontrol(self):
-        if not ayarda_acik() or self._pv_pencere is not None:
+        if not ayarda_acik() or self._pv_takildi_mi():
             return
         from .personel_pencere import ERTELENDI, elle_acik_mi, kimlik_oku, otomatik_calistir, sablon_oku
         if elle_acik_mi():                                # kullanıcı Personel Veri penceresini kullanıyor: bitince denenir
@@ -239,6 +266,7 @@ class OtoCekim(QObject):
                 else:
                     self._pv_yeniden = datetime.now() + timedelta(minutes=YENIDEN_DK)
                     self._pv_yaz(f"hata ({datetime.now():%d.%m %H:%M}): {metin} · {self._pv_yeniden:%H:%M}'de yeniden denenecek")
+        self._pv_basla = datetime.now()
         self._pv_pencere = otomatik_calistir(self.ana.db_yolu, ilk, son, self.ana, bitti) or None
 
     def _baska_cekim_var(self) -> bool:
