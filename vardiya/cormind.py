@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import http.cookiejar
 import json
+import re
 import time
 import urllib.error
 import urllib.parse
@@ -380,7 +381,15 @@ def _parca_cek(con, ist: "Istemci", ariza: Dict[int, str], ilk: date, son: date,
     parca_sonu = min(simdi, datetime(son.year, son.month, son.day) + timedelta(days=1))
     acik: Dict[str, Tuple[datetime, str]] = {}
     ilk_bas: Dict[str, datetime] = {}
+    mk_id: Dict[str, int] = {}
     for k in ham:
+        mk = k.get("machine") if isinstance(k.get("machine"), dict) else {}
+        ad, no = _ad(mk, "name", "code"), k.get("machine_id") or mk.get("id")
+        if ad and no is not None:
+            try:
+                mk_id[ad] = int(no)
+            except (TypeError, ValueError):
+                pass
         s = kayit_satiri(k, makine_adlari, ariza, parca_sonu)
         if s is None:
             atlanan += 1
@@ -414,7 +423,7 @@ def _parca_cek(con, ist: "Istemci", ariza: Dict[int, str], ilk: date, son: date,
     vt.aktarim_kaydet(con, f"Cormind ({ilk:%d.%m.%Y}–{son:%d.%m.%Y})", len(ham), yeni, guncel, ayni, atlanan,
                       ilk_g.strftime("%Y-%m-%d") if ilk_g else None, son_g.strftime("%Y-%m-%d") if son_g else None)
     return {"toplam": len(ham), "yeni": yeni, "guncel": guncel, "ayni": ayni, "atlanan": atlanan, "silinen": silinen,
-            "tipler": tipler, "makineler": {s[0] for s in satirlar}, "acik": acik, "ilk_bas": ilk_bas, "parca_sonu": parca_sonu}
+            "tipler": tipler, "makineler": {s[0] for s in satirlar}, "acik": acik, "ilk_bas": ilk_bas, "parca_sonu": parca_sonu, "mk_id": mk_id}
 
 
 def cek(con, adres: str, kullanici: str, sifre: str, ilk: date, son: date, makine_idleri: List[int],
@@ -441,6 +450,7 @@ def cek(con, adres: str, kullanici: str, sifre: str, ilk: date, son: date, makin
     acik: Dict[str, Tuple[datetime, str]] = {}
     dar = kesildi = durduruldu = False
     biten = 0
+    mk_id: Dict[str, int] = {}
     for i, (p_ilk, p_son) in enumerate(parcalar):
         if iptal and iptal():
             durduruldu = True
@@ -471,16 +481,170 @@ def cek(con, adres: str, kullanici: str, sifre: str, ilk: date, son: date, makin
         for ad, sayi in r["tipler"].items():
             tipler[ad] = tipler.get(ad, 0) + sayi
         makineler |= r["makineler"]
+        mk_id.update(r.get("mk_id") or {})
         biten = i + 1
         bildir(parca=i + 1, parca_sayisi=n, ilk=p_ilk, son=p_son, asama="kaydedildi", kayit=r["toplam"], toplam=r["toplam"], kaydedilen=t["toplam"])
+    dogrulama: dict = {}
+    if not durduruldu and (son - ilk).days <= DOGRULAMA_EN_COK_GUN:
+        bildir(parca=n, parca_sayisi=n, ilk=ilk, son=son, asama="dogrulama", kayit=0, toplam=0, kaydedilen=t["toplam"])
+        try:
+            dogrulama = dogrulama_cek(con, ist, ilk, son, mk_id)
+        except Exception as e:  # noqa: BLE001  (doğrulama yapılamasa da çekilen veri geçerli)
+            dogrulama = {"hata": str(e)[:200]}
     ay = vt.ayar_oku(con)
     bilinen = set(ay["makineler"])
     eklenen = sorted(makineler - bilinen)
     if eklenen:
         vt.ayar_yaz(con, "makineler", sorted(bilinen | set(eklenen)))
     return dict(t, tipler=dict(sorted(tipler.items(), key=lambda x: -x[1])), yeni_makineler=eklenen, dar_sorgu=dar, kesildi=kesildi,
-                parca_sayisi=n, biten_parca=biten, durduruldu=durduruldu,
+                parca_sayisi=n, biten_parca=biten, durduruldu=durduruldu, dogrulama=dogrulama,
                 hizlar=dict(sorted((getattr(ist, "_hiz", None) or {}).items())))
+
+
+# ============================================================ gece doğrulaması (hatalı duruşlar)
+DOGRULAMA_EN_COK_GUN = 6          # yalnızca kısa aralıklarda (gece çekimi: dün); uzun elle çekimlerde yapılmaz
+_KOD = re.compile(r"[^0-9A-Za-z_.\-]")
+
+
+def _zaman_al(v) -> Optional[datetime]:
+    """Cormind zamanı: milisaniye sayısı ya da ISO metni → Türkiye saati."""
+    if v in (None, ""):
+        return None
+    try:
+        if isinstance(v, (int, float)) or str(v).isdigit():
+            return datetime.fromtimestamp(int(v) / 1000.0, TR).replace(tzinfo=None, microsecond=0)
+    except (TypeError, ValueError, OverflowError, OSError):
+        return None
+    return tr_zaman(str(v))
+
+
+def _kisi_adi(k: dict) -> str:
+    """Yalnızca ad soyad alınır (e-posta, kullanıcı adı, şifre gibi alanlara bakılmaz)."""
+    op = k.get("operator") if isinstance(k.get("operator"), dict) else {}
+    kul = op.get("user") if isinstance(op.get("user"), dict) else {}
+    ad = f"{kul.get('first_name') or ''} {kul.get('last_name') or ''}".strip() or _ad(op, "name")
+    if not ad and k.get("operator_id") is not None:
+        ad = f"operatör #{k.get('operator_id')}"
+    return ad
+
+
+def operator_oturumlari(ist: "Istemci", makine_id: int, alt: datetime, ust: datetime) -> List[Tuple[datetime, Optional[datetime], str]]:
+    """Operatörün makinedeki gerçek giriş-çıkışları (OperatorWork) — aralıkla çakışanlar."""
+    a_ms = int(alt.replace(tzinfo=TR).timestamp() * 1000)
+    u_ms = int(ust.replace(tzinfo=TR).timestamp() * 1000)
+    g_ms = a_ms - 2 * 86400 * 1000
+    a_iso, u_iso = alt.replace(tzinfo=TR).isoformat(), ust.replace(tzinfo=TR).isoformat()
+    g_iso = (alt - timedelta(days=2)).replace(tzinfo=TR).isoformat()
+    t = '"OperatorWork"'
+    kosullar = [
+        f'{t}."machine_id" = {int(makine_id)} AND {t}."start" < {u_ms} AND {t}."start" >= {g_ms} AND ({t}."end" >= {a_ms} OR {t}."end" IS NULL)',
+        f"{t}.\"machine_id\" = {int(makine_id)} AND {t}.\"started_at\" < '{u_iso}' AND {t}.\"started_at\" >= '{g_iso}'"
+        f" AND ({t}.\"ended_at\" >= '{a_iso}' OR {t}.\"ended_at\" IS NULL)",
+    ]
+    son_hata = None
+    for w in kosullar:
+        for rel in (["operator", "operator.user"], []):
+            try:
+                d = ist._graphql("OperatorWork", {"where": w, "relations": rel, "limit": 1000, "offset": 0})  # noqa: SLF001
+            except CormindHata as e:
+                son_hata = e
+                continue
+            sonuc = []
+            for k in d.get("entities") or []:
+                bas = _zaman_al(k.get("start")) or _zaman_al(k.get("started_at"))
+                bit = _zaman_al(k.get("end")) or _zaman_al(k.get("ended_at"))
+                if bas is None or (bit is not None and bit < bas):
+                    continue
+                sonuc.append((bas, bit, _kisi_adi(k) or "operatör"))
+            return sonuc
+    raise son_hata or CormindHata("operatör giriş-çıkışları alınamadı")
+
+
+def is_durumlari(ist: "Istemci", makine_idleri: List[int], kodlar: List[str]) -> List[dict]:
+    """İşlerin şu anki yeri: koda göre (ve makinelerin üzerindeki işler). code, makine no, son değişme zamanı."""
+    temiz = sorted({_KOD.sub("", k)[:40] for k in kodlar if _KOD.sub("", k)})
+    parca = []
+    if makine_idleri:
+        parca.append(f'"Goods"."current_machine_id" IN ({",".join(str(int(i)) for i in makine_idleri)})')
+    if temiz:
+        parca.append('"Goods"."code" IN (' + ",".join(f"'{k}'" for k in temiz) + ")")
+    if not parca:
+        return []
+    d = ist._graphql("Goods", {"where": " OR ".join(parca), "limit": 2000, "offset": 0})  # noqa: SLF001
+    sonuc = []
+    for g in d.get("entities") or []:
+        erp = ((g.get("extra") or {}).get("erp") or {}) if isinstance(g.get("extra"), dict) else {}
+        sonuc.append({"kod": str(g.get("code") or erp.get("OPERATION_ID") or ""),
+                      "makine": g.get("current_machine_id"),
+                      "degisme": _zaman_al(g.get("updated_at"))})
+    return sonuc
+
+
+def dogrulama_yazi(d: Optional[dict]) -> str:
+    """Çekim sonucundaki doğrulamanın kısa açıklaması (boşsa yapılmamıştır)."""
+    if not d:
+        return ""
+    if d.get("makine", 0) == 0 and not d.get("hata"):
+        return "hatalı duruş kontrolü: kontrol edilecek tezgâh yok"
+    y = f"hatalı duruş kontrolü: {d.get('makine', 0)} tezgâh, {d.get('oturum', 0)} operatör giriş-çıkışı, {d.get('is', 0)} iş"
+    return y + (f" · sorun: {d['hata']}" if d.get("hata") else "")
+
+
+def dogrulama_cek(con, ist: "Istemci", ilk: date, son: date, mk_id: Dict[str, int]) -> dict:
+    """Hatalı duruş kontrolündeki tezgâhlar için (yalnızca onlar): operatörün gerçek giriş-çıkışları ve
+    duruş kaydındaki işin hâlâ makinede olup olmadığı / son değişme zamanı. Sonuç veri tabanına yazılır."""
+    from . import hatali_durus as hd
+    gerek = hd.dogrulanacak_makineler(con, ilk, son)
+    if not gerek:
+        return {"makine": 0, "oturum": 0, "is": 0}
+    alt = datetime(ilk.year, ilk.month, ilk.day)
+    ust = datetime(son.year, son.month, son.day) + timedelta(days=1)
+    simdi = datetime.now(TR).replace(tzinfo=None, microsecond=0).strftime(BICIM)
+    no_ad = {v: k for k, v in mk_id.items()}
+    tamam, hatalar, oturum_sayi = [], [], 0
+    for mk in sorted(gerek):
+        no = mk_id.get(mk)
+        if no is None:
+            hatalar.append(f"{mk}: makine numarası bulunamadı")
+            continue
+        try:
+            ot = operator_oturumlari(ist, no, alt, ust)
+        except CormindHata as e:
+            hatalar.append(f"{mk}: {e}")
+            continue
+        con.execute("DELETE FROM cm_oturum WHERE makine=? AND bas >= ? AND bas < ?",
+                    (mk, (alt - timedelta(days=2)).strftime(BICIM), ust.strftime(BICIM)))
+        con.executemany("INSERT OR REPLACE INTO cm_oturum (makine, operator, bas, bit) VALUES (?,?,?,?)",
+                        [(mk, ad, b.strftime(BICIM), e.strftime(BICIM) if e else None) for b, e, ad in ot])
+        oturum_sayi += len(ot)
+        tamam.append(mk)
+        time.sleep(0.3)
+    is_sayi = 0
+    try:
+        kodlar = [k for mk in tamam for k in gerek[mk]]
+        durum = is_durumlari(ist, [mk_id[m] for m in tamam], kodlar) if tamam else []
+        kod_d = {}
+        for g in durum:
+            if g["kod"]:
+                kod_d[g["kod"]] = g
+        gunler = [(ilk + timedelta(days=i)).isoformat() for i in range((son - ilk).days + 1)]
+        for mk in tamam:
+            for k in gerek[mk]:
+                g = kod_d.get(_KOD.sub("", k)[:40])
+                if g is None:
+                    continue
+                makinede = 1 if g["makine"] is not None and no_ad.get(int(g["makine"])) == mk else 0
+                for gun in gunler:
+                    con.execute("INSERT OR REPLACE INTO cm_is_durum (gun, makine, is_emri, makinede, degisme, kontrol) VALUES (?,?,?,?,?,?)",
+                                (gun, mk, k, makinede, g["degisme"].strftime(BICIM) if g["degisme"] else None, simdi))
+                is_sayi += 1
+    except CormindHata as e:
+        hatalar.append(f"iş durumu: {e}")
+    gunler = [(ilk + timedelta(days=i)).isoformat() for i in range((son - ilk).days + 1)]
+    con.executemany("INSERT OR REPLACE INTO cm_dogrulama (gun, makine, zaman) VALUES (?,?,?)",
+                    [(g, mk, simdi) for g in gunler for mk in tamam])
+    con.commit()
+    return {"makine": len(tamam), "oturum": oturum_sayi, "is": is_sayi, "hata": "; ".join(hatalar)[:300]}
 
 
 # ============================================================ ham döküm (teşhis)

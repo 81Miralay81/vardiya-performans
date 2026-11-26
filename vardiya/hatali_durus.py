@@ -8,6 +8,12 @@ Ayarlar'daki alt eşikten (varsayılan 5 dk) kısa olaylar listeye ve grafiklere
 Raporlardan hariç tutulan duruş türleri de kontrol edilir: onlarda operatör ya da iş varsa hariç tutulmaz, burada görünür.
 Kayıttaki operatör / iş bilgisi kaydın açıldığı ana aittir: seçilen aralıktan önce açılmış (ör. aylardır süren) kayıtlar
 hatalı sayılmaz; aralıkta açılan kayıt da yalnızca açıldığı gün içinde sayılır.
+
+Gece doğrulaması (cormind.dogrulama_cek): duruş kaydındaki operatör / iş bilgisi kaydın açıldığı ana aittir, sonradan
+güncellenmez. Doğrulanan günlerde gerçek durum kullanılır:
+  - operatör: Cormind'deki operatör giriş-çıkış kaydı (cm_oturum) duruşla çakıştığı kadar,
+  - iş: işin makineden atıldığı an (iş hâlâ makinede değilse işin son değişme zamanı) gelene kadar.
+Doğrulanmamış günlerde (gece kontrolü yapılmamış) eski kural geçerlidir: duruş kaydındaki bilgi.
 """
 from __future__ import annotations
 
@@ -34,6 +40,13 @@ class Olay:
     urun: str
     is_emri: str
     urun_adi: str
+    kaynak: str = "kayit"          # "kayit": duruş kaydındaki bilgi · "gercek": gece doğrulamasıyla (giriş-çıkış / iş atılma)
+    not_: str = ""                 # ör. "iş atılma zamanı kesin değil"
+
+    @property
+    def kaynak_yazi(self) -> str:
+        y = "giriş-çıkış ve iş kontrolüyle doğrulandı" if self.kaynak == "gercek" else "duruş kaydındaki bilgi (doğrulanmadı)"
+        return y + (f" · {self.not_}" if self.not_ else "")
 
     @property
     def tur(self) -> str:
@@ -63,11 +76,11 @@ def _urun(s) -> str:
     return "" if s in ("", "-") else s
 
 
-def tespit(con, ilk: date, son: date, ayar: Optional[dict] = None, makineler: Optional[Iterable[str]] = None) -> List[Olay]:
-    """Seçili günlerdeki hatalı duruşlar (kayıtlar gün sınırında kırpılır, alt eşikten kısalar atılır)."""
+def _adaylar(con, ilk: date, son: date, ayar: dict, makineler=None) -> List[tuple]:
+    """Kontrol edilen türlerdeki, aralıkta açılmış, alt eşikten uzun duruşlar (operatör / iş olsun olmasın):
+    [(makine, tip, bas, bit, operator, urun, is_emri, urun_adi)]. Süre açıldığı günün sonunda kesilir."""
     from . import veritabani as vt
     from .operator import operator_adi
-    ayar = ayar if ayar is not None else vt.ayar_oku(con)
     turler = kontrol_turleri(ayar)
     if not turler:
         return []
@@ -76,24 +89,150 @@ def tespit(con, ilk: date, son: date, ayar: Optional[dict] = None, makineler: Op
     alt = datetime(ilk.year, ilk.month, ilk.day)
     ust = datetime(son.year, son.month, son.day) + timedelta(days=1)
     yer = ", ".join("?" * len(turler))
-    sonuc: List[Olay] = []
+    sonuc = []
     for r in vt.aralik_satirlari(con, "makine, tip, baslangic, bitis, operator, urun_kodu, is_emri, urun_adi", ilk, son,
                                  f"tip IN ({yer})", tuple(turler)):
         if mset is not None and r["makine"] not in mset:
             continue
-        op, urun = operator_adi(r["operator"]), _urun(r["urun_kodu"])
-        if not op and not urun:
-            continue                                     # olması gereken: kimse yok, iş yok
         a0 = vt.zaman(r["baslangic"])
         if a0 < alt:
             continue                                     # aralıktan önce açılmış kayıt: üstündeki operatör / iş eski bilgidir
         gun_sonu = datetime(a0.year, a0.month, a0.day) + timedelta(days=1)
-        a, b = a0, min(vt.zaman(r["bitis"]), ust, gun_sonu)   # yalnızca açıldığı gün sayılır (ertesi günlere taşınmaz)
-        if (b - a).total_seconds() < max(1.0, en_az):
+        b = min(vt.zaman(r["bitis"]), ust, gun_sonu)     # yalnızca açıldığı gün sayılır (ertesi günlere taşınmaz)
+        if (b - a0).total_seconds() < max(1.0, en_az):
             continue
-        sonuc.append(Olay(r["makine"], r["tip"], a, b, op, urun, _urun(r["is_emri"]), " ".join(str(r["urun_adi"] or "").split())))
+        sonuc.append((r["makine"], r["tip"], a0, b, operator_adi(r["operator"]), _urun(r["urun_kodu"]), _urun(r["is_emri"]),
+                      " ".join(str(r["urun_adi"] or "").split())))
+    return sonuc
+
+
+class _Dogrulama:
+    """Gece doğrulamasının kayıtları: hangi makine-gün doğrulandı, gerçek operatör oturumları, işlerin son durumu."""
+
+    def __init__(self, con, ilk: date, son: date):
+        self.gunler: set = set()
+        self.oturum: Dict[str, List[Tuple[datetime, Optional[datetime], str]]] = {}
+        self.is_durum: Dict[Tuple[str, str, str], Tuple[int, Optional[datetime]]] = {}
+        g1, g2 = ilk.isoformat(), son.isoformat()
+        try:
+            for r in con.execute("SELECT gun, makine FROM cm_dogrulama WHERE gun >= ? AND gun <= ?", (g1, g2)):
+                self.gunler.add((r[0], r[1]))
+            if not self.gunler:
+                return
+            alt = (datetime(ilk.year, ilk.month, ilk.day) - timedelta(days=2)).strftime("%Y-%m-%d %H:%M:%S")
+            ust = (datetime(son.year, son.month, son.day) + timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
+            for r in con.execute("SELECT makine, operator, bas, bit FROM cm_oturum WHERE bas < ? AND (bit IS NULL OR bit > ?)", (ust, alt)):
+                self.oturum.setdefault(r[0], []).append((_z(r[2]), _z(r[3]), r[1]))
+            for r in con.execute("SELECT gun, makine, is_emri, makinede, degisme FROM cm_is_durum WHERE gun >= ? AND gun <= ?", (g1, g2)):
+                self.is_durum[(r[0], r[1], r[2])] = (int(r[3] or 0), _z(r[4]))
+        except Exception:  # noqa: BLE001  (eski veri tabanı: tablolar yok)
+            self.gunler = set()
+        for lst in self.oturum.values():
+            lst.sort(key=lambda x: x[0])
+
+    def var_mi(self, gun: date, makine: str) -> bool:
+        return (gun.isoformat(), makine) in self.gunler
+
+    def operatorler(self, makine: str, a: datetime, b: datetime, simdi: datetime) -> List[Tuple[datetime, datetime, str]]:
+        lst = self.oturum.get(makine) or []
+        sonuc = []
+        for i, (x, y, ad) in enumerate(lst):
+            if y is None:                                # hâlâ açık: sonraki oturuma (yoksa şimdiye) kadar
+                y = next((z[0] for z in lst[i + 1:] if z[0] > x), simdi)
+            x2, y2 = max(a, x), min(b, y)
+            if y2 > x2:
+                sonuc.append((x2, y2, ad))
+        return sonuc
+
+    def is_araligi(self, gun: date, makine: str, is_emri: str, a: datetime, b: datetime):
+        """(bitiş, not) — iş [a, bitiş) arasında makinede; None: o duruşta iş yoktu."""
+        d = self.is_durum.get((gun.isoformat(), makine, is_emri))
+        if d is None:
+            return b, "iş bilgisi doğrulanamadı"
+        makinede, degisme = d
+        if makinede:
+            return b, ""
+        if degisme is None:
+            return b, "iş atılma zamanı kesin değil"
+        if degisme <= a:
+            return None                                  # iş duruş başlamadan atılmış: kayıttaki iş eski bilgi
+        if degisme < b:
+            return degisme, ""
+        return b, "iş atılma zamanı kesin değil"
+
+
+def _z(s) -> Optional[datetime]:
+    if not s:
+        return None
+    try:
+        return datetime.strptime(str(s)[:19], "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return None
+
+
+def _gercek_parcalar(dog: _Dogrulama, k: tuple, simdi: datetime) -> List[Tuple[datetime, datetime, str, bool, str]]:
+    """Bir duruşun gerçekten hatalı olan parçaları: [(bas, bit, operatör, iş var mı, not)]."""
+    mk, _tip, a, b, _op, urun, emri, _uadi = k
+    ops = dog.operatorler(mk, a, b, simdi)
+    is_bit, is_not = None, ""
+    if urun or emri:
+        r = dog.is_araligi(a.date(), mk, emri or urun, a, b)
+        if r is not None:
+            is_bit, is_not = r
+    sinir = sorted({a, b} | {x for x, _, _ in ops} | {y for _, y, _ in ops} | ({is_bit} if is_bit else set()))
+    parcalar: List[list] = []
+    for x, y in zip(sinir, sinir[1:]):
+        if y <= x:
+            continue
+        ad = next((o for p, q, o in ops if p <= x and y <= q), "")
+        is_var = is_bit is not None and y <= is_bit
+        if not ad and not is_var:
+            continue
+        if parcalar and parcalar[-1][1] == x and parcalar[-1][2] == ad and parcalar[-1][3] == is_var:
+            parcalar[-1][1] = y
+        else:
+            parcalar.append([x, y, ad, is_var, is_not if is_var else ""])
+    return [tuple(p) for p in parcalar]
+
+
+def tespit(con, ilk: date, son: date, ayar: Optional[dict] = None, makineler: Optional[Iterable[str]] = None,
+           dogrula: bool = True) -> List[Olay]:
+    """Seçili günlerdeki hatalı duruşlar (alt eşikten kısalar atılır). Gece doğrulaması yapılmış makine-günlerde gerçek
+    operatör giriş-çıkışı ve işin atılma zamanı kullanılır; yapılmamışlarda duruş kaydındaki bilgi."""
+    from . import veritabani as vt
+    ayar = ayar if ayar is not None else vt.ayar_oku(con)
+    adaylar = _adaylar(con, ilk, son, ayar, makineler)
+    if not adaylar:
+        return []
+    en_az = max(1.0, float(ayar.get("hatali_durus_en_az_dk", VARSAYILAN_EN_AZ_DK)) * 60.0)
+    dog = _Dogrulama(con, ilk, son) if dogrula else None
+    simdi = datetime.now().replace(microsecond=0)
+    sonuc: List[Olay] = []
+    for k in adaylar:
+        mk, tip, a, b, op, urun, emri, uadi = k
+        if dog is not None and dog.var_mi(a.date(), mk):
+            for x, y, ad, is_var, not_ in _gercek_parcalar(dog, k, simdi):
+                if (y - x).total_seconds() >= en_az:
+                    sonuc.append(Olay(mk, tip, x, y, ad, urun if is_var else "", emri if is_var else "", uadi, "gercek", not_))
+            continue
+        if not op and not urun:
+            continue                                     # olması gereken: kimse yok, iş yok
+        sonuc.append(Olay(mk, tip, a, b, op, urun, emri, uadi))
     sonuc.sort(key=lambda o: (o.makine, o.bas))
     return sonuc
+
+
+def dogrulanacak_makineler(con, ilk: date, son: date, ayar: Optional[dict] = None) -> Dict[str, List[str]]:
+    """Gece doğrulamasında bakılacak tezgâhlar: yalnızca kontrol edilen duruşları olanlar → {makine: [iş emri, ...]}."""
+    from . import veritabani as vt
+    ayar = ayar if ayar is not None else vt.ayar_oku(con)
+    d: Dict[str, List[str]] = {}
+    for mk, _tip, _a, _b, _op, urun, emri, _u in _adaylar(con, ilk, son, ayar):
+        lst = d.setdefault(mk, [])
+        k = emri or urun
+        if k and k not in lst:
+            lst.append(k)
+    return d
 
 
 # ---------------------------------------------------------------- kırılımlar (grafiklerin verisi)

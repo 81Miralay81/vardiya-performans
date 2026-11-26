@@ -53,3 +53,61 @@ def test_eski_acik_kayit_hatali_sayilmaz(tmp_path):
     vt.ayar_yaz(con, "operator_haric_durus", ["İŞ EMRİ PLAN YOK"])
     tip = {m: t for m, t, _a, _b in vt.kayitlari_getir(con, date(2026, 11, 25), date(2026, 11, 25))}
     assert tip["IM24"] == "İŞ EMRİ PLAN YOK" and tip["IM85"].endswith(vt.HATALI_EK)
+
+
+def test_gece_dogrulamasi_gercek_sureler(tmp_path):
+    """Doğrulanan günde: kayıttaki operatör gerçekte çıkmışsa sayılmaz; iş atıldığı ana kadar sayılır."""
+    con = _db(tmp_path)
+    con.executemany("INSERT INTO cm_oturum (makine, operator, bas, bit) VALUES (?,?,?,?)",
+                    [("IM1", "Ali Veli", "2026-11-25 11:50:00", "2026-11-25 12:20:00"),      # 12:20'de çıkmış
+                     ("IM1", "Ayşe Kaya", "2026-11-25 09:00:00", "2026-11-25 09:30:00")])    # kayıtta yok ama makinede
+    con.executemany("INSERT INTO cm_is_durum (gun, makine, is_emri, makinede, degisme, kontrol) VALUES (?,?,?,?,?,?)",
+                    [("2026-11-25", "IM1", "54", 0, "2026-11-25 12:40:00", "x"),             # 12:40'ta atılmış
+                     ("2026-11-25", "IM1", "55", 1, "2026-11-25 13:03:00", "x")])            # hâlâ makinede
+    con.execute("INSERT INTO cm_dogrulama (gun, makine, zaman) VALUES ('2026-11-25', 'IM1', 'x')")
+    con.commit()
+    ayar = {"hatali_durus_turleri": ["Çalışmıyor"], "operator_haric_durus": ["İŞ EMRİ PLAN YOK"], "hatali_durus_en_az_dk": 5}
+    o = hd.tespit(con, date(2026, 11, 25), date(2026, 11, 25), ayar)
+    ozet = [(x.bas.strftime("%H:%M"), x.bit.strftime("%H:%M"), x.operator, x.tur, x.kaynak) for x in o]
+    assert ozet == [("09:00", "09:30", "Ayşe Kaya", "operator", "gercek"),
+                    ("11:50", "12:00", "Ali Veli", "operator", "gercek"),
+                    ("12:00", "12:20", "Ali Veli", "operator", "gercek"),
+                    ("12:20", "12:40", "", "is", "gercek"),
+                    ("13:03", "14:00", "", "is", "gercek")]
+    # doğrulama kapalıyken eski kural
+    assert len(hd.tespit(con, date(2026, 11, 25), date(2026, 11, 25), ayar, dogrula=False)) == 2
+
+
+def test_is_atilma_zamani_kesin_degil(tmp_path):
+    con = _db(tmp_path)
+    con.execute("INSERT INTO cm_is_durum VALUES ('2026-11-25', 'IM1', '55', 0, '2026-11-26 10:00:00', 'x')")   # başka yerde, sonra değişmiş
+    con.execute("INSERT INTO cm_is_durum VALUES ('2026-11-25', 'IM1', '54', 0, '2026-11-25 11:00:00', 'x')")   # duruştan önce atılmış
+    con.execute("INSERT INTO cm_dogrulama VALUES ('2026-11-25', 'IM1', 'x')")
+    con.commit()
+    ayar = {"hatali_durus_turleri": ["Çalışmıyor"], "operator_haric_durus": ["İŞ EMRİ PLAN YOK"]}
+    o = hd.tespit(con, date(2026, 11, 25), date(2026, 11, 25), ayar)
+    assert [(x.bas.strftime("%H:%M"), x.not_) for x in o] == [("13:03", "iş atılma zamanı kesin değil")]
+
+
+def test_dogrulama_cek_yalniz_isaretli_tezgahlar(tmp_path, monkeypatch):
+    from vardiya import cormind
+    con = _db(tmp_path)
+    con.execute("INSERT INTO kayit(makine, baslangic, bitis, operator, tip) VALUES ('IM2','2026-11-25 08:00:00','2026-11-25 10:00:00','','Çalışma')")
+    con.commit()
+    vt.ayar_yaz(con, "hatali_durus_turleri", ["Çalışmıyor"])
+    sorulan = []
+
+    class Sahte:
+        def _graphql(self, model, kosul):
+            sorulan.append((model, kosul["where"]))
+            if model == "OperatorWork":
+                return {"entities": [{"start": int(datetime(2026, 11, 25, 10, 0).timestamp() * 1000) - 3 * 3600 * 1000 + 3 * 3600 * 1000,
+                                      "end": None, "operator": {"user": {"first_name": "Ali", "last_name": "Veli", "email": "x@y"}}}]}
+            return {"entities": [{"code": "55", "current_machine_id": 7, "updated_at": "2026-11-25T10:03:00.000Z"}]}
+    monkeypatch.setattr(cormind.time, "sleep", lambda s: None)
+    r = cormind.dogrulama_cek(con, Sahte(), date(2026, 11, 25), date(2026, 11, 25), {"IM1": 7, "IM2": 8})
+    assert r["makine"] == 1 and r["is"] == 1 and not r["hata"]
+    assert all("8" not in w.split("=")[1][:3] for m, w in sorulan if m == "OperatorWork")       # IM2'ye sorgu yok
+    assert con.execute("SELECT makinede FROM cm_is_durum WHERE is_emri='55'").fetchone()[0] == 1
+    assert con.execute("SELECT operator FROM cm_oturum").fetchone()[0] == "Ali Veli"
+    assert "email" not in str(con.execute("SELECT * FROM cm_oturum").fetchall())

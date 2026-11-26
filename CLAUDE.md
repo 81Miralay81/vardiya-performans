@@ -76,6 +76,7 @@ Bu dosya yalnızca geliştirici (Claude) içindir; program okumaz. Her önemli d
 - Performans "Operatör yok" tıklanınca soru: bu makine → doğrudan gant / tüm makineler → 4. seviye.
 - Hatalı sayfa akışı: makine → (vardiya | duruş adı) → (operatöre göre | işe göre) → gant + olay listesi; veri `bekleme.arka_planda` ile.
 - `bekleme.py`: ortak bekleme kartı (`Bekleme`, `bekle` bağlam yöneticisi, `arka_planda` iş parçacığı, `kaydir` yumuşak kaydırma). Performans kırılımları, Operatör/Personel yenileme, dönem hesabı kullanır.
+- **Gece doğrulaması** (`cormind.dogrulama_cek`, `cek` sonunda, aralık ≤ 6 gün): yalnızca kontrol edilen duruşları olan tezgâhlar için OperatorWork (gerçek giriş-çıkış → `cm_oturum`) ve Goods (iş hâlâ makinede mi, `updated_at` → `cm_is_durum`); doğrulanan makine-gün `cm_dogrulama`. `hd.tespit` doğrulanan günde gerçek parçaları kullanır (operatör oturumu ∩ duruş, iş atılana kadar; atılma ≥ duruş sonu ya da bilinmiyorsa "kesin değil"), Olay.kaynak "gercek"/"kayit". Sorgu alan adları canlı denenemedi (Cormind kapalıydı) — ilk gece sonucu çekim iletisinde "hatalı duruş kontrolü: …". Hesaptaki hariç işaretlemesi (HATALI_EK) hâlâ kayıt bilgisine göre.
 - Web sürümünde Hatalı Duruşlar sayfası henüz yok. Kalan izin gösterimi (a/b/c) kararı bekliyor.
 
 ## Geçici köprü (kopru.py) — iş bitince sil

@@ -129,8 +129,9 @@ class HataliSayfasi(QWidget):
         self.zc = ZamanCizelgesi()
         k4.layout().addWidget(self.zc)
         self.tablo = QTableWidget()
-        self.tablo.setColumnCount(8)
-        self.tablo.setHorizontalHeaderLabels(["Tarih", "Vardiya", "Duruş", "Başlangıç", "Bitiş", "Süre", "Operatör", "Ürün kodu · iş emri"])
+        self.tablo.setColumnCount(9)
+        self.tablo.setHorizontalHeaderLabels(["Tarih", "Vardiya", "Duruş", "Başlangıç", "Bitiş", "Süre", "Operatör", "Ürün kodu · iş emri",
+                                              "Kaynak"])
         self.tablo.verticalHeader().hide()
         self.tablo.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.tablo.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -271,7 +272,7 @@ class HataliSayfasi(QWidget):
             dk = int(round(o.saat * 60))
             deg = [f"{o.bas:%d.%m.%Y}", f"{o.vardiya}. vardiya", o.tip, f"{o.bas:%H:%M}",
                    f"{o.bit:%d.%m %H:%M}" if o.bit.date() != o.bas.date() else f"{o.bit:%H:%M}", f"{dk // 60}:{dk % 60:02d}",
-                   o.operator or "-", " · ".join(x for x in (o.urun, o.is_emri) if x) or "-"]
+                   o.operator or "-", " · ".join(x for x in (o.urun, o.is_emri) if x) or "-", o.kaynak_yazi]
             for j, x in enumerate(deg):
                 it = QTableWidgetItem(x)
                 if j == 0:
@@ -328,7 +329,8 @@ class HataliSayfasi(QWidget):
         self.aciklama.setText(
             "Kontrol edilen duruşlar: " + (", ".join(turler) if turler else "— Ayarlar > Duruşlar kartında seçin —")
             + f". Bu duruşlar sürerken makinede operatör kayıtlıysa (mor) ya da iş / ürün kodu görünüyorsa (turuncu) o süre burada "
-            f"gösterilir; doğru olan kısım gösterilmez. {esik} dk'dan kısa olanlar listelenmez.")
+            f"gösterilir; doğru olan kısım gösterilmez. {esik} dk'dan kısa olanlar listelenmez. Gece kontrolü yapılan günlerde "
+            "operatörün gerçek giriş-çıkışı ve işin makineden atıldığı an kullanılır (listede 'Kaynak' sütunu).")
         if not gunler or not turler:
             self._donem = None
             self._olaylar_geldi([])

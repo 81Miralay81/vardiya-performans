@@ -85,6 +85,14 @@ CREATE TABLE IF NOT EXISTS kot (
     veri    TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS metin (anahtar TEXT PRIMARY KEY, icerik TEXT NOT NULL);
+-- gece doğrulaması (hatalı duruşlar): yalnızca kontrol edilen duruşları olan tezgâhlar için Cormind'den alınır.
+-- Yalnızca operatör adı, makine, iş emri ve zamanlar saklanır (e-posta, şifre vb. hiçbir kullanıcı bilgisi alınmaz).
+CREATE TABLE IF NOT EXISTS cm_oturum (makine TEXT NOT NULL, operator TEXT NOT NULL, bas TEXT NOT NULL, bit TEXT,
+    PRIMARY KEY (makine, bas, operator));
+CREATE TABLE IF NOT EXISTS cm_is_durum (gun TEXT NOT NULL, makine TEXT NOT NULL, is_emri TEXT NOT NULL,
+    makinede INTEGER NOT NULL, degisme TEXT, kontrol TEXT NOT NULL, PRIMARY KEY (gun, makine, is_emri));
+CREATE TABLE IF NOT EXISTS cm_dogrulama (gun TEXT NOT NULL, makine TEXT NOT NULL, zaman TEXT NOT NULL,
+    PRIMARY KEY (gun, makine));
 CREATE TABLE IF NOT EXISTS gorsel (
     anahtar TEXT PRIMARY KEY,
     png BLOB NOT NULL,

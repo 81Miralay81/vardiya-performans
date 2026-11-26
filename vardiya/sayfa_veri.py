@@ -290,6 +290,9 @@ class CormindKarti(QFrame):
         self.cubuk.setRange(0, 1000)
         self.cubuk.setValue(int(1000 * ((i - 1) + min(1.0, pay)) / max(1, n)))
         self.cubuk.setFormat(f"{i}/{n}  ·  %p%" if n > 1 else "%p%")
+        if b["asama"] == "dogrulama":
+            self._yaz("Hatalı duruş kontrolü: işaretli duruşlardaki tezgâhların operatör giriş-çıkışı ve iş durumu alınıyor…")
+            return
         if b["asama"] == "cekiliyor":
             ayrinti = (f"{say(b['kayit'])} / {say(b['toplam'])} kayıt alındı" if b["toplam"] else "Cormind'den yanıt bekleniyor…")
             metin = f"{ad} çekiliyor: {ayrinti}"
@@ -316,6 +319,8 @@ class CormindKarti(QFrame):
             en = max(r["hizlar"].items(), key=lambda x: x[1])
             metin += (f"\nEn verimli sayfa boyutu: {en[0]} kayıt (saniyede {en[1]:.0f} kayıt). Denenenler: "
                       + ", ".join(f"{k}: {v:.0f}/sn" for k, v in r["hizlar"].items()))
+        if cormind.dogrulama_yazi(r.get("dogrulama")):
+            metin += "\n" + cormind.dogrulama_yazi(r.get("dogrulama")).capitalize()
         if r["yeni_makineler"]:
             metin += "\nMakine listesine eklendi: " + ", ".join(r["yeni_makineler"])
         self._son(metin)

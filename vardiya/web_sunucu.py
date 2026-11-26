@@ -773,7 +773,8 @@ class Sunucu:
             try:
                 r = cormind.cek(con, adres, kul, sifre, ilk, son, idler, adim=adim, iptal=lambda: self.cekim["dur"], uzanan=True)
                 self.cekim.update(durum="bitti", yuzde=100,
-                                  metin=(("DURDURULDU: " if r.get("durduruldu") else "") + f"{r['toplam']:,} kayıt alındı ve kaydedildi.".replace(",", ".")))
+                                  metin=(("DURDURULDU: " if r.get("durduruldu") else "") + f"{r['toplam']:,} kayıt alındı ve kaydedildi.".replace(",", ".")
+                                         + (" " + cormind.dogrulama_yazi(r.get("dogrulama")).capitalize() + "." if r.get("dogrulama") else "")))
                 if self.yenilendi:
                     try:
                         self.gui.calistir(self.yenilendi, 120)

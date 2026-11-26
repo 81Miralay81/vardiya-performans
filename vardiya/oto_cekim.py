@@ -328,8 +328,10 @@ class OtoCekim(QObject):
     def _bitti(self, r: dict, ilk: date, son: date):
         from . import teshis
         adet = f"{r.get('toplam', 0):,}".replace(",", ".")
+        from . import cormind
+        dy = cormind.dogrulama_yazi(r.get("dogrulama"))
         metin = (f"Son otomatik çekim {datetime.now():%d.%m.%Y %H:%M}: {ilk:%d.%m.%Y} – {son:%d.%m.%Y}, {adet} kayıt · "
-                 + self._sonraki())
+                 + (dy + " · " if dy else "") + self._sonraki())
         teshis.adim(metin)
         self._yaz(metin)
         try:
