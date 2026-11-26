@@ -46,11 +46,13 @@ BILINEN_IZINLER = {"01": "Yıllık izin / Raporlu ödenmeyen", "02": "Ücretli i
                    "19": "Doğum sonrası ücretsiz izin", "21": "Ücretsiz izin", "CUMA": "Cuma izni"}
 
 
-_KURULU: set = set()                 # şeması kurulmuş bağlantılar (her okumada yeniden kurulup kilit beklenmesin)
+_KURULU: dict = {}                   # şeması kurulmuş bağlantılar {id: bağlantı} (her okumada yeniden kurulup kilit beklenmesin)
+# Bağlantının kendisi de tutulur: yalnızca kimlik (id) tutulsaydı kapanan bağlantının kimliği yeni bir bağlantıya
+# verilebilir ve şeması hiç kurulmamış bağlantı "kurulu" sanılırdı.
 
 
 def kur(con) -> None:
-    if id(con) in _KURULU:
+    if _KURULU.get(id(con)) is con:
         return
     if con.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN "
                    "('pv_personel','pv_gun','pv_izin_tur','pv_bakiye')").fetchone()[0] < 4:
@@ -64,7 +66,9 @@ def kur(con) -> None:
     if con.execute("SELECT 1 FROM pv_gun WHERE gercek=1 AND izin_kod LIKE '%,%' LIMIT 1").fetchone():
         con.execute("UPDATE pv_gun SET gercek=0, izin_kod='' WHERE gercek=1 AND izin_kod LIKE '%,%'")
         con.commit()
-    _KURULU.add(id(con))
+    if len(_KURULU) > 64:
+        _KURULU.clear()
+    _KURULU[id(con)] = con
 
 
 def _simdi() -> str:
