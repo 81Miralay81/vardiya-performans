@@ -155,6 +155,7 @@ class Sunucu:
             f = {"/api/durum": self.api_durum, "/api/performans": self.api_performans, "/api/tablo.png": self.api_tablo,
                  "/api/rapor/bilgi": self.api_rapor_bilgi, "/api/rapor/sayfa.png": self.api_rapor_sayfa,
                  "/api/rapor.pdf": self.api_rapor_pdf, "/api/operator": self.api_operator, "/api/operator/ayrinti": self.api_operator_ayrinti, "/api/operator/cakisma": self.api_operator_cakisma, "/api/duran": self.api_duran, "/api/kirilim": self.api_kirilim,
+                 "/api/hatali": self.api_hatali, "/api/hatali/gant": self.api_hatali_gant,
                  "/api/kayitlar": self.api_kayitlar, "/api/personel": self.api_personel,
                  "/api/kirilim/operator": self.api_kirilim_operator, "/api/personel/hafta": self.api_personel_hafta, "/api/personel/kart": self.api_personel_kart, "/api/personel/foto": self.api_personel_foto, "/api/cormind/cek": self.api_cek, "/api/cormind/durum": self.api_cek_durum,
                  "/api/cormind/durdur": self.api_cek_durdur, "/api/outlook": self.api_outlook}.get(yol)
@@ -178,6 +179,7 @@ class Sunucu:
 
     # -------------------------------------------------------------- kullanıcı oturumu (Ayarlar'da kullanıcı varsa zorunlu)
     YETKI = {"/api/performans": "performans", "/api/tablo.png": "performans", "/api/kirilim": "performans", "/api/kirilim/operator": "performans", "/api/duran": "performans",
+             "/api/hatali": "performans", "/api/hatali/gant": "performans",
              "/api/rapor/bilgi": "rapor", "/api/rapor/sayfa.png": "rapor", "/api/rapor.pdf": "rapor", "/api/outlook": "rapor",
              "/api/operator": "operator", "/api/operator/ayrinti": "operator", "/api/operator/cakisma": "operator",
              "/api/kayitlar": "kayitlar", "/api/personel": "personel", "/api/personel/hafta": "personel",
@@ -505,6 +507,35 @@ class Sunucu:
                              "en_cok": [(t, hm(sn)) for t, sn in sorted(r.durus_tipleri.items(), key=lambda x: -x[1])[:3]]})
         from .operator import AYRINTI_ACIKLAMA, SUTUN_ACIKLAMA
         self._json(h, {"ilk": ilk, "son": son, "satirlar": satirlar, "aciklama": SUTUN_ACIKLAMA, "ayrinti_aciklama": AYRINTI_ACIKLAMA})
+
+    def api_hatali(self, h, q):
+        """Hatalı Duruşlar sayfası: seçilen aralıktaki hatalı duruş olayları (kırılımlar tarayıcıda yapılır)."""
+        from . import hatali_durus as hd
+        con = self._con()
+        try:
+            ilk, son = self._aralik(q, con)
+            ayar = vt.ayar_oku(con)
+            lst = hd.tespit(con, ilk, son, ayar, ayar.get("makineler") or None)
+        finally:
+            con.close()
+        f = "%Y-%m-%d %H:%M:%S"
+        self._json(h, {"ilk": ilk.isoformat(), "son": son.isoformat(), "turler": hd.kontrol_turleri(ayar),
+                       "esik": ayar.get("hatali_durus_en_az_dk", hd.VARSAYILAN_EN_AZ_DK),
+                       "olaylar": [[o.makine, o.tip, o.bas.strftime(f), o.bit.strftime(f), o.operator, o.urun, o.is_emri, o.tur,
+                                    o.kaynak_yazi, o.is_ad] for o in lst]})
+
+    def api_hatali_gant(self, h, q):
+        """Bir makinenin dönemdeki tüm kayıtları (zaman çizelgesi; vurgu tarayıcıda seçilen olaylara göre yapılır)."""
+        from . import hatali_durus as hd
+        m = (q.get("makine") or [""])[0]
+        con = self._con()
+        try:
+            ilk, son = self._aralik(q, con)
+            bl = hd.zaman_bloklari(con, m, ilk, son, []).get(m, [])
+        finally:
+            con.close()
+        f = "%Y-%m-%d %H:%M:%S"
+        self._json(h, {"makine": m, "bloklar": [[a.strftime(f), b.strftime(f), t, st, bilgi] for a, b, t, st, bilgi, _v in bl]})
 
     def api_kirilim(self, h, q):
         """Performans 3. kırılım: bir makinenin bir duruş türünün vardiya ve operatör dağılımı."""

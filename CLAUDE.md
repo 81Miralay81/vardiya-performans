@@ -77,7 +77,7 @@ Bu dosya yalnızca geliştirici (Claude) içindir; program okumaz. Her önemli d
 - Hatalı sayfa akışı: makine → (vardiya | duruş adı) → (operatöre göre | işe göre) → gant + olay listesi; veri `bekleme.arka_planda` ile.
 - `bekleme.py`: ortak bekleme kartı (`Bekleme`, `bekle` bağlam yöneticisi, `arka_planda` iş parçacığı, `kaydir` yumuşak kaydırma). Performans kırılımları, Operatör/Personel yenileme, dönem hesabı kullanır.
 - **Gece doğrulaması** (`cormind.dogrulama_cek`, `cek` sonunda, aralık ≤ 6 gün): yalnızca kontrol edilen duruşları olan tezgâhlar için OperatorWork (gerçek giriş-çıkış → `cm_oturum`) ve Goods (iş hâlâ makinede mi, `updated_at` → `cm_is_durum`); doğrulanan makine-gün `cm_dogrulama`. `hd.tespit` doğrulanan günde gerçek parçaları kullanır (operatör oturumu ∩ duruş, iş atılana kadar; atılma ≥ duruş sonu ya da bilinmiyorsa "kesin değil"), Olay.kaynak "gercek"/"kayit". Sorgu alan adları canlı denenemedi (Cormind kapalıydı) — ilk gece sonucu çekim iletisinde "hatalı duruş kontrolü: …". Hesaptaki hariç işaretlemesi (HATALI_EK) hâlâ kayıt bilgisine göre.
-- Web sürümünde Hatalı Duruşlar sayfası henüz yok. Kalan izin gösterimi (a/b/c) kararı bekliyor.
+- Web: "Hatalı Duruşlar" sayfası (`#s-hatali`, yetki performans): `/api/hatali` olay listesi (kırılımlar tarayıcıda: makine → vardiya|duruş → operatör|iş → gant), `/api/hatali/gant?makine=` bloklar; vurgu kanvas desenli kırmızı çerçeve. Kalan izin gösterimi (a/b/c) kararı bekliyor.
 
 ## Geçici köprü (kopru.py) — iş bitince sil
 - Gizli depo `81Miralay81/vp-kopru` (yerel klon `/home/claude/vp-kopru`). Ben `komut/<PC>.json` (ya da `komut/hepsi.json`) yazarım; program `sonuc/<PC>/<id>.json` yazar, bağlanınca `sonuc/<PC>/canli.json`.
