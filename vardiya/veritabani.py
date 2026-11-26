@@ -148,8 +148,9 @@ def aralik_satirlari(con: sqlite3.Connection, kolonlar: str, ilk: date, son: dat
     haric = haric_duruslar(con) if hatali_etiket else []
     if haric and re.search(r"\btip\b", kolonlar):
         yer = ", ".join("?" * len(haric))
-        sec = re.sub(r"\btip\b", f"CASE WHEN tip IN ({yer}) AND {_IS_VAR} THEN tip || '{HATALI_EK}' ELSE tip END AS tip", kolonlar, count=1)
-        sec_arg = tuple(haric)
+        sec = re.sub(r"\btip\b", f"CASE WHEN tip IN ({yer}) AND baslangic >= ? AND {_IS_VAR} THEN tip || '{HATALI_EK}' ELSE tip END AS tip",
+                     kolonlar, count=1)
+        sec_arg = tuple(haric) + (bas,)         # aralıktan önce açılmış kaydın operatör / iş bilgisi eskidir: hariç kalır
     return con.execute(
         f"SELECT {sec} FROM kayit WHERE baslangic >= ? AND baslangic < ? AND bitis >= ?{ek} "
         f"UNION ALL SELECT {sec} FROM kayit WHERE julianday(bitis) - julianday(baslangic) > 1 "

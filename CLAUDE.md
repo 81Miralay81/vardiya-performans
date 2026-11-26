@@ -70,7 +70,7 @@ Bu dosya yalnızca geliştirici (Claude) içindir; program okumaz. Her önemli d
 ## Hariç / hatalı duruşlar (26.11, yan dalda hazır)
 - `operator_haric_durus` (Ayarlar > Duruşlar kartı, Operatör sayfasındaki seçimle aynı anahtar): hesaptan ve raporlardan çıkar (`HesapAyar.haric`, `durus_dokumu`).
   Operatör ya da ürün kodu varsa `vt.aralik_satirlari(..., hatali_etiket=True)` tür adına `HATALI_EK` (" (hatalı)") ekler → hariç tutulmaz. Kayıtlar ekranı ham.
-- `hatali_durus.py`: `tespit` (kontrol türleri = `hatali_durus_turleri` ∪ hariç; `hatali_durus_en_az_dk` alt eşik 5), tür "operator" / "is"; kırılım yardımcıları; `zaman_bloklari`.
+- `hatali_durus.py`: aralıktan önce açılmış kayıt hatalı sayılmaz, aralıkta açılan yalnızca açıldığı gün sayılır (operatör/iş bilgisi açılış anına ait). `tespit` (kontrol türleri = `hatali_durus_turleri` ∪ hariç; `hatali_durus_en_az_dk` alt eşik 5), tür "operator" / "is"; kırılım yardımcıları; `zaman_bloklari`.
 - `sayfa_hatali.py` (menü "Hatalı Duruşlar", yetki = performans): makine → vardiya | operatör var | operatör yok·iş var | duruş adı | gün → liste → gant.
 - Gant (`zaman_cizelgesi.py`): modern görünüm; vurgulu bloklar kırmızı taralı yarı saydam çerçeve (yan yana olanlar birleşir, zoomla büyür).
 - Performans "Operatör yok" tıklanınca soru: bu makine → doğrudan gant / tüm makineler → 4. seviye.

@@ -6,6 +6,8 @@
   - "is":       operatör yok ama makinede iş (ürün kodu) görünüyor.
 Ayarlar'daki alt eşikten (varsayılan 5 dk) kısa olaylar listeye ve grafiklere girmez.
 Raporlardan hariç tutulan duruş türleri de kontrol edilir: onlarda operatör ya da iş varsa hariç tutulmaz, burada görünür.
+Kayıttaki operatör / iş bilgisi kaydın açıldığı ana aittir: seçilen aralıktan önce açılmış (ör. aylardır süren) kayıtlar
+hatalı sayılmaz; aralıkta açılan kayıt da yalnızca açıldığı gün içinde sayılır.
 """
 from __future__ import annotations
 
@@ -82,7 +84,11 @@ def tespit(con, ilk: date, son: date, ayar: Optional[dict] = None, makineler: Op
         op, urun = operator_adi(r["operator"]), _urun(r["urun_kodu"])
         if not op and not urun:
             continue                                     # olması gereken: kimse yok, iş yok
-        a, b = max(vt.zaman(r["baslangic"]), alt), min(vt.zaman(r["bitis"]), ust)
+        a0 = vt.zaman(r["baslangic"])
+        if a0 < alt:
+            continue                                     # aralıktan önce açılmış kayıt: üstündeki operatör / iş eski bilgidir
+        gun_sonu = datetime(a0.year, a0.month, a0.day) + timedelta(days=1)
+        a, b = a0, min(vt.zaman(r["bitis"]), ust, gun_sonu)   # yalnızca açıldığı gün sayılır (ertesi günlere taşınmaz)
         if (b - a).total_seconds() < max(1.0, en_az):
             continue
         sonuc.append(Olay(r["makine"], r["tip"], a, b, op, urun, _urun(r["is_emri"]), " ".join(str(r["urun_adi"] or "").split())))
@@ -152,7 +158,11 @@ def zaman_bloklari(con, makine: str, ilk: date, son: date, vurgu: Iterable[Olay]
     vset = [(o.bas, o.bit) for o in vurgu if o.makine == makine]
     bloklar = []
     for r in vt.aralik_satirlari(con, "makine, tip, baslangic, bitis, operator, urun_kodu", ilk, son, "makine = ?", (makine,)):
-        a, b = max(vt.zaman(r["baslangic"]), alt), min(vt.zaman(r["bitis"]), ust)
+        a0 = vt.zaman(r["baslangic"])
+        if a0 < alt:
+            continue                                     # aralıktan önce açılmış kayıt: üstündeki operatör / iş eski bilgidir
+        gun_sonu = datetime(a0.year, a0.month, a0.day) + timedelta(days=1)
+        a, b = a0, min(vt.zaman(r["bitis"]), ust, gun_sonu)   # yalnızca açıldığı gün sayılır (ertesi günlere taşınmaz)
         if b <= a:
             continue
         op = operator_adi(r["operator"])

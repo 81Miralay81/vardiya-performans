@@ -39,3 +39,17 @@ def test_haric_durus_isli_kisim_haric_tutulmaz(tmp_path):
     assert d > 0                                                     # işli / operatörlü kısım duruş sayılır
     ham = vt.aralik_satirlari(con, "tip", date(2026, 11, 25), date(2026, 11, 25)).fetchall()
     assert all(not r[0].endswith(vt.HATALI_EK) for r in ham)          # Kayıtlar ekranı ham kalır
+
+
+def test_eski_acik_kayit_hatali_sayilmaz(tmp_path):
+    con = vt.ac(str(tmp_path / "e.db"))
+    con.executemany("INSERT INTO kayit(makine, baslangic, bitis, operator, tip, is_emri, urun_kodu) VALUES(?,?,?,?,?,?,?)",
+                    [("IM24", "2026-08-26 11:14:21", "2026-11-26 10:00:00", "Tuncay Ayvaz", "İŞ EMRİ PLAN YOK", "53", "ATS-MUHTELIF"),
+                     ("IM85", "2026-11-25 07:40:46", "2026-11-26 03:00:00", "Sabit Efe", "İŞ EMRİ PLAN YOK", "54", "DK1167-5")])
+    con.commit()
+    ayar = {"operator_haric_durus": ["İŞ EMRİ PLAN YOK"]}
+    o = hd.tespit(con, date(2026, 11, 25), date(2026, 11, 26), ayar)
+    assert [(x.makine, x.bit.strftime("%d %H:%M")) for x in o] == [("IM85", "26 00:00")]   # IM24 eski; IM85 yalnızca açıldığı gün
+    vt.ayar_yaz(con, "operator_haric_durus", ["İŞ EMRİ PLAN YOK"])
+    tip = {m: t for m, t, _a, _b in vt.kayitlari_getir(con, date(2026, 11, 25), date(2026, 11, 25))}
+    assert tip["IM24"] == "İŞ EMRİ PLAN YOK" and tip["IM85"].endswith(vt.HATALI_EK)
