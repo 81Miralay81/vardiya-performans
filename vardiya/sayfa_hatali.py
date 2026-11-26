@@ -92,28 +92,25 @@ class HataliSayfasi(QWidget):
 
         # ------------------------------------------------ 2. makine kırılımı
         k2, self.k_baslik, self.k_alt, s2 = _kart_baslikli("Kırılım", "")
-        satir = QHBoxLayout()
-        satir.setSpacing(12)
         self.g_v = self._grafik(lambda: [(a, x, tema.LACIVERT) for a, x in hd.vardiyaya_gore(self._makine_olaylari())],
                                 "Vardiyaya göre", "vardiya")
+        self.g_d = self._grafik(lambda: [(a, x, tema.durus_rengi(a)) for a, x in hd.durusa_gore(self._makine_olaylari())],
+                                "Duruş adına göre", "durus")
         self.g_op = self._grafik(lambda: [(a, x, hd.TUR_RENK[hd.TUR_OPERATOR]) for a, x in hd.operatore_gore(self._makine_olaylari())],
                                  "Operatör var (operatöre göre)", hd.TUR_OPERATOR)
         self.g_is = self._grafik(lambda: [(a, x, hd.TUR_RENK[hd.TUR_IS]) for a, x in hd.ise_gore(self._makine_olaylari())],
                                  "Operatör yok · iş var (ürün koduna göre)", hd.TUR_IS)
-        for g in (self.g_v, self.g_op, self.g_is):
-            satir.addWidget(g, 1)
-        k2.layout().addLayout(satir)
-        satir2 = QHBoxLayout()
-        satir2.setSpacing(12)
-        self.g_d = self._grafik(lambda: [(a, x, tema.durus_rengi(a)) for a, x in hd.durusa_gore(self._makine_olaylari())],
-                                "Duruş adına göre", "durus")
         self.g_gun = TikliCizim(lambda p, r, b: cizim_ek.zaman_grafigi(
             p, r, hd.gune_gore(self._makine_olaylari(), *self._donem) if self._donem else [], "gun", "Zamana göre (güne tıklayın)",
             b, self._suzgec[1] if self._suzgec and self._suzgec[0] == "gun" else None, "#D64541"), 280, 320)
         self.g_gun.tiklandi.connect(lambda a, _k: self._suz("gun", a))
-        satir2.addWidget(self.g_d, 1)
-        satir2.addWidget(self.g_gun, 2)
-        k2.layout().addLayout(satir2)
+        for sol, sag in ((self.g_v, self.g_d), (self.g_op, self.g_is)):        # ikişer yan yana
+            sat = QHBoxLayout()
+            sat.setSpacing(12)
+            sat.addWidget(sol, 1)
+            sat.addWidget(sag, 1)
+            k2.layout().addLayout(sat)
+        k2.layout().addWidget(self.g_gun)
         b_k = QPushButton("✕")
         b_k.setToolTip("Kapat")
         b_k.setFixedSize(28, 26)
@@ -165,7 +162,7 @@ class HataliSayfasi(QWidget):
     # ---------------------------------------------------------------- yardımcılar
     def _grafik(self, veri, baslik: str, tur: str) -> TikliCizim:
         g = TikliCizim(lambda p, r, b: cizim_ek.kirilim_grafigi(
-            p, r, veri(), baslik, b, tur, self._suzgec[1] if self._suzgec and self._suzgec[0] == tur else None), 260, 260)
+            p, r, veri(), baslik, b, tur, self._suzgec[1] if self._suzgec and self._suzgec[0] == tur else None), 300, 300)
         g.tiklandi.connect(lambda a, _k, t=tur: self._suz(t, a))
         return g
 
