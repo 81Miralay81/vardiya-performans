@@ -66,6 +66,7 @@ jobs:
           name: VardiyaPerformans
           path: dist/VardiyaPerformans.exe
       - name: Son sürümü yayınla
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: guncel
