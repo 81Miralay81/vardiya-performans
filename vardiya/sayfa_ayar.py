@@ -200,6 +200,21 @@ class AyarSayfasi(QWidget):
         ic.addWidget(kp)
 
         # ------------------------------------------------ operatör adı -> personel eşleştirmesi (Cormind'de yalnızca ad yazar)
+        kl = kart()                                   # grup lideri türü: Performans'ta yalnızca CNC liderleri görünür
+        kl.layout().addWidget(etiket("GRUP LİDERİ TÜRÜ (CNC / MEKANİK)", "KartBaslik"))
+        kl.layout().addWidget(etiket("Personel listesinde pozisyonu 'Grup Lideri' olan kişiler. Performans raporu yalnızca CNC makinelerini "
+                                     "kapsadığı için Performans'ta yalnızca CNC liderleri görünür; Mekanik liderler orada gösterilmez. "
+                                     "Aynı seçim Personel Durum > Vardiya listesi sekmesinde de yapılabilir. Kaydet'e basınca geçerli olur.",
+                                     "AltBaslik"))
+        self.t_lider = QTableWidget(0, 3)
+        self.t_lider.setHorizontalHeaderLabels(["Grup lideri", "Pozisyon", "Tür"])
+        self.t_lider.horizontalHeader().setStretchLastSection(True)
+        self.t_lider.setColumnWidth(0, 220)
+        self.t_lider.setColumnWidth(1, 260)
+        self.t_lider.verticalHeader().hide()
+        self.t_lider.setMinimumHeight(150)
+        kl.layout().addWidget(self.t_lider)
+        ic.addWidget(kl)
         ke = kart()
         ke.layout().addWidget(etiket("OPERATÖR EŞLEŞTİRME", "KartBaslik"))
         ke.layout().addWidget(etiket("Makine kayıtlarındaki operatör adı personel listesindeki adla kendiliğinden eşleştirilir (büyük/küçük harf ve "
@@ -743,6 +758,7 @@ class AyarSayfasi(QWidget):
         h, m = OtoCekim.pv_saat_coz(a.get("pv_cekim_saati", PV_SAATI))
         self.pv_saat.setTime(QTime(h, m))
         self._esles_yukle()
+        self._lider_yukle()
         from PySide6.QtCore import QDate
         from .oto_cekim import PV_EN_ESKI, PV_SABAH
         h, m = OtoCekim.pv_saat_coz(a.get("pv_sabah_saati", PV_SABAH))
@@ -798,6 +814,27 @@ class AyarSayfasi(QWidget):
         i = c.findData(secili) if secili is not None else 0
         c.setCurrentIndex(max(0, i))
         t.setCellWidget(r, 1, c)
+
+    def _lider_yukle(self) -> None:
+        from . import personel_veri as pv
+        try:
+            kisi = pv.personel(self.ana.con)
+        except Exception:  # noqa: BLE001
+            kisi = {}
+        liste = sorted(((sid, p) for sid, p in kisi.items() if pv.lider_mi(p) and not p.get("cikis_tarih")),
+                       key=lambda x: str(x[1].get("ad") or ""))
+        self.t_lider.setRowCount(len(liste))
+        for r, (sid, p) in enumerate(liste):
+            self.t_lider.setItem(r, 0, QTableWidgetItem(pv.tr_baslik(p.get("ad") or "")))
+            self.t_lider.setItem(r, 1, QTableWidgetItem(pv.tr_baslik(p.get("pozisyon") or "")))
+            c = QComboBox()
+            c.addItems(list(pv.LIDER_TURLERI))
+            c.setCurrentText(pv.lider_turu(self.ana.ayar, sid))
+            c.setProperty("sid", sid)
+            self.t_lider.setCellWidget(r, 2, c)
+        if not liste:
+            self.t_lider.setRowCount(1)
+            self.t_lider.setItem(0, 0, QTableWidgetItem("Personel verisinde grup lideri yok"))
 
     def _esles_yukle(self) -> None:
         self.t_esles.setRowCount(0)
@@ -945,6 +982,12 @@ class AyarSayfasi(QWidget):
         vt.ayar_yaz(con, "pv_fazla_en_az_dk", self.pv_fazla.value())
         vt.ayar_yaz(con, "pv_cekim_saati", self.pv_saat.time().toString("HH:mm"))
         vt.ayar_yaz(con, "op_eslestirme", self._esles_oku())
+        lt = dict(self.ana.ayar.get("pv_lider_tur") or {})
+        for r in range(self.t_lider.rowCount()):
+            c = self.t_lider.cellWidget(r, 2)
+            if c is not None:
+                lt[str(c.property("sid"))] = c.currentText()
+        vt.ayar_yaz(con, "pv_lider_tur", lt)
         vt.ayar_yaz(con, "pv_sabah_saati", self.pv_sabah.time().toString("HH:mm"))
         vt.ayar_yaz(con, "pv_en_eski", self.pv_en_eski.date().toString("yyyy-MM-dd"))
         vt.ayar_yaz(con, "supheli_en_kisa_mola_dk", self.sup_min.value())

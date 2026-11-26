@@ -33,7 +33,7 @@ window.goster = function(opt){
     ekran.on('click', function(p){
       var d = p.data || {};
       if (p.componentType === 'xAxis') {          // eksen etiketi: ⚠ şüpheli mola işareti ya da makine adı
-        var v = String(p.value || '');
+        var v = String(p.value || '').replace(/\{\w+\|([^}]*)\}/g, '$1');   // zengin yazı işaretleri ({v|...}) atılır
         console.log('TIK|' + JSON.stringify({anahtar: v.split('\n')[0], kisim: v.indexOf('⚠') >= 0 ? 'supheli' : 'durus'}));
         return;
       }

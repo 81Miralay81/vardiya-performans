@@ -216,7 +216,8 @@ def vardiya_grafigi(p: QPainter, rect: QRectF, sonuc: DonemSonuc, seflar: Dict[i
         _yaz(p, QRectF(cx - slot / 2, alan.bottom() + 6 * s, slot, 22 * s), etiket, 13 * s, True, ORTA, tema.YAZI)
         sef = seflar.get(v, "")
         if sef:
-            _yaz(p, QRectF(cx - slot / 2, alan.bottom() + 28 * s, slot, 22 * s), tema.tr_buyuk(sef), 13 * s, True, ORTA, tema.YESIL)
+            _yaz_sigdir(p, QRectF(cx - slot / 2, alan.bottom() + 28 * s, slot, 22 * s), tema.tr_buyuk(sef), 13 * s, True, ORTA, tema.YESIL,
+                        min_px=8 * s)
     p.setPen(QPen(QColor("#9AA3B8"), max(1, s)))
     p.drawLine(alan.bottomLeft(), alan.bottomRight())
     if genel is not None:

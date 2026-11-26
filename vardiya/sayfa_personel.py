@@ -888,7 +888,7 @@ class PersonelSayfasi(QWidget):
                 w.deleteLater()
         duzenle = self._yetki("grup_lideri")
         for sid in sorted((s for s in self._kisi if self._lider_mi(s) and not self._cikis(s)), key=self._ad):
-            self.lider_tur_kutu.addWidget(QLabel(pv.tr_baslik(self._ad(sid)).split(" ")[0] + ":"))
+            self.lider_tur_kutu.addWidget(QLabel(pv.tr_baslik(self._ad(sid)) + ":"))
             c = QComboBox()
             c.addItems(list(pv.LIDER_TURLERI))
             c.setCurrentText(pv.lider_turu(self.ana.ayar, sid))

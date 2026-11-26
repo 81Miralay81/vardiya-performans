@@ -46,6 +46,8 @@ def _eksen_y(**ek) -> dict:
 def _eksen_x(adlar: List[str], **ek) -> dict:
     d = {"type": "category", "data": adlar, "axisTick": {"show": False}, "axisLine": {"lineStyle": {"color": "#9AA3B8"}},
          "axisLabel": {"color": YAZI, "fontWeight": 600, "interval": 0, "rotate": 45 if len(adlar) > 18 else 0, "fontSize": 11}}
+    if "axisLabel" in ek:                 # etiket ayarları birleştirilir: "interval: 0" kaybolursa ECharts çakışan adları gizler
+        d["axisLabel"] = dict(d["axisLabel"], **ek.pop("axisLabel"))
     d.update(ek)
     return d
 
@@ -82,7 +84,8 @@ def vardiya_grafigi(a: dict) -> dict:
         o = sonuc.vardiyalar[v]
         x = getattr(o, ("calisma", "durus", "mola")[secim])
         sef = seflar.get(v, "")
-        adlar.append(f"{v}.VARDİYA" + (f"\n{tema.tr_buyuk(sef)}" if sef else ""))
+        sefler = [x.strip() for x in tema.tr_buyuk(sef).split("/") if x.strip()] if sef else []
+        adlar.append("{v|" + f"{v}.VARDİYA" + "}" + "".join("\n{s|" + x + "}" for x in sefler))
         veri.append({"value": None if x is None else round(x * 100, 2), "tip": f"<b>{v}. vardiya</b><br>{ad}: <b>{_yuzde(x, 2)}</b><br>{o.gun_sayisi} gün",
                      "label": {"show": x is not None, "formatter": _yuzde(x, 2) + f"\n{o.gun_sayisi} gün"}})
     genel = sonuc.genel[secim]
@@ -90,8 +93,11 @@ def vardiya_grafigi(a: dict) -> dict:
             "label": {"position": "top", "color": YAZI, "fontWeight": 700, "fontSize": 14}}
     if genel is not None:
         seri["markLine"] = _ort_cizgisi(genel * 100, f"Genel\n{_yuzde(genel)}")
-    return {"title": _baslik(baslik), "tooltip": _ipucu(), "grid": {"left": 50, "right": 70, "top": 46 if baslik else 18, "bottom": 50},
-            "xAxis": _eksen_x(adlar, axisLabel={"color": YAZI, "fontWeight": 700, "fontSize": 12, "lineHeight": 18}),
+    return {"title": _baslik(baslik), "tooltip": _ipucu(), "grid": {"left": 50, "right": 70, "top": 46 if baslik else 18,
+                     "bottom": 30 + 16 * max([1] + [len([x for x in str(seflar.get(v, "")).split("/") if x.strip()]) for v in VARDIYALAR])},
+            "xAxis": _eksen_x(adlar, axisLabel={"color": YAZI, "fontWeight": 700, "fontSize": 12, "lineHeight": 17, "interval": 0, "rotate": 0,
+                                                "rich": {"v": {"color": YAZI, "fontWeight": 700, "fontSize": 12, "lineHeight": 18},
+                                                         "s": {"color": tema.YESIL, "fontWeight": 700, "fontSize": 11, "lineHeight": 16}}}),
             "yAxis": _eksen_y(max=110 if secim == 0 else None, interval=10 if secim == 0 else None), "series": [seri]}
 
 
