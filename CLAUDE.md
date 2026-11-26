@@ -27,6 +27,7 @@ Bu dosya yalnızca geliştirici (Claude) içindir; program okumaz. Her önemli d
 | pencere.py | ana pencere, sol menü, `yetki_uygula`, `menu_izinli`, köprü etiketi |
 | veritabani.py | SQLite, `ayar_oku/ayar_yaz` (ayar_gecmis kaydı), `okuma_baglantisi` (kalıcı okuma bağlantısı + kilit) |
 | hesap.py | Cormind vardiya hesap motoru; vardiyalar 1=00–08, 2=08–16, 3=16–24 |
+| operator_vardiya.py | Cormind operatörünü kendi vardiyasına bağlar (`bagla`): ad → personel eşleştirme (Ayarlar `op_eslestirme` elle tablo önce), plan dışı parça ≥ `pv_fazla_en_az_dk` → "ad (mesai)", altı → operatörsüz; listede yoksa "ad (kalıphane dışı)". `temel_ad` etiketi atar |
 | kirilim.py | Performans kırılımları; `donem_kayitlari`, `operator_ayrinti`, `VARDIYA_SAAT` |
 | sayfa_performans.py | Performans sayfası, kırılım seviye 1–5 (operatör → makine/zaman grafikleri → zaman çizelgesi) |
 | zaman_cizelgesi.py | gank çizelgesi (Ay/Hafta/Gün/Saat, tekerlek, sürükle, alan seç) |
@@ -55,6 +56,10 @@ Bu dosya yalnızca geliştirici (Claude) içindir; program okumaz. Her önemli d
 - Meyer'deki **kalan izin günleri doğru değil** (kullanıcı söyledi) — gösterim kararı bekliyor.
 - Kaynakta 01.07.2026 öncesi veri yok.
 - Tablolar: `pv_personel` (sicilid, ad, sicilno, pozisyon, yaka, vardiya düzeni, giris_tarih, telefon, foto, cikis_tarih), `pv_gun` (PK sicilid+gun), `pv_izin_tur`, `pv_bakiye`.
+- **Grup lideri türü**: `pv_lider_tur` {sicilid: "CNC"|"Mekanik"} (varsayılan CNC). Performans şefleri `cnc_liderleri` → `veritabani.sef_getir` (yalnız CNC, personel vardiya listesinden).
+- **Ayrılan personel** (`cikis_tarih` dolu): sayıya, devam oranına, toplamlara, vardiya listesine, sıralamalara girmez; Sıralamalar'da ayrı "Ayrılan personel" kartı; "Ayrılanları göster" kutusu listeyi açar.
+- **Devam özeti kutuları** tıklanır: `devam_gun_listeleri` (gelmedi/gec/erken/fazla/izin gün listeleri) → altta liste; devam oranı → pasta penceresi (geldi / izinsiz gelmedi / izinli), dilim → ayrıntı. Web'de `/api/personel` → `liste`.
+- Yetki `personel_kimlik`: fotoğraf, telefon, yıllık izin (yoksa gizli). Yıllık izin satırları `izin_satirlari` (toplam = kalan + kullanılan + planlanan).
 - Sınıflar: GELDI (tek okutma da), GELMEDI, IZIN_TAM, IZIN_SAAT, TATIL, TATIL_CALISTI, RESMI, PLAN. "Eksik kart" kaldırıldı.
 
 ## Geçici köprü (kopru.py) — iş bitince sil

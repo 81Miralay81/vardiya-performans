@@ -396,12 +396,20 @@ def sef_getir(con: sqlite3.Connection, gunler: List[date], ayar: dict) -> Dict[i
             (min(gunler).isoformat(), max(gunler).isoformat()),
         ):
             atanan[(r["tarih"], r["vardiya"])] = r["sef"]
+    try:                                                   # personel vardiya listesindeki CNC grup liderleri öncelikli
+        from .personel_veri import cnc_liderleri
+        pv_lider = cnc_liderleri(con, gunler or [], ayar) if gunler else {}
+    except Exception:  # noqa: BLE001
+        pv_lider = {}
     for g in gunler or [None]:
         for v in (1, 2, 3):
-            ad = atanan.get((g.isoformat(), v)) if g else None
-            ad = ad or varsayilan.get(str(v), "")
-            if ad and ad not in sonuc[v]:
-                sonuc[v].append(ad)
+            adlar = pv_lider.get((g, v)) if g else None
+            if not adlar:
+                ad = atanan.get((g.isoformat(), v)) if g else None
+                adlar = [ad or varsayilan.get(str(v), "")]
+            for ad in adlar:
+                if ad and ad not in sonuc[v]:
+                    sonuc[v].append(ad)
     return {v: " / ".join(x) for v, x in sonuc.items()}
 
 

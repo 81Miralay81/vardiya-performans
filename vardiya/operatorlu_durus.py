@@ -57,9 +57,11 @@ def hesapla(con, gunler: List[date]) -> List[tuple]:
     tur_aralik: Dict[tuple, Dict[str, List[tuple]]] = {}
     _a = datetime(min(gunler).year, min(gunler).month, min(gunler).day)
     _u = datetime(max(gunler).year, max(gunler).month, max(gunler).day) + timedelta(days=1)
-    for op, m, tip, bas, bit in operator_dogrula(vt.kayitlari_getir_operatorlu(con, min(gunler), max(gunler), kirp=False), _a, _u):
+    from .operator_vardiya import bagla
+    for op, m, tip, bas, bit in bagla(con, operator_dogrula(vt.kayitlari_getir_operatorlu(con, min(gunler), max(gunler), kirp=False), _a, _u),
+                                      min(gunler), max(gunler), ayar):
         op = operator_adi(op)
-        if not op or op in haric_kisi or statu_bul(tip) != DURUS:
+        if not op or __import__("vardiya.operator_vardiya", fromlist=["x"]).temel_ad(op) in haric_kisi or statu_bul(tip) != DURUS:
             continue
         ad = durus_adi(tip, bas, bit)
         if ad in haric_tur or tip in haric_tur:

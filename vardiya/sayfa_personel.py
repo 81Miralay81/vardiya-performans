@@ -188,6 +188,12 @@ class PersonelSayfasi(QWidget):
         self.aralik.setMinimumWidth(240)
         self.f_poz.currentIndexChanged.connect(lambda *_: self._ciz())
         ust.addWidget(self.f_poz)
+        from PySide6.QtWidgets import QCheckBox
+        self.f_ayrilan = QCheckBox("Ayrılanları göster")   # ayrılanlar sayılara, ortalamalara, vardiya listesine ve sıralamalara girmez
+        self.f_ayrilan.setToolTip("İşten ayrılan personel listede ve Excel'de görünür; ama personel sayısına, devam oranına, toplamlara, "
+                                  "vardiya listesine ve sıralamalara hiçbir zaman girmez (sıralamalarda ayrı listede).")
+        self.f_ayrilan.toggled.connect(lambda *_: self._ciz())
+        ust.addWidget(self.f_ayrilan)
         ust.addStretch(1)
         b_al = QPushButton("Personel verisini al")
         b_al.setToolTip("Personel veri ekranı program içinde açılır; listelediğiniz ay kaydedilir.")
@@ -218,15 +224,32 @@ class PersonelSayfasi(QWidget):
         l.setContentsMargins(0, 10, 0, 0)
         self.kpi_satir = QHBoxLayout()
         self.kpi = {}
+        self.kpi_kart = {}
         for k, ad in (("kisi", "personel"), ("devam", "devam oranı"), ("gelmedi", "izinsiz gelmeme (gün)"),
                       ("gec", "geç gelme"), ("erken", "erken çıkma"), ("fazla", "fazla çalışma"), ("izin", "izinli gün")):
             c = kart(kenar=10)
             d = etiket("-", "KartDeger")
             c.layout().addWidget(d)
-            c.layout().addWidget(etiket(ad, "KartBaslik"))
+            c.layout().addWidget(etiket(ad + ("  ⧉" if k == "devam" else "  ▾"), "KartBaslik"))
+            c.setCursor(Qt.PointingHandCursor)
+            c.setToolTip("Tıklayın: grafik penceresi" if k == "devam" else "Tıklayın: altta liste (yeniden tıklayınca kapanır)")
+            c.mousePressEvent = (lambda _e, k=k: self._kpi_tik(k))
             self.kpi[k] = d
+            self.kpi_kart[k] = c
             self.kpi_satir.addWidget(c)
         l.addLayout(self.kpi_satir)
+        self._kpi_secili = ""
+        self.kpi_panel = kart()                      # kutuya tıklanınca açılan liste
+        self.kpi_panel_baslik = etiket("", "KartBaslik", kelime=False)
+        self.kpi_panel.layout().addWidget(self.kpi_panel_baslik)
+        self.kpi_tablo = QTableWidget()
+        self._tablo_ayar(self.kpi_tablo)
+        self.kpi_tablo.setMaximumHeight(300)
+        self.kpi_tablo.cellDoubleClicked.connect(lambda r, _c: self._kart_ac(self.kpi_tablo.item(r, 0).data(Qt.UserRole))
+                                                 if self.kpi_tablo.item(r, 0) else None)
+        self.kpi_panel.layout().addWidget(self.kpi_tablo)
+        self.kpi_panel.hide()
+        l.addWidget(self.kpi_panel)
         self.t_devam = QTableWidget()
         self.t_devam.setColumnCount(11)
         self.t_devam.setHorizontalHeaderLabels(["Personel", "Pozisyon", "Vardiya", "Planlı gün", "Geldi", "Gelmedi\n(izinsiz)",
@@ -263,6 +286,12 @@ class PersonelSayfasi(QWidget):
         self.t_lider.setFixedHeight(64)
         self.t_lider.itemChanged.connect(self._lider_degisti)
         l.addWidget(self.t_lider)
+        tur = QHBoxLayout()                    # grup lideri türü: Performans'ta yalnızca CNC liderleri görünür
+        tur.addWidget(etiket("Grup lideri türü (Performans'ta yalnızca CNC liderleri görünür):", "AltBaslik"))
+        self.lider_tur_kutu = QHBoxLayout()
+        tur.addLayout(self.lider_tur_kutu)
+        tur.addStretch(1)
+        l.addLayout(tur)
         self.t_vardiya = QTableWidget()
         self.t_vardiya.setColumnCount(8)
         self.t_vardiya.setEditTriggers(QAbstractItemView.NoEditTriggers)
@@ -307,7 +336,13 @@ class PersonelSayfasi(QWidget):
             g.addWidget(c, i // 2, i % 2)
         self.sira_lej = etiket("", "AltBaslik")
         g.addWidget(self.sira_lej, 3, 0, 1, 2)
-        g.setRowStretch(4, 1)
+        ka = kart()
+        self.sira_ayrilan = QLabel("")
+        self.sira_ayrilan.setTextFormat(Qt.RichText)
+        self.sira_ayrilan.setWordWrap(True)
+        ka.layout().addWidget(self.sira_ayrilan)
+        g.addWidget(ka, 4, 0, 1, 2)
+        g.setRowStretch(5, 1)
         sc.setWidget(w)
         return sc
 
@@ -484,7 +519,7 @@ class PersonelSayfasi(QWidget):
                 d[g.vardiya] = d.get(g.vardiya, 0) + 1
         return {sid: max(d.items(), key=lambda x: x[1])[0] for sid, d in say.items()}
 
-    def _secili_kisiler(self) -> List[int]:
+    def _secili_kisiler(self, hepsi: bool = False) -> List[int]:
         v, pz = self.f_vardiya.currentData(), self.f_poz.currentData()
         bv = self._baskin_vardiya()
         sonuc = []
@@ -493,6 +528,8 @@ class PersonelSayfasi(QWidget):
             if v and bv.get(sid) != v:
                 continue
             if pz and str(p.get("pozisyon") or "") != pz:
+                continue
+            if p.get("cikis_tarih") and not (hepsi or self.f_ayrilan.isChecked()):
                 continue
             sonuc.append(sid)
         return sorted(sonuc, key=lambda s: str(self._kisi.get(s, {}).get("ad", "")))
@@ -508,15 +545,16 @@ class PersonelSayfasi(QWidget):
 
     def _gorunen_ad(self, sid: int) -> str:
         c = self._cikis(sid)
-        return (pv.tr_baslik(self._ad(sid)) + (" ★" if self._lider_mi(sid) else "")
+        return (pv.tr_baslik(self._ad(sid)) + (f" ★ {pv.lider_turu(self.ana.ayar, sid)}" if self._lider_mi(sid) else "")
                 + (f" · ayrıldı {pv._tr(c)}" if c else ""))
 
     def _lider_mi(self, sid: int) -> bool:
-        return pv.GRUP_LIDERI in str(self._kisi.get(sid, {}).get("pozisyon") or "").upper()
+        return pv.lider_mi(self._kisi.get(sid, {}))
 
     def _ciz(self):
         kisiler = self._secili_kisiler()
         self._devam_ciz(kisiler)
+        self._lider_tur_ciz()
         self._vardiya_ciz()
         self._sira_ciz(kisiler)
         sec = self.k_kisi.currentData()
@@ -537,7 +575,7 @@ class PersonelSayfasi(QWidget):
         top = pv.Ozet(0)
         for i, sid in enumerate(kisiler):
             o, p = self._ozet[sid], self._kisi.get(sid, {})
-            for a in ("planli", "geldi", "gelmedi", "eksik", "izinli", "gec_adet", "gec_dk", "erken_adet", "erken_dk", "fazla_dk",
+            for a in () if self._cikis(sid) else ("planli", "geldi", "gelmedi", "eksik", "izinli", "gec_adet", "gec_dk", "erken_adet", "erken_dk", "fazla_dk",
                       "tatil_calisti"):
                 setattr(top, a, getattr(top, a) + getattr(o, a))
             it0 = _hucre_kisi(self._gorunen_ad(sid), sid)
@@ -566,19 +604,140 @@ class PersonelSayfasi(QWidget):
             t.setItem(i, 10, _sayi(o.tatil_calisti))
         t.setSortingEnabled(True)
         dv = top.devam if top.planli else None
-        self.kpi["kisi"].setText(str(len(kisiler)))
+        self.kpi["kisi"].setText(str(len([s for s in kisiler if not self._cikis(s)])))
         self.kpi["devam"].setText("-" if dv is None else f"%{dv * 100:.1f}".replace(".", ","))
         self.kpi["gelmedi"].setText(str(top.gelmedi))
         self.kpi["gec"].setText(str(top.gec_adet))
         self.kpi["erken"].setText(str(top.erken_adet))
         self.kpi["fazla"].setText(f"{top.fazla_dk // 60} sa")
         self.kpi["izin"].setText(str(top.izinli))
+        if self._kpi_secili and self.kpi_panel.isVisible():
+            self._kpi_doldur(self.kpi_tablo, self.kpi_panel_baslik, self._kpi_secili)
         tol = self.ana.ayar.get("pv_tolerans_dk", pv.VARSAYILAN_TOLERANS_DK)
         fz = self.ana.ayar.get("pv_fazla_en_az_dk", pv.VARSAYILAN_FAZLA_EN_AZ_DK)
         self.devam_not.setText(f"Geç gelme / erken çıkma: {tol} dk tolerans. Fazla çalışma: vardiya bitişinden en az {fz} dk sonra çıkış "
                                "ve tatil günü çalışması. İzinli günlerdeki geç gelme ve erken çıkma izinli sayılır. Gelmedi: planlı gün, kart "
                                "kaydı yok, izin yok. Satıra çift "
                                "tıklayın: personel kartı.")
+
+    # ---------------------------------------------------------------- devam özeti: kutulara tıklanınca liste / grafik
+    def _kpi_listeleri(self):
+        sids = [s for s in self._secili_kisiler() if not self._cikis(s)]
+        return sids, pv.devam_gun_listeleri(self._gunler, self._kisi, self._izin_ad, sids)
+
+    def _kpi_tik(self, k: str):
+        if k == "devam":
+            self._devam_penceresi()
+            return
+        self._kpi_secili = "" if self._kpi_secili == k else k
+        for a, c in self.kpi_kart.items():
+            c.setStyleSheet(f"QFrame#Kart {{ border: 2px solid {tema.LACIVERT}; background: #eef0fa; }}" if a == self._kpi_secili else "")
+        if not self._kpi_secili:
+            self.kpi_panel.hide()
+            return
+        self._kpi_doldur(self.kpi_tablo, self.kpi_panel_baslik, k)
+        self.kpi_panel.show()
+
+    def _kpi_doldur(self, t, baslik, k: str):
+        sids, lst = self._kpi_listeleri()
+        bv = self._baskin_vardiya()
+        if k == "kisi":
+            bas = ["Personel", "Pozisyon", "Vardiya", "Planlı", "Geldi", "Gelmedi", "İzinli", "Devam"]
+            satir = []
+            for sid in sids:
+                o = self._ozet[sid]
+                satir.append((sid, [pv.tr_baslik(self._ad(sid)), pv.tr_baslik(self._kisi.get(sid, {}).get("pozisyon") or ""),
+                                    {"1": "1 (08–16)", "2": "2 (16–24)", "3": "3 (24–08)", "G": "Gündüz"}.get(bv.get(sid), "-"),
+                                    str(o.planli), str(o.geldi), str(o.gelmedi), str(o.izinli),
+                                    "-" if o.devam is None else f"%{o.devam * 100:.1f}".replace(".", ",")]))
+            baslik.setText(f"Personel listesi: {len(sids)} kişi  ·  satıra çift tıklayın: personel kartı")
+        else:
+            ad, kol = {"gelmedi": ("İzinsiz gelmeme", "Durum"), "gec": ("Geç gelme", "Geç"), "erken": ("Erken çıkma", "Erken"),
+                       "fazla": ("Fazla çalışma (her gün ayrı)", "Fazla çalışma"), "izin": ("İzinli günler (tam gün + saatlik)", "İzin türü")}[k]
+            bas = ["Personel", "Tarih", "Planlanan", "Giriş – çıkış", kol]
+            rows = lst.get(k, [])
+            satir = [(r["sid"], [r["ad"], r["tarih"], r["plan"], r["saat"], r["deger"]]) for r in rows]
+            top = sum(r["dk"] for r in rows)
+            baslik.setText(f"{ad}: {len(rows)} gün · {len({r['sid'] for r in rows})} kişi" + (f" · toplam {pv.sure_yaz(top)}" if top else "")
+                           + "  ·  satıra çift tıklayın: personel kartı")
+        t.setSortingEnabled(False)
+        t.clear()
+        t.setColumnCount(len(bas))
+        t.setHorizontalHeaderLabels(bas)
+        t.setRowCount(len(satir))
+        for i, (sid, deg) in enumerate(satir):
+            for j, x in enumerate(deg):
+                it = QTableWidgetItem(x)
+                if j == 0:
+                    it.setData(Qt.UserRole, sid)
+                    f = it.font()
+                    f.setBold(True)
+                    it.setFont(f)
+                t.setItem(i, j, it)
+        t.resizeColumnsToContents()
+        t.setSortingEnabled(True)
+
+    def _devam_penceresi(self):
+        from PySide6.QtWidgets import QDialog
+        sids, lst = self._kpi_listeleri()
+        top = pv.Ozet(0)
+        for sid in sids:
+            o = self._ozet[sid]
+            top.planli += o.planli
+            top.gelmedi += o.gelmedi
+            top.izinli += o.izinli
+        geldi = max(0, top.planli - top.izinli - top.gelmedi)
+        payda = top.planli - top.izinli
+        oran = geldi / payda if payda > 0 else None
+        d = QDialog(self)
+        d.setWindowTitle("Devam oranı")
+        d.resize(900, 640)
+        l = QVBoxLayout(d)
+        l.addWidget(etiket("Devam oranı", "SayfaBaslik"))
+        l.addWidget(etiket("Dilime ya da satıra tıklayın: ayrıntı aşağıda açılır (yeniden tıklayınca kapanır)", "AltBaslik"))
+        ust = QHBoxLayout()
+        dilim = [("geldi", "Geldi", geldi, tema.YESIL), ("gelmedi", "İzinsiz gelmedi", top.gelmedi, tema.KIRMIZI),
+                 ("izin", "İzinli (tam gün)", top.izinli, "#2a7fd1")]
+        pasta = _Pasta(dilim, oran)
+        ust.addWidget(pasta)
+        sag = QVBoxLayout()
+        dugme = {}
+        toplam = sum(x[2] for x in dilim) or 1
+        for k, ad, n, rk in dilim:
+            b = QPushButton(f"■  {ad}    {n} gün · %{n / toplam * 100:.1f}".replace(".", ","))
+            b.setStyleSheet(f"QPushButton {{ text-align:left; padding:6px 10px; border:none; color:{tema.YAZI}; }}"
+                            f"QPushButton:checked {{ background:#eef0fa; border-radius:6px; }}")
+            b.setCheckable(True)
+            sag.addWidget(b)
+            dugme[k] = b
+        sag.addWidget(etiket(f"Devam oranı = gelinen gün ÷ (planlı gün − izinli gün)\n"
+                             f"%{(oran or 0) * 100:.1f} = {geldi} ÷ ({top.planli} − {top.izinli})".replace(".", ","), "AltBaslik"))
+        sag.addStretch(1)
+        ust.addLayout(sag, 1)
+        l.addLayout(ust)
+        alt_baslik = etiket("", "KartBaslik", kelime=False)
+        alt_t = QTableWidget()
+        self._tablo_ayar(alt_t)
+        alt_t.cellDoubleClicked.connect(lambda r, _c: (d.accept(), self._kart_ac(alt_t.item(r, 0).data(Qt.UserRole))) if alt_t.item(r, 0) else None)
+        alt_baslik.hide()
+        alt_t.hide()
+        l.addWidget(alt_baslik)
+        l.addWidget(alt_t, 1)
+
+        def sec(k):
+            yeni = "" if pasta.secili == k else k
+            pasta.secili = yeni
+            pasta.update()
+            for a, b in dugme.items():
+                b.setChecked(a == yeni)
+            alt_baslik.setVisible(bool(yeni))
+            alt_t.setVisible(bool(yeni))
+            if yeni:
+                self._kpi_doldur(alt_t, alt_baslik, {"geldi": "kisi", "gelmedi": "gelmedi", "izin": "izin"}[yeni])
+        pasta.tiklandi.connect(sec)
+        for k, b in dugme.items():
+            b.clicked.connect(lambda _=False, k=k: sec(k))
+        d.exec()
 
     # ---------------------------------------------------------------- vardiya listesi
     def _hafta_git(self, gun: int):
@@ -610,6 +769,8 @@ class PersonelSayfasi(QWidget):
         bask = {sid: (max(d.items(), key=lambda x: x[1])[0] if d else "Z") for sid, d in say.items()}
         satirlar = []
         for sid in kisi:
+            if self._cikis(sid):
+                continue                                   # ayrılan personel vardiya listesinde yok
             if v and bask.get(sid) != v:
                 continue
             if pz and str(self._kisi.get(sid, {}).get("pozisyon") or "") != pz:
@@ -665,6 +826,28 @@ class PersonelSayfasi(QWidget):
     def _gun_ipucu(self, g: pv.Gun) -> str:
         return pv.gun_ipucu(g, self._izin_ad)
 
+    def _lider_tur_ciz(self):
+        while self.lider_tur_kutu.count():
+            w = self.lider_tur_kutu.takeAt(0).widget()
+            if w is not None:
+                w.deleteLater()
+        duzenle = self._yetki("grup_lideri")
+        for sid in sorted((s for s in self._kisi if self._lider_mi(s) and not self._cikis(s)), key=self._ad):
+            self.lider_tur_kutu.addWidget(QLabel(pv.tr_baslik(self._ad(sid)).split(" ")[0] + ":"))
+            c = QComboBox()
+            c.addItems(list(pv.LIDER_TURLERI))
+            c.setCurrentText(pv.lider_turu(self.ana.ayar, sid))
+            c.setEnabled(duzenle)
+            c.currentTextChanged.connect(lambda t, s=sid: self._lider_tur_degisti(s, t))
+            self.lider_tur_kutu.addWidget(c)
+
+    def _lider_tur_degisti(self, sid: int, tur: str):
+        d = dict(self.ana.ayar.get("pv_lider_tur") or {})
+        d[str(sid)] = tur
+        vt.ayar_yaz(self.ana.con, "pv_lider_tur", d)
+        self.ana.ayar["pv_lider_tur"] = d
+        self._vardiya_ciz()
+
     def _lider_degisti(self, _it):
         duz = dict(self.ana.ayar.get("pv_grup_lider") or {})
         duz[self._hafta.isoformat()] = {k: [x.strip() for x in (self.t_lider.item(0, j).text() if self.t_lider.item(0, j) else "")
@@ -674,6 +857,11 @@ class PersonelSayfasi(QWidget):
 
     # ---------------------------------------------------------------- sıralamalar
     def _sira_ciz(self, kisiler: List[int]):
+        ayrilan = [s for s in self._secili_kisiler(hepsi=True) if self._cikis(s)]
+        self.sira_ayrilan.setText("<b>Ayrılan personel</b> (sıralamalara ve ortalamalara girmez)<br>" + ("<br>".join(
+            f"{pv.tr_baslik(self._ad(s))} · ayrıldı {pv._tr(self._cikis(s))} · planlı {self._ozet[s].planli}, geldi {self._ozet[s].geldi}, "
+            f"gelmedi {self._ozet[s].gelmedi}, izinli {self._ozet[s].izinli}" for s in ayrilan) if ayrilan else "Seçili dönemde yok"))
+        kisiler = [s for s in kisiler if not self._cikis(s)]
         oz = [self._ozet[s] for s in kisiler]
         izin_renk = {}
         palet = [tema.YESIL, "#7A5AA6", tema.YESIL_ACIK, "#4472C4", "#C55A11", "#8B96A3", "#12A37A"]
@@ -753,7 +941,9 @@ class PersonelSayfasi(QWidget):
             satir.append(("İşe giriş / kıdem", pv._tr(str(giris)[:10]) + (f" · {b['kidem']} yıl" if b.get("kidem") is not None else "")))
         if kimlik and p.get("telefon"):
             satir.append(("Cep telefonu", p.get("telefon")))
-        if pv.izin_satirlari(b):
+        if not kimlik:
+            pass                                       # fotoğraf, telefon ve yıllık izin tek yetkide (Personel kimlik bilgileri)
+        elif pv.izin_satirlari(b):
             satir.extend(pv.izin_satirlari(b))
         else:
             satir.append(("Yıllık izin", "<span style='color:#6b7285'>henüz alınmadı (otomatik çekimde gelecek)</span>"))
@@ -874,3 +1064,61 @@ class PersonelSayfasi(QWidget):
             self.ana.mesaj(f"Excel dosyası kaydedildi: {yol}")
         except OSError as e:
             self.ana.mesaj(f"Kaydedilemedi: {e}")
+
+
+
+class _Pasta(QWidget):
+    """Devam oranı penceresindeki halka grafik; dilime tıklanınca tiklandi(anahtar)."""
+    tiklandi = Signal(str)
+
+    def __init__(self, dilim, oran, parent=None):
+        super().__init__(parent)
+        self.dilim, self.oran, self.secili = dilim, oran, ""
+        self.setFixedSize(280, 280)
+        self.setCursor(Qt.PointingHandCursor)
+        self._acilar = []
+
+    def paintEvent(self, _e):  # noqa: N802
+        from PySide6.QtCore import QRectF
+        from PySide6.QtGui import QPainter, QPen, QFont
+        import math
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        top = sum(x[2] for x in self.dilim) or 1
+        a = 90.0
+        self._acilar = []
+        for k, _ad, n, rk in self.dilim:
+            span = 360.0 * n / top
+            if span <= 0:
+                continue
+            orta = math.radians(a - span / 2)
+            cik = 10 if self.secili == k else 0
+            r = QRectF(20 + cik * math.cos(orta), 20 - cik * math.sin(orta), 240, 240)
+            p.setPen(QPen(QColor(rk), 52, Qt.SolidLine, Qt.FlatCap))
+            p.drawArc(r.adjusted(26, 26, -26, -26), int(a * 16), int(-span * 16))
+            self._acilar.append((k, a - span, a))
+            a -= span
+        p.setPen(QColor(tema.LACIVERT))
+        f = QFont(self.font())
+        f.setPixelSize(28)
+        f.setBold(True)
+        p.setFont(f)
+        p.drawText(QRectF(0, 110, 280, 40), Qt.AlignCenter, "-" if self.oran is None else f"%{self.oran * 100:.1f}".replace(".", ","))
+        f.setPixelSize(12)
+        f.setBold(False)
+        p.setFont(f)
+        p.setPen(QColor(tema.YAZI_SOLUK))
+        p.drawText(QRectF(0, 146, 280, 20), Qt.AlignCenter, "devam")
+
+    def mousePressEvent(self, e):  # noqa: N802
+        import math
+        x, y = e.position().x() - 140, 140 - e.position().y()
+        r = math.hypot(x, y)
+        if not (60 <= r <= 130):
+            return
+        aci = math.degrees(math.atan2(y, x))
+        for k, a0, a1 in self._acilar:
+            for t in (aci, aci - 360, aci + 360):
+                if a0 <= t <= a1:
+                    self.tiklandi.emit(k)
+                    return

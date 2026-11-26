@@ -33,7 +33,8 @@ def durus_kirilimi(con, ilk: date, son: date, makine: str, tip: str) -> Dict[str
     gset = {ilk + timedelta(days=i) for i in range((son - ilk).days + 1)}
     vard: Dict[int, float] = {1: 0.0, 2: 0.0, 3: 0.0}
     ops: Dict[str, float] = {}
-    for op, m, t, a, b in operator_dogrula(ham, alt, ust):
+    from .operator_vardiya import bagla
+    for op, m, t, a, b in bagla(con, operator_dogrula(ham, alt, ust), ilk, son, vt.ayar_oku(con)):
         if statu_bul(t) != DURUS or durus_adi(t, a, b) != tip:
             continue
         for gun, v, sn in bol(a, b, True):
@@ -203,7 +204,9 @@ def donem_kayitlari(con, ilk: date, son: date) -> List[Tuple[str, str, str, date
     ust = datetime(son.year, son.month, son.day) + timedelta(days=1)
     ham = [(r["operator"], r["makine"], r["tip"], vt.zaman(r["baslangic"]), vt.zaman(r["bitis"]))
            for r in vt.aralik_satirlari(con, "operator, makine, tip, baslangic, bitis", ilk, son)]
-    return [(operator_adi(op) or "", m, t, max(a, alt), min(b, ust)) for op, m, t, a, b in operator_dogrula(ham, alt, ust) if b > alt and a < ust]
+    from .operator_vardiya import bagla
+    dogru = bagla(con, operator_dogrula(ham, alt, ust), ilk, son, vt.ayar_oku(con))
+    return [(operator_adi(op) or "", m, t, max(a, alt), min(b, ust)) for op, m, t, a, b in dogru if b > alt and a < ust]
 
 
 def operator_ayrinti(kayit: List[Tuple[str, str, str, datetime, datetime]], ilk: date, son: date, tip: str, operator: str) -> dict:

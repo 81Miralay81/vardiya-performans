@@ -66,6 +66,10 @@ td.s{text-align:right;white-space:nowrap}
 .yukleniyor{color:var(--soluk);padding:30px;text-align:center}
 #op-t tbody tr{cursor:pointer}#op-t tbody tr:hover td{background:#f5f7fd}
 #op-t td.tik{color:var(--lac);text-decoration:underline dotted}
+#pv-kpi .kart{cursor:pointer}#pv-kpi .kart:hover{border-color:var(--lac)}#pv-kpi .kart.sec{border:2px solid var(--lac);background:#eef0fa}
+.pd-ust{display:flex;gap:24px;align-items:center;flex-wrap:wrap}.pd-ust svg path{cursor:pointer;transition:transform .15s}
+.pd-lej button{display:flex;gap:10px;align-items:center;width:100%;border:none;background:none;padding:7px 10px;border-radius:6px;cursor:pointer;font:inherit;text-align:left}
+.pd-lej button.sec,.pd-lej button:hover{background:#eef0fa;color:#1f2433}.pd-lej i{width:12px;height:12px;border-radius:3px;display:inline-block}
 .modal{position:fixed;inset:0;background:rgba(21,9,88,.35);z-index:60;display:none;align-items:center;justify-content:center;padding:12px}
 .modal.ac{display:flex}
 .modal.ust{z-index:70;background:rgba(21,9,88,.25)}
@@ -216,8 +220,16 @@ nav a.cikis{margin-top:8px;font-size:12px;opacity:.8}
   <!-- PERSONEL DURUM (yalnızca yetkili kullanıcı) -->
   <section class="sayfa" id="s-personel">
     <div class="kpi" id="pv-kpi" style="grid-template-columns:repeat(7,1fr)"></div>
+    <div class="kart" id="pv-kliste" style="display:none;margin-bottom:10px"><h3 id="pv-kbas"></h3><div class="tablokutu" style="max-height:40vh"><table id="pv-kt"></table></div></div>
+    <div class="modal" id="pv-dmodal"><div class="pencere" style="width:min(980px,96vw);height:auto;max-height:92vh">
+      <header><h3>Devam oranı</h3><span class="not" style="color:var(--soluk);font-size:12px">dilime ya da satıra tıklayın: ayrıntı aşağıda açılır</span><button id="pv-dkapat">✕ Kapat</button></header>
+      <div class="govde" style="overflow:auto"><div class="pd-ust"><div id="pv-dpasta"></div><div style="flex:1;min-width:260px"><div class="pd-lej" id="pv-dlej"></div>
+        <div class="not" id="pv-dform" style="margin-top:10px"></div></div></div>
+        <div id="pv-dalt" style="display:none;margin-top:12px"><h3 id="pv-dbas" style="font-size:14px;color:var(--lac)"></h3><div class="tablokutu" style="max-height:42vh"><table id="pv-dt"></table></div></div></div>
+    </div></div>
     <div class="psekme" id="pv-sekme"><button class="sec" data-p="devam">Devam özeti</button><button data-p="hafta">Vardiya listesi</button>
-      <button data-p="sira">Sıralamalar</button><button data-p="kart">Personel kartı</button></div>
+      <button data-p="sira">Sıralamalar</button><button data-p="kart">Personel kartı</button>
+      <label style="margin-left:auto;font-size:13px;color:var(--soluk)"><input type="checkbox" id="pv-ayr"> Ayrılanları göster</label></div>
     <div id="pv-devam"><div class="kart"><h3>Personel bazında devam <span class="not">başlığa tıklayın: sıralar · satıra tıklayın: personel kartı</span></h3>
       <div class="tablokutu" style="max-height:62vh"><table id="pv-t"></table></div><div class="not" id="pv-not" style="margin-top:6px"></div></div></div>
     <div id="pv-hafta" style="display:none"><div class="kart">
@@ -876,27 +888,91 @@ function personel(){
     if (PV.sekme === 'hafta') pvHafta(); if (PV.sekme === 'kart') pvKart();
   });
 }
+// işten ayrılanlar ortalamalara, personel sayısına, vardiya listesine ve sıralamalara girmez
+function pvAktif(){ return PV.veri.satir.filter(function(r){ return !r.cikis; }); }
+function pvToplam(){
+  var t = {planli: 0, gelmedi: 0, izinli: 0, gec_adet: 0, erken_adet: 0, fazla_dk: 0};
+  pvAktif().forEach(function(r){ for (var k in t) t[k] += r[k]; });
+  t.geldi = Math.max(0, t.planli - t.izinli - t.gelmedi);
+  t.devam = (t.planli - t.izinli) > 0 ? t.geldi / (t.planli - t.izinli) : null;
+  return t;
+}
+function yuzde(x){ return x == null ? '-' : '%' + (x*100).toFixed(1).replace('.', ','); }
+$('pv-ayr').onchange = function(){ pvTablo(); pvKisiler(); };
 function pvKpi(){
-  var t = {planli: 0, gelmedi: 0, izinli: 0, gec_adet: 0, erken_adet: 0, fazla_dk: 0}, R = PV.veri.satir;
-  R.forEach(function(r){ for (var k in t) t[k] += r[k]; });
-  var dv = (t.planli - t.izinli) > 0 ? (t.planli - t.izinli - t.gelmedi) / (t.planli - t.izinli) : null;
-  var k = [['Personel', R.length], ['Devam oranı', dv == null ? '-' : '%' + (dv*100).toFixed(1).replace('.', ',')], ['İzinsiz gelmeme (gün)', t.gelmedi],
-           ['Geç gelme', t.gec_adet], ['Erken çıkma', t.erken_adet], ['Fazla çalışma', Math.floor(t.fazla_dk/60) + ' sa'], ['İzinli gün', t.izinli]];
-  $('pv-kpi').innerHTML = k.map(function(x){ return '<div class="kart"><div class="k">' + x[0] + '</div><div class="d" style="font-size:24px">' + x[1] + '</div></div>'; }).join('');
+  var t = pvToplam(), R = pvAktif();
+  var k = [['kisi', 'Personel', R.length], ['devam', 'Devam oranı ⧉', yuzde(t.devam)], ['gelmedi', 'İzinsiz gelmeme (gün)', t.gelmedi],
+           ['gec', 'Geç gelme', t.gec_adet], ['erken', 'Erken çıkma', t.erken_adet], ['fazla', 'Fazla çalışma', Math.floor(t.fazla_dk/60) + ' sa'], ['izin', 'İzinli gün', t.izinli]];
+  $('pv-kpi').innerHTML = k.map(function(x){ return '<div class="kart' + (PV.kliste === x[0] ? ' sec' : '') + '" data-k="' + x[0] + '" title="' + (x[0] === 'devam' ? 'tıklayın: grafik penceresi' : 'tıklayın: altta liste') + '"><div class="k">' + x[1] + (x[0] === 'devam' ? '' : ' ▾') + '</div><div class="d" style="font-size:24px">' + x[2] + '</div></div>'; }).join('');
+  $('pv-kpi').querySelectorAll('.kart').forEach(function(c){ c.onclick = function(){
+    if (c.dataset.k === 'devam') { pvDevamAc(); return; }
+    PV.kliste = PV.kliste === c.dataset.k ? '' : c.dataset.k; pvKpi(); }; });
+  if (PV.kliste) { $('pv-kliste').style.display = ''; pvListeYaz(PV.kliste, $('pv-kbas'), $('pv-kt')); } else $('pv-kliste').style.display = 'none';
   var kp = PV.veri.kapsam;
   $('pv-not').textContent = 'Geç gelme / erken çıkma: ' + PV.veri.tolerans + ' dk tolerans. Fazla çalışma: vardiya bitişinden en az ' + PV.veri.fazla_en_az +
     ' dk sonra çıkış ve tatil günü çalışması. İzinli günlerdeki geç gelme / erken çıkma sayılmaz; resmi tatil ve bayramlar gelmedi sayılmaz.' +
     (kp[0] ? ' Personel verisi: ' + trT(kp[0]) + ' – ' + trT(kp[1]) + '.' : ' Henüz personel verisi yok.');
 }
+function pvListeYaz(k, bas, tab){
+  var aktif = {}; pvAktif().forEach(function(r){ aktif[r.sid] = r; });
+  var h, n;
+  if (k === 'kisi') {
+    var R = pvAktif().slice().sort(function(a, b){ return a.ad.localeCompare(b.ad, 'tr'); });
+    bas.textContent = 'Personel listesi: ' + R.length + ' kişi · satıra tıklayın: personel kartı';
+    h = '<thead><tr><th>Personel</th><th>Pozisyon</th><th>Vardiya</th><th>Planlı</th><th>Geldi</th><th>Gelmedi</th><th>İzinli</th><th>Devam</th></tr></thead><tbody>' +
+      R.map(function(r){ return '<tr data-sid="' + r.sid + '"><td><b>' + esc(r.ad) + '</b>' + (r.lider ? ' ★ ' + esc(r.lider_tur || '') : '') + '</td><td>' + esc(r.pozisyon) + '</td><td>' + (VAD[r.vardiya] || '-') +
+        '</td><td class="s">' + r.planli + '</td><td class="s">' + r.geldi + '</td><td class="s">' + r.gelmedi + '</td><td class="s">' + r.izinli + '</td><td class="s">' + yuzde(r.devam) + '</td></tr>'; }).join('');
+  } else {
+    var ad = {gelmedi: ['İzinsiz gelmeme', 'Durum'], gec: ['Geç gelme', 'Geç'], erken: ['Erken çıkma', 'Erken'], fazla: ['Fazla çalışma (her gün ayrı)', 'Fazla çalışma'], izin: ['İzinli günler (tam gün + saatlik)', 'İzin türü']}[k];
+    var L = ((PV.veri.liste || {})[k] || []).filter(function(r){ return aktif[r.sid]; }), top = 0, kisi = {};
+    L.forEach(function(r){ top += r.dk; kisi[r.sid] = 1; });
+    bas.textContent = ad[0] + ': ' + L.length + ' gün · ' + Object.keys(kisi).length + ' kişi' + (top ? ' · toplam ' + sureY(top) : '') + ' · satıra tıklayın: personel kartı';
+    h = '<thead><tr><th>Personel</th><th>Tarih</th><th>Planlanan</th><th>Giriş – çıkış</th><th>' + ad[1] + '</th></tr></thead><tbody>' +
+      (L.length ? L.map(function(r){ return '<tr data-sid="' + r.sid + '"><td><b>' + esc(r.ad) + '</b></td><td>' + esc(r.tarih) + '</td><td>' + esc(r.plan) + '</td><td>' + esc(r.saat) + '</td><td>' + esc(r.deger) + '</td></tr>'; }).join('')
+        : '<tr><td colspan="5" class="not">Seçilen dönemde yok</td></tr>');
+  }
+  tab.innerHTML = h + '</tbody>';
+  tab.querySelectorAll('tbody tr[data-sid]').forEach(function(tr){ tr.style.cursor = 'pointer'; tr.onclick = function(){ $('pv-dmodal').classList.remove('ac'); PV.sid = +tr.dataset.sid; pvSekme('kart'); }; });
+}
+function pvDevamAc(){
+  var t = pvToplam(), D = [['geldi', 'Geldi', t.geldi, '#5e9b2a', 'kisi'], ['gelmedi', 'İzinsiz gelmedi', t.gelmedi, '#d64541', 'gelmedi'], ['izin', 'İzinli (tam gün)', t.izinli, '#2a7fd1', 'izin']];
+  var top = D.reduce(function(a, x){ return a + x[2]; }, 0) || 1, a = -Math.PI / 2, svg = '<svg viewBox="0 0 280 280" width="280" height="280">';
+  D.forEach(function(x){
+    var sp = 2 * Math.PI * x[2] / top; if (sp <= 0) return;
+    if (sp >= 2 * Math.PI - 1e-6) sp = 2 * Math.PI - 1e-4;
+    var R = 120, r = 70, c = 140, b = a + sp, g = sp > Math.PI ? 1 : 0, m = a + sp / 2;
+    function P(rr, aa){ return (c + rr * Math.cos(aa)).toFixed(2) + ' ' + (c + rr * Math.sin(aa)).toFixed(2); }
+    svg += '<path data-k="' + x[0] + '" data-dx="' + (10 * Math.cos(m)).toFixed(1) + '" data-dy="' + (10 * Math.sin(m)).toFixed(1) + '" fill="' + x[3] + '" d="M' + P(R, a) + ' A' + R + ' ' + R + ' 0 ' + g + ' 1 ' + P(R, b) + ' L' + P(r, b) + ' A' + r + ' ' + r + ' 0 ' + g + ' 0 ' + P(r, a) + ' Z"><title>' + x[1] + ': ' + x[2] + ' gün</title></path>';
+    a = b;
+  });
+  svg += '<text x="140" y="146" text-anchor="middle" font-size="28" font-weight="700" fill="#150958">' + yuzde(t.devam) + '</text><text x="140" y="168" text-anchor="middle" font-size="12" fill="#6b7285">devam</text></svg>';
+  $('pv-dpasta').innerHTML = svg;
+  $('pv-dlej').innerHTML = D.map(function(x){ return '<button data-k="' + x[0] + '"><i style="background:' + x[3] + '"></i><b style="flex:1">' + x[1] + '</b><span>' + x[2] + ' gün · ' + yuzde(x[2] / top) + '</span></button>'; }).join('');
+  $('pv-dform').innerHTML = 'Devam oranı = gelinen gün ÷ (planlı gün − izinli gün)<br>' + yuzde(t.devam) + ' = ' + t.geldi + ' ÷ (' + t.planli + ' − ' + t.izinli + ')';
+  var secili = '';
+  function sec(k){
+    secili = secili === k ? '' : k;
+    $('pv-dpasta').querySelectorAll('path').forEach(function(p){ p.style.transform = p.dataset.k === secili ? 'translate(' + p.dataset.dx + 'px,' + p.dataset.dy + 'px)' : ''; });
+    $('pv-dlej').querySelectorAll('button').forEach(function(b){ b.classList.toggle('sec', b.dataset.k === secili); });
+    $('pv-dalt').style.display = secili ? '' : 'none';
+    if (secili) pvListeYaz(D.filter(function(x){ return x[0] === secili; })[0][4], $('pv-dbas'), $('pv-dt'));
+  }
+  $('pv-dpasta').querySelectorAll('path').forEach(function(p){ p.onclick = function(){ sec(p.dataset.k); }; });
+  $('pv-dlej').querySelectorAll('button').forEach(function(b){ b.onclick = function(){ sec(b.dataset.k); }; });
+  $('pv-dalt').style.display = 'none';
+  $('pv-dmodal').classList.add('ac');
+}
+$('pv-dkapat').onclick = function(){ $('pv-dmodal').classList.remove('ac'); };
+$('pv-dmodal').onclick = function(e){ if (e.target === this) this.classList.remove('ac'); };
 var PV_KOL = [['ad', 'Personel'], ['pozisyon', 'Pozisyon'], ['vardiya', 'Vardiya'], ['planli', 'Planlı gün'], ['geldi', 'Geldi'], ['gelmedi', 'Gelmedi (izinsiz)'],
               ['izinli', 'İzinli gün'], ['gec_dk', 'Geç gelme adet / süre'], ['erken_dk', 'Erken çıkma adet / süre'], ['fazla_dk', 'Fazla çalışma'], ['tatil', 'Tatilde çalıştı']];
 function pvTablo(){
-  var R = PV.veri.satir.slice(), k = PV.sira[0], y = PV.sira[1];
+  var R = $('pv-ayr').checked ? PV.veri.satir.slice() : pvAktif(), k = PV.sira[0], y = PV.sira[1];
   R.sort(function(a, b){ var x = a[k], z = b[k]; return (typeof x === 'string' ? x.localeCompare(z, 'tr') : (x - z)) * y; });
   var h = '<thead><tr>' + PV_KOL.map(function(c){ return '<th data-k="' + c[0] + '" style="cursor:pointer">' + c[1] + (k === c[0] ? (y > 0 ? ' ▲' : ' ▼') : '') + '</th>'; }).join('') + '</tr></thead><tbody>';
   R.forEach(function(r){
     var izin = Object.keys(r.izin).map(function(a){ return a + ': ' + r.izin[a]; }).join(', ');
-    h += '<tr data-sid="' + r.sid + '"><td' + (r.cikis ? ' class="ay"' : '') + '><b>' + esc(r.ad) + '</b>' + (r.lider ? ' ★' : '') + (r.cikis ? ' · ayrıldı ' + trT(r.cikis) : '') + '</td><td>' + esc(r.pozisyon) +
+    h += '<tr data-sid="' + r.sid + '"><td' + (r.cikis ? ' class="ay"' : '') + '><b>' + esc(r.ad) + '</b>' + (r.lider ? ' ★ ' + esc(r.lider_tur || '') : '') + (r.cikis ? ' · ayrıldı ' + trT(r.cikis) : '') + '</td><td>' + esc(r.pozisyon) +
       '</td><td>' + (VAD[r.vardiya] || '-') + '</td><td class="s">' + r.planli + '</td><td class="s">' + r.geldi + '</td><td class="s"' + (r.gelmedi ? ' style="background:#FFC7CE"' : '') + '>' + r.gelmedi +
       '</td><td class="s" title="' + esc(izin) + '">' + r.izinli + (r.izin_saat ? ' (+' + r.izin_saat + ' saatlik)' : '') +
       '</td><td class="s"' + (r.gec_adet >= 3 ? ' style="background:#FFEB9C"' : '') + '>' + (r.gec_adet ? r.gec_adet + ' / ' + sureY(r.gec_dk) : '0') +
@@ -907,7 +983,7 @@ function pvTablo(){
   $('pv-t').querySelectorAll('tbody tr').forEach(function(tr){ tr.onclick = function(){ PV.sid = +tr.dataset.sid; pvSekme('kart'); }; });
 }
 function pvSira(){
-  var R = PV.veri.satir;
+  var R = pvAktif(), A = PV.veri.satir.filter(function(r){ return r.cikis; });
   function liste(bas, renk, f, y){
     var v = R.filter(function(r){ return f(r) > 0; }).sort(function(a, b){ return f(b) - f(a); }).slice(0, 10), m = v.length ? f(v[0]) : 1;
     return '<div class="kart"><h3>' + bas + '</h3>' + (v.length ? v.map(function(r){ return '<div class="pbar" data-sid="' + r.sid + '"><span class="n">' + esc(r.ad) +
@@ -918,7 +994,10 @@ function pvSira(){
     liste('En çok izin kullanan (gün)', '#5E9B2A', function(r){ return r.izinli + r.izin_saat; }, function(r){ return (r.izinli + r.izin_saat) + ' (' + Object.keys(r.izin).map(function(a){ return a.toLowerCase() + ' ' + r.izin[a]; }).join(', ') + ')'; }) +
     liste('En çok fazla çalışan', '#150958', function(r){ return r.fazla_dk; }, function(r){ return sureY(r.fazla_dk); }) +
     liste('En çok erken çıkan', '#D35400', function(r){ return r.erken_adet; }, function(r){ return r.erken_adet + ' · ' + sureY(r.erken_dk); }) +
-    liste('Tatilde en çok çalışan (gün)', '#4472C4', function(r){ return r.tatil; }, function(r){ return r.tatil + ' gün'; });
+    liste('Tatilde en çok çalışan (gün)', '#4472C4', function(r){ return r.tatil; }, function(r){ return r.tatil + ' gün'; }) +
+    '<div class="kart" style="grid-column:1/-1"><h3>Ayrılan personel <span class="not">sıralamalara ve toplamlara katılmaz</span></h3>' + (A.length ? A.map(function(r){
+      return '<div class="pbar" data-sid="' + r.sid + '"><span class="n">' + esc(r.ad) + '</span><span class="d">ayrıldı ' + trT(r.cikis) + ' · ' + esc(r.pozisyon) + ' · planlı ' + r.planli + ', geldi ' + r.geldi + ', gelmedi ' + r.gelmedi + ', izinli ' + r.izinli + '</span></div>'; }).join('')
+      : '<div class="not">Seçilen dönemde ayrılan yok</div>') + '</div>';
   $('pv-sirakap').querySelectorAll('.pbar').forEach(function(b){ b.onclick = function(){ PV.sid = +b.dataset.sid; pvSekme('kart'); }; });
 }
 function pvHafta(){
@@ -931,7 +1010,7 @@ function pvHafta(){
     var h = '<tr><th>Personel</th>' + gunler.map(function(g, i){ return '<th>' + g + ' ' + ekle(p, i).getDate() + '</th>'; }).join('') + '</tr>', once = null;
     d.satir.forEach(function(r){
       if (r.vardiya !== once) { h += '<tr class="bas"><td colspan="8">' + esc(d.vardiya_ad[r.vardiya] || 'Diğer') + '</td></tr>'; once = r.vardiya; }
-      h += '<tr><td class="ad">' + esc(r.ad) + (r.lider ? ' ★' : '') + (r.cikis ? ' · ayrıldı' : '') + '</td>' + r.gun.map(function(g){
+      h += '<tr><td class="ad">' + esc(r.ad) + (r.lider ? ' ★ ' + esc(r.lider_tur || '') : '') + '</td>' + r.gun.map(function(g){
         return g ? '<td style="background:' + g.r + '" title="' + esc(g.i) + '">' + esc(g.m) + '</td>' : '<td></td>'; }).join('') + '</tr>';
     });
     $('pv-ht').innerHTML = h;
@@ -941,7 +1020,7 @@ $('pv-hg').onclick = function(){ PV.pzt = iso(ekle(gun(PV.pzt), -7)); pvHafta();
 $('pv-hi').onclick = function(){ PV.pzt = iso(ekle(gun(PV.pzt), 7)); pvHafta(); };
 $('pv-hb').onclick = function(){ PV.pzt = null; pvHafta(); };
 function pvKisiler(){
-  var s = $('pv-kisi'), R = PV.veri.satir.slice().sort(function(a, b){ return a.ad.localeCompare(b.ad, 'tr'); });
+  var s = $('pv-kisi'), R = ($('pv-ayr').checked ? PV.veri.satir.slice() : pvAktif()).sort(function(a, b){ return a.ad.localeCompare(b.ad, 'tr'); });
   s.innerHTML = R.map(function(r){ return '<option value="' + r.sid + '">' + esc(r.ad) + (r.cikis ? ' (ayrıldı)' : '') + '</option>'; }).join('');
   if (PV.sid) s.value = PV.sid;
 }
@@ -962,7 +1041,7 @@ function pvKart(){
     if (d.telefon) b.push(['Cep telefonu', esc(d.telefon)]);
     if (!d.giris) b.push(['İşe giriş / kıdem', '<span style="color:var(--soluk,#6b7285)">henüz alınmadı</span>']);
     if (d.izin_satir && d.izin_satir.length) d.izin_satir.forEach(function(x){ b.push([x[0], x[1]]); });
-    else b.push(['Yıllık izin', '<span style="color:var(--soluk,#6b7285)">henüz alınmadı (otomatik çekimde gelecek)</span>']);
+    else if (d.kimlik !== false) b.push(['Yıllık izin', '<span style="color:var(--soluk,#6b7285)">henüz alınmadı (otomatik çekimde gelecek)</span>']);
     $('pv-bilgi').innerHTML = '<table>' + b.map(function(x){ return '<tr><td style="color:var(--soluk)">' + x[0] + '</td><td>' + x[1] + '</td></tr>'; }).join('') + '</table>';
     PV.gorsel = d.gorsel; if (PV.gorselSid !== d.sid) { PV.liste = ''; PV.gorselSid = d.sid; }
     ozetCiz();

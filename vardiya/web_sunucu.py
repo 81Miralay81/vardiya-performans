@@ -428,9 +428,11 @@ class Sunucu:
             alt = datetime(ilk.year, ilk.month, ilk.day)
             ust = datetime(son.year, son.month, son.day) + timedelta(days=1)
             kayit = operator_dogrula(vt.kayitlari_getir_operatorlu(con, ilk, son, kirp=False), alt, ust)
+            from .operator_vardiya import bagla
+            kayit = bagla(con, kayit, ilk, son, a)
             haric = vt.haric_personel(con)
             if haric:
-                kayit = [k for k in kayit if operator_adi(k[0]) not in haric]
+                kayit = [k for k in kayit if __import__("vardiya.operator_vardiya", fromlist=["x"]).temel_ad(operator_adi(k[0])) not in haric]
             try:
                 v = int(q.get("vardiya", ["0"])[0])
             except ValueError:
@@ -576,13 +578,15 @@ class Sunucu:
             p = kisi.get(sid, {})
             satir.append({"sid": sid, "ad": pv.tr_baslik(p.get("ad") or sid), "pozisyon": pv.tr_baslik(p.get("pozisyon") or ""),
                           "vardiya": bv.get(sid, ""), "lider": pv.lider_mi(p), "cikis": p.get("cikis_tarih") or "",
+                          "lider_tur": pv.lider_turu(ayar, sid) if pv.lider_mi(p) else "",
                           "planli": o.planli, "geldi": o.geldi, "gelmedi": o.gelmedi, "eksik": o.eksik, "izinli": o.izinli,
                           "izin_saat": o.izin_saat, "izin": {pv.izin_kisa(izin_ad, k): n for k, n in o.izin_tur.items()},
                           "gec_adet": o.gec_adet, "gec_dk": o.gec_dk, "erken_adet": o.erken_adet, "erken_dk": o.erken_dk,
                           "fazla_dk": o.fazla_dk, "tatil": o.tatil_calisti,
                           "devam": None if o.devam is None else round(o.devam, 4)})
         satir.sort(key=lambda r: r["ad"])
-        return self._json(h, {"satir": satir, "kapsam": list(kap), "ilk": ilk.isoformat(), "son": son.isoformat(),
+        liste = pv.devam_gun_listeleri(gl, kisi, izin_ad, [r["sid"] for r in satir])
+        return self._json(h, {"satir": satir, "liste": liste, "kapsam": list(kap), "ilk": ilk.isoformat(), "son": son.isoformat(),
                               "tolerans": ayar.get("pv_tolerans_dk", pv.VARSAYILAN_TOLERANS_DK),
                               "fazla_en_az": ayar.get("pv_fazla_en_az_dk", pv.VARSAYILAN_FAZLA_EN_AZ_DK)})
 
@@ -603,7 +607,7 @@ class Sunucu:
             gm.setdefault(g.sicilid, {})[g.gun] = g
         sira = {"1": 0, "2": 1, "3": 2, "G": 3}
         satir = []
-        for sid in sorted(gm, key=lambda s: (sira.get(bv.get(s, ""), 9), not pv.lider_mi(kisi.get(s, {})), str(kisi.get(s, {}).get("ad", "")))):
+        for sid in sorted([s for s in gm if not kisi.get(s, {}).get("cikis_tarih")], key=lambda s: (sira.get(bv.get(s, ""), 9), not pv.lider_mi(kisi.get(s, {})), str(kisi.get(s, {}).get("ad", "")))):
             gunler = []
             for i in range(7):
                 g = gm[sid].get(pzt + timedelta(days=i))
@@ -614,6 +618,7 @@ class Sunucu:
                 gunler.append({"m": m, "r": r, "i": pv.gun_ipucu(g, izin_ad)})
             p = kisi.get(sid, {})
             satir.append({"sid": sid, "ad": pv.tr_baslik(p.get("ad") or sid), "vardiya": bv.get(sid, ""), "lider": pv.lider_mi(p),
+                          "lider_tur": pv.lider_turu(ayar, sid) if pv.lider_mi(p) else "",
                           "cikis": p.get("cikis_tarih") or "", "gun": gunler})
         return self._json(h, {"pzt": pzt.isoformat(), "satir": satir,
                               "lider": {k: [pv.tr_baslik(x) for x in v] for k, v in lider.items()}, "vardiya_ad": pv.VARDIYA_AD})
@@ -653,8 +658,8 @@ class Sunucu:
         return self._json(h, {"sid": sid, "kimlik": kimlik, "ad": pv.tr_baslik(p.get("ad") or ""), "sicilno": p.get("sicilno") or "",
                               "giris": str(b.get("giris_tarih") or p.get("giris_tarih") or "")[:10], "kidem": b.get("kidem"),
                               "telefon": (p.get("telefon") or "") if kimlik else "",
-                              "izin": None if not b else {k2: b.get(k2) for k2 in ("hak", "kullanilan", "devir", "kalan", "guncel")},
-                              "izin_satir": pv.izin_satirlari(b),
+                              "izin": None if (not b or not kimlik) else {k2: b.get(k2) for k2 in ("hak", "kullanilan", "devir", "kalan", "guncel")},
+                              "izin_satir": pv.izin_satirlari(b) if kimlik else [],
                               "pozisyon": pv.tr_baslik(p.get("pozisyon") or ""), "yaka": pv.tr_baslik(p.get("yaka") or ""),
                               "periyot": p.get("periyot") or "", "cikis": p.get("cikis_tarih") or "",
                               "foto": bool(p.get("foto")) and ku.yetkili(k, "personel_kimlik"),

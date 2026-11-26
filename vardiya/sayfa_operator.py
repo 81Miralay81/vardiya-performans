@@ -557,9 +557,11 @@ class OperatorSayfasi(QWidget):
                 from .operator import operator_dogrula
                 _a, _u = datetime(min(gunler).year, min(gunler).month, min(gunler).day), datetime(max(gunler).year, max(gunler).month, max(gunler).day) + timedelta(days=1)
                 kayit = operator_dogrula(vt.kayitlari_getir_operatorlu(self.ana.con, min(gunler), max(gunler), kirp=False), _a, _u)
+                from .operator_vardiya import bagla            # operatör yalnızca kendi vardiyasında; dışı mesai / kalıphane dışı
+                kayit = bagla(self.ana.con, kayit, min(gunler), max(gunler), self.ana.ayar)
                 haric = vt.haric_personel(self.ana.con)       # Ayarlar'da hariç tutulan personel listeye girmez
                 if haric:
-                    kayit = [k for k in kayit if operator_adi(k[0]) not in haric]
+                    kayit = [k for k in kayit if __import__("vardiya.operator_vardiya", fromlist=["x"]).temel_ad(operator_adi(k[0])) not in haric]
                 self._kayit, self._gunler = kayit, gunler
                 ayar = self.ana.hesap_ayar()
                 operatorsuz = sum(1 for k in kayit if not operator_adi(k[0]))

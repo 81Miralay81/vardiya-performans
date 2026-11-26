@@ -550,7 +550,7 @@ def hafta_grup_liderleri(con, pazartesi: date, ayar: Optional[dict] = None) -> D
     duz = ((ayar or {}).get("pv_grup_lider") or {}).get(pazartesi.isoformat())
     if duz:
         return {k: list(v) for k, v in duz.items()}
-    kisiler = {sid: p for sid, p in personel(con).items() if GRUP_LIDERI in str(p.get("pozisyon") or "").upper()}
+    kisiler = {sid: p for sid, p in personel(con).items() if lider_mi(p)}
     sayac: Dict[int, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
     for r in gunler(con, pazartesi, pazartesi + timedelta(days=6)):
         if r["sicilid"] in kisiler:
@@ -705,7 +705,8 @@ def baskin_vardiya(gl: Iterable[Gun]) -> Dict[int, str]:
 
 
 def lider_mi(kisi: dict) -> bool:
-    return GRUP_LIDERI in str((kisi or {}).get("pozisyon") or "").upper()
+    poz = str((kisi or {}).get("pozisyon") or "").replace("i", "İ").replace("ı", "I").upper()
+    return GRUP_LIDERI in poz
 
 
 def tumunu_sil(con) -> int:
@@ -877,3 +878,76 @@ def izin_satirlari(b: dict) -> List[Tuple[str, str]]:
              ("Kullanılan izin", f"{g(kul)} gün <span style='color:#6b7285'>(bu yıl)</span>" + (f" · planlanan {g(plan)} gün" if plan else "")),
              ("Kalan izin", f"<b>{g(b.get('kalan'))} gün</b>" + (f" <span style='color:#6b7285'>({tarih} itibarıyla)</span>" if tarih else ""))]
     return satir
+
+
+# ====================================================================== grup lideri türü (Mekanik / CNC) ve Performans liderleri
+LIDER_TURLERI = ("CNC", "Mekanik")
+_PV_HESAP = {"1": [(0, 2)], "2": [(0, 3)], "3": [(1, 1)], "G": [(0, 2)]}   # personel vardiyası -> (gün kayması, hesap vardiyası)
+
+
+def lider_turu(ayar: Optional[dict], sid: int) -> str:
+    return str(((ayar or {}).get("pv_lider_tur") or {}).get(str(sid)) or "CNC")
+
+
+def cnc_liderleri(con, gunler_: Iterable[date], ayar: Optional[dict] = None) -> Dict[Tuple[date, int], List[str]]:
+    """Performans için: her (gün, hesap vardiyası 1/2/3) için o vardiyada planlı CNC grup liderleri (mekanik liderler hariç).
+    Personel vardiyası 1 (08–16) -> hesap 2, 2 (16–24) -> 3, 3 (24–08) -> ertesi gün 1, Gündüz -> 2.
+    Vardiya listesinde o hafta için elle düzeltilmiş liderler varsa onlar kullanılır."""
+    gset = sorted(set(gunler_))
+    if not gset:
+        return {}
+    kur(con)
+    kisi = {sid: p for sid, p in personel(con).items() if lider_mi(p) and lider_turu(ayar, sid) == "CNC"}
+    ad_sid = {tr_baslik(p.get("ad") or "").upper(): sid for sid, p in personel(con).items()}
+    sonuc: Dict[Tuple[date, int], List[str]] = defaultdict(list)
+
+    def ekle(gun: date, kod: str, ad: str):
+        for kay, hv in _PV_HESAP.get(kod, []):
+            g = gun + timedelta(days=kay)
+            if g in gset and ad not in sonuc[(g, hv)]:
+                sonuc[(g, hv)].append(ad)
+    duz = (ayar or {}).get("pv_grup_lider") or {}
+    for r in gunler(con, gset[0] - timedelta(days=1), gset[-1]):
+        g = date.fromisoformat(r["gun"]) if isinstance(r["gun"], str) else r["gun"]
+        pzt = (g - timedelta(days=g.weekday())).isoformat()
+        if pzt in duz:
+            continue
+        if r["sicilid"] in kisi:
+            ekle(g, plan_bilgi(r.get("plan") or "")[0], tr_baslik(kisi[r["sicilid"]].get("ad") or ""))
+    for pzt, lst in duz.items():
+        try:
+            p0 = date.fromisoformat(pzt)
+        except ValueError:
+            continue
+        for i in range(-1, 7):
+            g = p0 + timedelta(days=i)
+            if i < 0 or not (gset[0] - timedelta(days=1) <= g <= gset[-1]):
+                continue
+            for kod, adlar in (lst or {}).items():
+                for ad in adlar:
+                    sid = ad_sid.get(tr_baslik(ad).upper())
+                    if sid is not None and lider_turu(ayar, sid) != "CNC":
+                        continue
+                    ekle(g, kod, tr_baslik(ad))
+    return dict(sonuc)
+
+
+# ====================================================================== devam özeti: kutulara tıklanınca açılan gün listeleri (exe ve tarayıcı)
+def devam_gun_listeleri(gl: Iterable[Gun], kisi: Dict[int, dict], izin_ad: Dict[str, str], sids: Iterable[int]) -> Dict[str, List[dict]]:
+    """Seçili kişilerin günlük listeleri: izinsiz gelmeme, geç gelme, erken çıkma, fazla çalışma (her gün ayrı), izinli günler."""
+    sset = set(sids)
+    out: Dict[str, List[dict]] = {"gelmedi": [], "gec": [], "erken": [], "fazla": [], "izin": []}
+    for g in sorted((g for g in gl if g.sicilid in sset and g.durum != PLAN), key=lambda g: (g.gun, str(kisi.get(g.sicilid, {}).get("ad")))):
+        temel = _gun_satiri(g, izin_ad)
+        temel.update({"sid": g.sicilid, "ad": tr_baslik(kisi.get(g.sicilid, {}).get("ad") or str(g.sicilid))})
+        if g.durum == GELMEDI:
+            out["gelmedi"].append(dict(temel, deger="kart kaydı yok · izin yok", dk=0))
+        if g.gec_dk:
+            out["gec"].append(dict(temel, deger=f"{sure_yaz(g.gec_dk)} geç", dk=g.gec_dk))
+        if g.erken_dk:
+            out["erken"].append(dict(temel, deger=f"{sure_yaz(g.erken_dk)} erken", dk=g.erken_dk))
+        if g.fazla_dk:
+            out["fazla"].append(dict(temel, deger=f"+{sure_yaz(g.fazla_dk)}" + (" (tatil)" if g.durum == TATIL_CALISTI else ""), dk=g.fazla_dk))
+        if g.durum in (IZIN_TAM, IZIN_SAAT):
+            out["izin"].append(dict(temel, deger=izin_ad.get(g.izin_kod, f"İzin {g.izin_kod}") + (" (saatlik)" if g.durum == IZIN_SAAT else ""), dk=0))
+    return out

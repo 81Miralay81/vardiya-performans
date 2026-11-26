@@ -7,7 +7,7 @@ import os
 
 from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QDesktopServices
-from PySide6.QtWidgets import (QAbstractSpinBox, QApplication, QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout, QHBoxLayout, QInputDialog, QLabel,
+from PySide6.QtWidgets import (QTableWidget, QTableWidgetItem, QMessageBox, QAbstractSpinBox, QApplication, QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout, QHBoxLayout, QInputDialog, QLabel,
                                QLineEdit, QListWidget, QListWidgetItem, QPushButton, QScrollArea, QSpinBox, QVBoxLayout,
                                QWidget)
 
@@ -199,6 +199,29 @@ class AyarSayfasi(QWidget):
         kp.layout().addLayout(fp)
         ic.addWidget(kp)
 
+        # ------------------------------------------------ operatör adı -> personel eşleştirmesi (Cormind'de yalnızca ad yazar)
+        ke = kart()
+        ke.layout().addWidget(etiket("OPERATÖR EŞLEŞTİRME", "KartBaslik"))
+        ke.layout().addWidget(etiket("Makine kayıtlarındaki operatör adı personel listesindeki adla kendiliğinden eşleştirilir (büyük/küçük harf ve "
+                                     "Türkçe karakter farkı gözetilmez). Eşleşmeyenleri burada elle eşleştirin. Operatör, Performans ve Operatör "
+                                     "sayfalarında yalnızca kendi vardiyasında görünür; kendi vardiyası dışında 'fazla çalışma en az' süresinden uzun "
+                                     "çalıştıysa '(mesai)' olarak ayrı listelenir. Personel listesinde olmayanlar '(kalıphane dışı)' diye işaretlenir.",
+                                     "AltBaslik"))
+        self.t_esles = QTableWidget(0, 2)
+        self.t_esles.setHorizontalHeaderLabels(["Makine kayıtlarındaki ad", "Personel"])
+        self.t_esles.horizontalHeader().setStretchLastSection(True)
+        self.t_esles.setColumnWidth(0, 260)
+        self.t_esles.verticalHeader().hide()
+        self.t_esles.setMinimumHeight(160)
+        ke.layout().addWidget(self.t_esles)
+        se = QHBoxLayout()
+        b_getir = QPushButton("Eşleşmeyen operatörleri getir (son 60 gün)")
+        b_getir.clicked.connect(self._esles_getir)
+        se.addWidget(b_getir)
+        se.addStretch(1)
+        ke.layout().addLayout(se)
+        ic.addWidget(ke)
+
         # ------------------------------------------------ GEÇİCİ geliştirici bağlantısı (iş bitince kaldırılacak)
         kk = kart()
         kk.layout().addWidget(etiket("GELİŞTİRİCİ BAĞLANTISI (GEÇİCİ)", "KartBaslik"))
@@ -229,7 +252,7 @@ class AyarSayfasi(QWidget):
         self.k_kart.layout().addWidget(etiket("Kullanıcı yokken program girişsiz açılır. İlk kullanıcıyı (yönetici) açtığınız anda programda ve "
                                               "tarayıcıda kullanıcı adı ve şifre sorulur; her kullanıcının hangi sayfaları göreceğini siz seçersiniz. "
                                               "Şifreler açık olarak saklanmaz.", "AltBaslik"))
-        from PySide6.QtWidgets import QTableWidget, QHeaderView, QAbstractItemView
+        from PySide6.QtWidgets import QHeaderView, QAbstractItemView
         self.k_tablo = QTableWidget(0, 4)
         self.k_tablo.setHorizontalHeaderLabels(["Kullanıcı", "Yetki", "Durum", "Son giriş"])
         self.k_tablo.verticalHeader().hide()
@@ -719,6 +742,7 @@ class AyarSayfasi(QWidget):
         from .oto_cekim import OtoCekim, PV_SAATI
         h, m = OtoCekim.pv_saat_coz(a.get("pv_cekim_saati", PV_SAATI))
         self.pv_saat.setTime(QTime(h, m))
+        self._esles_yukle()
         from PySide6.QtCore import QDate
         from .oto_cekim import PV_EN_ESKI, PV_SABAH
         h, m = OtoCekim.pv_saat_coz(a.get("pv_sabah_saati", PV_SABAH))
@@ -754,6 +778,51 @@ class AyarSayfasi(QWidget):
             e.setText(ab[0] if uc == "bas" else ab[1])
         self.mola_geri.hide()
         self.ana.mesaj("Mola saatleri kutulara geri yüklendi; kalıcı olması için Kaydet'e basın.")
+
+    def _esles_satir(self, ad: str, secili) -> None:
+        from . import personel_veri as pv
+        t = self.t_esles
+        r = t.rowCount()
+        t.insertRow(r)
+        it = QTableWidgetItem(ad)
+        it.setFlags(it.flags() & ~Qt.ItemIsEditable)
+        t.setItem(r, 0, it)
+        c = QComboBox()
+        c.addItem("(otomatik)", None)
+        c.addItem("Kalıphane dışı personel", "")
+        try:
+            for sid, p in sorted(pv.personel(self.ana.con).items(), key=lambda x: str(x[1].get("ad") or "")):
+                c.addItem(pv.tr_baslik(p.get("ad") or str(sid)) + (" (ayrıldı)" if p.get("cikis_tarih") else ""), str(sid))
+        except Exception:  # noqa: BLE001
+            pass
+        i = c.findData(secili) if secili is not None else 0
+        c.setCurrentIndex(max(0, i))
+        t.setCellWidget(r, 1, c)
+
+    def _esles_yukle(self) -> None:
+        self.t_esles.setRowCount(0)
+        for ad, sid in sorted((self.ana.ayar.get("op_eslestirme") or {}).items()):
+            self._esles_satir(ad, str(sid))
+
+    def _esles_getir(self) -> None:
+        from datetime import date, timedelta
+        from .operator_vardiya import eslesmeyenler
+        son = date.today()
+        kayit = vt.kayitlari_getir_operatorlu(self.ana.con, son - timedelta(days=60), son)
+        var = {self.t_esles.item(r, 0).text() for r in range(self.t_esles.rowCount())}
+        yeni = [a for a in eslesmeyenler(self.ana.con, kayit, self.ana.ayar) if a not in var]
+        for a in yeni:
+            self._esles_satir(a, None)
+        QMessageBox.information(self, "Operatör eşleştirme", f"{len(yeni)} eşleşmeyen operatör eklendi." if yeni else
+                                "Eşleşmeyen operatör yok (ya da hepsi listede).")
+
+    def _esles_oku(self) -> dict:
+        d = {}
+        for r in range(self.t_esles.rowCount()):
+            c = self.t_esles.cellWidget(r, 1)
+            if c is not None and c.currentData() is not None:
+                d[self.t_esles.item(r, 0).text()] = c.currentData()
+        return d
 
     def _kopru_ac(self):
         from . import kopru
@@ -793,7 +862,6 @@ class AyarSayfasi(QWidget):
         for u in ku.liste(self.ana.con):
             r = self.k_tablo.rowCount()
             self.k_tablo.insertRow(r)
-            from PySide6.QtWidgets import QTableWidgetItem
             self.k_tablo.setItem(r, 0, QTableWidgetItem(u["ad"]))
             self.k_tablo.setItem(r, 1, QTableWidgetItem("Yönetici (tümü)" if u["yonetici"] else ", ".join(ad.get(x, x) for x in u["yetkiler"]) or "-"))
             self.k_tablo.setItem(r, 2, QTableWidgetItem("etkin" if u["aktif"] else "kapalı"))
@@ -876,6 +944,7 @@ class AyarSayfasi(QWidget):
         vt.ayar_yaz(con, "pv_tolerans_dk", self.pv_tol.value())
         vt.ayar_yaz(con, "pv_fazla_en_az_dk", self.pv_fazla.value())
         vt.ayar_yaz(con, "pv_cekim_saati", self.pv_saat.time().toString("HH:mm"))
+        vt.ayar_yaz(con, "op_eslestirme", self._esles_oku())
         vt.ayar_yaz(con, "pv_sabah_saati", self.pv_sabah.time().toString("HH:mm"))
         vt.ayar_yaz(con, "pv_en_eski", self.pv_en_eski.date().toString("yyyy-MM-dd"))
         vt.ayar_yaz(con, "supheli_en_kisa_mola_dk", self.sup_min.value())
