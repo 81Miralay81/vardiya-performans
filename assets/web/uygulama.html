@@ -172,7 +172,7 @@ nav a.cikis{margin-top:8px;font-size:12px;opacity:.8}
           <button data-g="geri">◀</button><button data-g="ileri">▶</button><button data-g="tum">Tümünü göster</button>
           <span class="not" id="gantt-aralik" style="align-self:center;margin-left:8px"></span></div>
         <div class="grafik" id="g-gantt" style="height:420px"></div>
-        <div class="not">Fare tekerleği: yakınlaştır · sürükle: kaydır · alttaki çubukla ya da sağ üstteki büyüteçle alan seçip yakınlaştırın · koyu bloklar: bu operatör ve bu duruş</div>
+        <div class="not">Fare tekerleği: yakınlaştır · sürükle: kaydır · alttaki çubukla ya da sağ üstteki büyüteçle alan seçip yakınlaştırın · kırmızı taralı çerçeve: bu operatör ve bu duruş</div>
       </div>
     </div>
     <div class="kart" id="supheli" style="display:none"><button class="kapat" id="supheli-kapat" title="Kapat">✕</button>
@@ -520,10 +520,12 @@ function ganttCiz(satir, vurguV, bas, bit){
     dataZoom: [{type: 'inside', xAxisIndex: 0, filterMode: 'weakFilter', startValue: bas, endValue: bit, minValueSpan: 5 * 6e4},
                {type: 'slider', xAxisIndex: 0, filterMode: 'weakFilter', startValue: bas, endValue: bit, height: 18, bottom: 10, labelFormatter: function(v){ var x = new Date(v); return String(x.getDate()).padStart(2,'0') + '.' + String(x.getMonth()+1).padStart(2,'0') + ' ' + hhmm(x); }}],
     series: [{type: 'custom', encode: {x: [1, 2], y: 0}, data: veri, renderItem: function(params, api){
-      var y = api.value(0), a = api.coord([api.value(1), y]), z = api.coord([api.value(2), y]), h = api.size([0, 1])[1] * (api.value(6) ? 0.7 : 0.5);
-      var r = echarts.graphic.clipRectByRect({x: a[0], y: a[1] - h / 2, width: Math.max(z[0] - a[0], 1), height: h},
+      var y = api.value(0), a = api.coord([api.value(1), y]), z = api.coord([api.value(2), y]), vu = api.value(6), h = api.size([0, 1])[1] * (vu ? 0.78 : 0.5);
+      var r = echarts.graphic.clipRectByRect({x: a[0], y: a[1] - h / 2, width: Math.max(z[0] - a[0], vu ? 8 : 1), height: h},
         {x: params.coordSys.x, y: params.coordSys.y, width: params.coordSys.width, height: params.coordSys.height});
-      return r && {type: 'rect', transition: [], shape: r, style: api.style()}; }}]};
+      // vurgulu blok (bu operatör + bu duruş): kırmızı taralı yarı saydam çerçeve — tüm zaman çizelgelerinde aynı
+      return r && {type: 'rect', transition: [], shape: Object.assign(r, {r: vu ? 4 : 2}),
+        style: vu ? {fill: {image: H_DESEN, repeat: 'repeat'}, stroke: '#D64541', lineWidth: 2} : api.style()}; }}]};
   $('g-gantt').style.height = Math.max(220, 70 + n * 34) + 'px';
   if (G['g-gantt']) G['g-gantt'].resize();
   ciz('g-gantt', o);
