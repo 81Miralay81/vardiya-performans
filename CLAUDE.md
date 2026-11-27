@@ -83,6 +83,11 @@ Bu dosya yalnızca geliştirici (Claude) içindir; program okumaz. Her önemli d
 - **Çekim kaydı** ekranı (Veri Aktar içinde; sağlık özeti + son 90 gün çekim listesi: Cormind gece / personel sabah-akşam / elle, sonuç ✓⚠✗, ayrıntı; veri tabanında). **Web'de ASLA olmayacak** (kullanıcı kararı). "başla" bekleniyor.
 - Personel listesi otomatik isteği 25.11'den beri BOŞ LİSTE dönüyor ("personel 0/1 istek"); ekran yolu sağlam. İncelenmesi soruldu, cevap bekleniyor.
 
+## Personel verisi — doğrudan istek yolu (27.11 bulundu, "başla" bekleniyor)
+- Şifreli `Name=SCI!...` sayfanın kendi işleviyle üretilir: `angular.element(document.body).injector().get('$rootScope').prepare(duzMetin)` (CryptoJS AES; anahtar oturum + GÜNÜN TARİHİ → öğrenilen şablon ertesi gün geçersiz; personel listesinin BOŞ gelmesinin sebebi bu). Anahtarı görmeye gerek yok; program sayfada `prepare` çağırır.
+- Pivot düz metni: `islemtipi=pivot1&tarih=GG-AA-YYYY&tarihbit=GG-AA-YYYY&sicilid=0&dinamik=1&ad=undefined&...` (Planlanan + Gerçekleşen = pivot1; sayfanın gönderdiği metin `prepare` sarılarak yakalanır, yalnızca tarihler değiştirilir). İstek: `GET meyerapi/api/TAPIVOT?Name=`+encodeURIComponent(prepare(...)) + sayfanın Authorization/Accept başlıkları ($http ile DEĞİL, başlıklar elle). Bir ay ≈2,3 sn, saatli tam hücre, sınır uyarısı yok.
+- Aynı yol personel listesi, izin bakiyesi (Dynamic), kişi kartı (PersonD) için de denenecek.
+
 ## Geçici köprü (kopru.py) — iş bitince sil
 - Gizli depo `81Miralay81/vp-kopru` (yerel klon `/home/claude/vp-kopru`). Ben `komut/<PC>.json` (ya da `komut/hepsi.json`) yazarım; program `sonuc/<PC>/<id>.json` yazar, bağlanınca `sonuc/<PC>/canli.json`.
 - Gönderme betiği: `scratchpad/kopru.sh '{"tur":"durum"}'` (PC=PC-KALIP18).
