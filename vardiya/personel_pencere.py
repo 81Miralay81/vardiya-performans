@@ -59,7 +59,9 @@ _YAKALA = r"""
   XMLHttpRequest.prototype.setRequestHeader = function(k, v){ try { if (baslikUygun(k)) { (this.__vpH = this.__vpH || {})[k] = v; } } catch(e) {} return baslik.apply(this, arguments); };
   window.__vpBekleyen = 0;
   XMLHttpRequest.prototype.send = function(b){
-    var x = this; x.__vpGovde = (typeof b === 'string') ? b : null;
+    var x = this;
+    if (x.__vpAtla) return yolla.apply(this, arguments);      // programın vardiya planı istekleri: yakalanıp kaydedilmez
+    x.__vpGovde = (typeof b === 'string') ? b : null;
     if (!x.__vpTekrar && !/signalr|negotiate|poll|hub|connect/i.test((x.__vpM || {}).u || '')) { window.__vpBekleyen++; x.addEventListener('loadend', function(){ window.__vpBekleyen = Math.max(0, window.__vpBekleyen - 1); }); }
     x.addEventListener('load', function(){
       try {
@@ -123,6 +125,31 @@ _YAKALA = r"""
     x.onerror = function(){ console.log('VPPVD|hata|0|0'); };
     x.send(null); return 'gonderildi';
   };
+  // Vardiya planı (sayfa_plan.py): okuma ve yazma; sonuç window.__vpIs[id] içinde bekler, program __vpIsAl ile alır.
+  window.__vpIs = window.__vpIs || {};
+  var PLAN_EK = '&ad=undefined&soyad=undefined&sicilno=undefined&firma=0&bolum=0&pozisyon=0&gorev=0&altfirma=0&yaka=0&direktorluk=0&okod1=&okod2=&okod3=&okod4=&okod5=&okod6=&okod7=';
+  function planIstek(id, m, u, govde){
+    var r = sar(); if (!r || typeof r.prepare !== 'function') { window.__vpIs[id] = {durum: -1, metin: 'sayfa hazır değil (prepare yok)'}; return; }
+    var hb = (window.__vpBY || {})['https://meyerapi.teknorot.com/api/tapivot'] || window.__vpB;
+    if (!hb || !Object.keys(hb).length) { window.__vpIs[id] = {durum: -1, metin: 'oturum başlığı yok (sayfada bir liste açın)'}; return; }
+    var x = new XMLHttpRequest(); x.__vpAtla = true; x.open(m, u, true);
+    for (var k in hb) { if (/^content-type$/i.test(k)) continue; try { x.setRequestHeader(k, hb[k]); } catch(e) {} }
+    if (govde != null) try { x.setRequestHeader('Content-Type', 'application/json;charset=UTF-8'); } catch(e) {}
+    x.onload = function(){ window.__vpIs[id] = {durum: x.status, metin: x.responseText || ''}; };
+    x.onerror = function(){ window.__vpIs[id] = {durum: 0, metin: 'bağlantı hatası'}; };
+    x.send(govde == null ? null : govde);
+  }
+  window.__vpPlanOku = function(id, bas, bit){
+    var r = sar(); if (!r) { window.__vpIs[id] = {durum: -1, metin: 'sayfa hazır değil'}; return 'yok'; }
+    var duz = 'islemtipi=pivot0&tarih=' + bas + '&tarihbit=' + bit + '&sicilid=0&dinamik=1' + PLAN_EK;
+    planIstek(id, 'GET', 'https://meyerapi.teknorot.com/api/TAPIVOT?Name=' + encodeURIComponent(r.prepare(duz)), null); return 'gonderildi';
+  };
+  window.__vpPlanYaz = function(id, bas, bit, xid, ekstra){
+    var r = sar(); if (!r) { window.__vpIs[id] = {durum: -1, metin: 'sayfa hazır değil'}; return 'yok'; }
+    var duz = 'islemtipi=pivot0v&tarih=' + bas + '&tarihbit=' + bit + '&sicilid=0&dinamik=1&xid=' + xid + '&xtarih=&xsicilid=&extra=' + PLAN_EK;
+    planIstek(id, 'POST', 'https://meyerapi.teknorot.com/api/TAPIVOT', JSON.stringify({Param: r.prepare(duz), Extra: r.prepare(ekstra)})); return 'gonderildi';
+  };
+  window.__vpIsAl = function(id){ var s = window.__vpIs[id]; if (!s) return ''; delete window.__vpIs[id]; return JSON.stringify(s); };
   window.__vpDurum = function(){
     var e = document.querySelector('input[type=password]');
     return {hazir: Object.keys(window.__vpB).length > 0, giris: !!(e && e.offsetParent !== null), basliklar: Object.keys(window.__vpB)};
@@ -895,6 +922,27 @@ class PersonelVeriPenceresi(QDialog):
             alan = ", ".join(x.split("=")[0] for x in b.split("&")[:12])
             tur = "form"
         return f"gövde {tur}, alanlar: {alan or '-'} · öğrenilen içerik türü: {ct or 'kayıtlı değil'}"
+
+    def plan_istek(self, cagri: str, bitince: Callable[[int, str], None], sure_sn: int = 60):
+        """Vardiya planı isteği: cagri sayfada bir __vpPlan… işlevini kimlikle başlatır; sonuç gelince bitince(durum, metin)."""
+        import uuid
+        kimlik = uuid.uuid4().hex[:10]
+        bitis = time.time() + sure_sn
+
+        def yokla():
+            def al(v):
+                if v:
+                    try:
+                        d = json.loads(v)
+                    except ValueError:
+                        d = {"durum": 0, "metin": "yanıt okunamadı"}
+                    bitince(int(d.get("durum") or 0), d.get("metin") or "")
+                elif time.time() > bitis:
+                    bitince(0, "zaman aşımı (yanıt gelmedi)")
+                else:
+                    QTimer.singleShot(250, yokla)
+            self.sayfa.runJavaScript(f"window.__vpIsAl ? window.__vpIsAl({json.dumps(kimlik)}) : ''", 0, al)
+        self.sayfa.runJavaScript(cagri.replace("@ID", json.dumps(kimlik)), 0, lambda _r: QTimer.singleShot(250, yokla))
 
     def _hazir(self, fn: Callable[[bool, bool], None]):
         def coz(d):

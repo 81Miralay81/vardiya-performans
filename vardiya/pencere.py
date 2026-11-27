@@ -20,6 +20,7 @@ from .sayfa_kayitlar import KayitlarSayfasi
 from .sayfa_operator import OperatorSayfasi
 from .sayfa_performans import PerformansSayfasi
 from .sayfa_hatali import HataliSayfasi
+from .sayfa_plan import PlanSayfasi
 from .sayfa_personel import PersonelSayfasi
 from .sayfa_rapor import RaporSayfasi
 from .sayfa_veri import VeriSayfasi
@@ -27,7 +28,7 @@ from .surum import SURUM
 from . import guncelleme
 
 MENU = (("veri", "Veri Aktar"), ("kayitlar", "Kayıtlar"), ("performans", "Performans"), ("hatali", "Hatalı Duruşlar"), ("calisma", "Çalışma"), ("durus", "Genel Duruş"), ("mola", "Mola"),
-        ("operator", "Operatör"), ("personel", "Personel Durum"), ("rapor", "Raporlar"), ("gecmis", "Geçmiş"), ("ayar", "Ayarlar"))
+        ("operator", "Operatör"), ("personel", "Personel Durum"), ("plan", "Vardiya Planla"), ("rapor", "Raporlar"), ("gecmis", "Geçmiş"), ("ayar", "Ayarlar"))
 DONEMLI = {"performans", "hatali", "calisma", "durus", "mola", "operator"}
 
 
@@ -140,6 +141,7 @@ class AnaPencere(QMainWindow):
             "mola": AnalizSayfasi(self, 2),
             "operator": OperatorSayfasi(self),
             "personel": PersonelSayfasi(self),
+            "plan": PlanSayfasi(self),
             "rapor": RaporSayfasi(self),
             "gecmis": GecmisSayfasi(self),
             "ayar": AyarSayfasi(self),

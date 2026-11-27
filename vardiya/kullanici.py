@@ -19,7 +19,8 @@ TUR = 200_000
 # Ekranlar (menüde görünen sayfalar) ve özellikler (sayfaların içindeki işlemler). Her biri kullanıcıya ayrı ayrı açılıp kapatılır.
 EKRANLAR = (("performans", "Performans"), ("calisma", "Çalışma"), ("durus", "Genel Duruş"), ("mola", "Mola"),
             ("operator", "Operatör"), ("personel", "Personel Durum"), ("rapor", "Raporlar"), ("gecmis", "Geçmiş"),
-            ("kayitlar", "Kayıtlar"), ("veri", "Veri Aktar: Cormind'den veri çekme"), ("ayar", "Ayarlar"))
+            ("kayitlar", "Kayıtlar"), ("veri", "Veri Aktar: Cormind'den veri çekme"),
+            ("plan", "Vardiya Planla: personel sistemine vardiya yazma (yalnızca programda)"), ("ayar", "Ayarlar"))
 OZELLIKLER = (("personel_veri", "Personel verisi çekme (Personel Veri penceresi)"),
               ("personel_kimlik", "Personel kimlik bilgileri (fotoğraf, telefon, yıllık izin)"),
               ("personel_beyaz", "Beyaz yaka personeli görme (Personel Durum: liste, kart, sıralamalar)"),
@@ -28,7 +29,7 @@ OZELLIKLER = (("personel_veri", "Personel verisi çekme (Personel Veri penceresi
 SAYFALAR = EKRANLAR + OZELLIKLER
 MENU_YETKI = {"performans": "performans", "hatali": "performans", "calisma": "calisma", "durus": "durus", "mola": "mola",
               "operator": "operator", "personel": "personel", "rapor": "rapor", "gecmis": "gecmis", "kayitlar": "kayitlar",
-              "veri": "veri", "ayar": "ayar"}
+              "veri": "veri", "plan": "plan", "ayar": "ayar"}
 SURUM_ISARET = "_v2"     # bu işaret yoksa yetkiler eski (gruplu) düzende kaydedilmiştir
 _ESKI_ACILIM = {"performans": ("calisma", "durus", "mola"), "rapor": ("gecmis",), "veri": ("personel_veri",)}
 
