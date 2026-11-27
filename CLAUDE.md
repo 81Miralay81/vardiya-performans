@@ -80,7 +80,8 @@ Bu dosya yalnızca geliştirici (Claude) içindir; program okumaz. Her önemli d
 - Web: "Hatalı Duruşlar" sayfası (`#s-hatali`, yetki performans): `/api/hatali` olay listesi (kırılımlar tarayıcıda: makine → vardiya|duruş → operatör|iş → gant), `/api/hatali/gant?makine=` bloklar; vurgu kanvas desenli kırmızı çerçeve. Kalan izin gösterimi (a/b/c) kararı bekliyor.
 
 ## Bekleyen (27.11)
-- **Çekim kaydı** ekranı (Veri Aktar içinde; sağlık özeti + son 90 gün çekim listesi: Cormind gece / personel sabah-akşam / elle, sonuç ✓⚠✗, ayrıntı; veri tabanında). **Web'de ASLA olmayacak** (kullanıcı kararı). "başla" bekleniyor.
+- **Çekim kaydı** (`cekim_kaydi.py`, tablo `cekim_kaydi`, Veri Aktar'da kart: sağlık kutuları + liste, çift tık ayrıntı). Yazanlar: oto_cekim (Cormind/personel otomatik), sayfa_veri (Cormind elle), web_sunucu (Cormind elle web). **Web'de ASLA gösterilmez** (kullanıcı kararı). Elle personel çekimleri henüz yazılmıyor.
+- Web girişte arka plan (menü) gizli: `body:not(.hazir) .kok{visibility:hidden}`; `vt.ac` şemayı çalışma başına bir kez yazar (`_SEMA_TAMAM`, web isteklerinde yazma kilidi beklenmesin). Web kırılım/gant hata gösterir; kirilimSecenek y ekseninde %30 pay (etiketler kesilmez).
 - Personel listesi otomatik isteği 25.11'den beri BOŞ LİSTE dönüyor ("personel 0/1 istek"); ekran yolu sağlam. İncelenmesi soruldu, cevap bekleniyor.
 
 ## Personel verisi — doğrudan istek yolu (27.11 bulundu, "başla" bekleniyor)

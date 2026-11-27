@@ -234,10 +234,14 @@ class OtoCekim(QObject):
         ad = "sabah (eksikler tamamlanıyor)" if tur == "sabah" else "akşam (dün teyit ediliyor)"
         self._pv_yaz(f"{ad}: {ilk:%d.%m.%Y} – {son:%d.%m.%Y} …")
 
-        def bitti(basarili: bool, metin: str, tur=tur, son=son):
+        def bitti(basarili: bool, metin: str, tur=tur, son=son, ilk=ilk):
             from . import teshis
             self._pv_pencere = None
             teshis.adim(f"personel veri otomatik çekim ({tur}): {metin}")
+            from . import cekim_kaydi
+            if not metin.startswith(ERTELENDI):
+                cekim_kaydi.yaz(self.ana.con, f"Personel · otomatik ({'sabah' if tur == 'sabah' else 'akşam'})", ilk, son,
+                                cekim_kaydi.personel_sonucu(basarili, metin), metin, getattr(self, "_pv_tani", None))
             a = QSettings("Teknorot", "VardiyaPerformans")
             if basarili:
                 bugun = datetime.now().date()
@@ -315,6 +319,7 @@ class OtoCekim(QObject):
         a = self.ana.ayar
         ilk, son = aralik
         self._yaz(f"Çekiliyor: {ilk:%d.%m.%Y} – {son:%d.%m.%Y} …")
+        self._aralik = (ilk, son)
         self._is = CormindIs(self.ana.db_yolu, a.get("cormind_adres", cormind.VARSAYILAN_ADRES), kul, sifre, ilk, son,
                              a.get("cormind_makine_idleri") or cormind.VARSAYILAN_MAKINE_IDLERI, self, True)
         self._is.bitti.connect(lambda r, i=ilk, s=son: self._bitti(r, i, s))
@@ -322,6 +327,8 @@ class OtoCekim(QObject):
         self._is.start()
 
     def _hata(self, m: str):
+        from . import cekim_kaydi
+        cekim_kaydi.yaz(self.ana.con, "Cormind · otomatik", *(getattr(self, "_aralik", None) or (None, None)), cekim_kaydi.HATA, m)
         self._yeniden = datetime.now() + timedelta(minutes=YENIDEN_DK)
         self._yaz(f"Son otomatik çekim hata verdi ({datetime.now():%d.%m %H:%M}): {m} · {self._yeniden:%H:%M}'de yeniden denenecek")
 
@@ -334,6 +341,10 @@ class OtoCekim(QObject):
                  + (dy + " · " if dy else "") + self._sonraki())
         teshis.adim(metin)
         self._yaz(metin)
+        from . import cekim_kaydi
+        sn, oz = cekim_kaydi.cormind_sonucu(r)
+        cekim_kaydi.yaz(self.ana.con, "Cormind · otomatik", ilk, son, sn, oz,
+                        {k: r.get(k) for k in ("toplam", "yeni", "guncel", "ayni", "atlanan", "silinen", "tipler", "dogrulama", "dar_sorgu", "kesildi")})
         try:
             self.ana.veri_yenilendi()
         except Exception:  # noqa: BLE001

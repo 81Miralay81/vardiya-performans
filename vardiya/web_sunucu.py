@@ -803,6 +803,9 @@ class Sunucu:
             con = vt.ac(self.db_yolu)
             try:
                 r = cormind.cek(con, adres, kul, sifre, ilk, son, idler, adim=adim, iptal=lambda: self.cekim["dur"], uzanan=True)
+                from . import cekim_kaydi
+                sn, oz = cekim_kaydi.cormind_sonucu(r)
+                cekim_kaydi.yaz(con, "Cormind · elle (web)", ilk, son, sn, oz)
                 self.cekim.update(durum="bitti", yuzde=100,
                                   metin=(("DURDURULDU: " if r.get("durduruldu") else "") + f"{r['toplam']:,} kayıt alındı ve kaydedildi.".replace(",", ".")
                                          + (" " + cormind.dogrulama_yazi(r.get("dogrulama")).capitalize() + "." if r.get("dogrulama") else "")))
@@ -813,6 +816,8 @@ class Sunucu:
                         pass
             except Exception as ex:  # noqa: BLE001
                 self.cekim.update(durum="hata", metin=f"Hata: {ex}")
+                from . import cekim_kaydi
+                cekim_kaydi.yaz(con, "Cormind · elle (web)", ilk, son, cekim_kaydi.HATA, str(ex))
             finally:
                 con.close()
         threading.Thread(target=calis, name="web-cormind", daemon=True).start()

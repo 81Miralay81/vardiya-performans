@@ -271,6 +271,8 @@ class CormindKarti(QFrame):
         self._is.bitti.connect(self._bitti)
         self._is.adim.connect(self._adim)
         self._is.hata.connect(lambda m: self._son(m, hata=True))
+        self._is.hata.connect(lambda m, a=ilk, b=son: self._kayit_hata(m, a, b))
+        self._aralik = (ilk, son)
         self._is.start()
 
     def _durdur(self):
@@ -305,7 +307,24 @@ class CormindKarti(QFrame):
             metin = f"Adım {i}/{n} · " + metin + f"  ·  şu ana kadar toplam {say(b['kaydedilen'])} kayıt kaydedildi"
         self._yaz(metin)
 
+    def _kayit_hata(self, m, ilk, son):
+        from . import cekim_kaydi
+        cekim_kaydi.yaz(self.ana.con, "Cormind · elle", ilk, son, cekim_kaydi.HATA, m)
+        self._kayit_yenile()
+
+    def _kayit_yenile(self):
+        try:
+            self.ana.sayfalar["veri"].kayit_yenile()
+        except Exception:  # noqa: BLE001
+            pass
+
     def _bitti(self, r: dict):
+        from . import cekim_kaydi
+        sn, oz = cekim_kaydi.cormind_sonucu(r)
+        a, b = getattr(self, "_aralik", (None, None))
+        cekim_kaydi.yaz(self.ana.con, "Cormind · elle", a, b, sn, oz,
+                        {k: r.get(k) for k in ("toplam", "yeni", "guncel", "ayni", "atlanan", "silinen", "tipler", "dogrulama", "dar_sorgu", "kesildi")})
+        self._kayit_yenile()
         tip = ", ".join(f"{ad}: {n}" for ad, n in list(r["tipler"].items())[:12])
         metin = ((f"DURDURULDU: {r['biten_parca']}/{r['parca_sayisi']} ay çekildi. " if r.get("durduruldu") else "")
                  + (f"{r['parca_sayisi']} ay sırayla çekildi. " if r.get("parca_sayisi", 1) > 1 and not r.get("durduruldu") else "")
@@ -381,6 +400,30 @@ class VeriSayfasi(QWidget):
         self.uyari.hide()
         kok.addWidget(self.uyari)
 
+        # ------------------------------------------------ çekim kaydı (yalnızca programda; web'de yok)
+        ck = kart()
+        bas = QHBoxLayout()
+        bas.addWidget(etiket("Çekim kaydı · otomatik ve elle yapılan çekimlerin sonucu", "KartBaslik"))
+        bas.addStretch(1)
+        b_ky = QPushButton("Yenile")
+        b_ky.clicked.connect(self.kayit_yenile)
+        bas.addWidget(b_ky)
+        ck.layout().addLayout(bas)
+        self.saglik_satir = QHBoxLayout()
+        self.saglik_satir.setSpacing(10)
+        ck.layout().addLayout(self.saglik_satir)
+        self.kayit_tablo = self._tablo(["Zaman", "Bilgisayar", "Tür", "Aralık", "Sonuç", "Özet"])
+        self.kayit_tablo.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.kayit_tablo.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.kayit_tablo.setMinimumHeight(220)
+        self.kayit_tablo.horizontalHeader().setSectionResizeMode(5, QHeaderView.Stretch)
+        self.kayit_tablo.cellDoubleClicked.connect(self._kayit_ayrinti)
+        ck.layout().addWidget(self.kayit_tablo)
+        ck.layout().addWidget(etiket("Satıra çift tıklayın: ayrıntı (kaç kayıt geldi, hatalı duruş kontrolü, eksik kalanlar, hata metni). "
+                                     "Son 90 gün tutulur.", "AltBaslik"))
+        kok.addWidget(ck, 2)
+        self._kayitlar = []
+
         alt = QHBoxLayout()
         alt.setSpacing(14)
         sol = kart()
@@ -395,6 +438,67 @@ class VeriSayfasi(QWidget):
         alt.addWidget(sag, 3)
         kok.addLayout(alt, 1)
         self.yenile()
+
+    def kayit_yenile(self):
+        from . import cekim_kaydi as ck
+        while self.saglik_satir.count():
+            w = self.saglik_satir.takeAt(0).widget()
+            if w is not None:
+                w.hide()
+                w.setParent(None)
+                w.deleteLater()
+        for baslik, durum, acik in ck.saglik(self.ana.con):
+            renk = ck.SONUC_RENK.get(durum, "#6b7285")
+            f = QFrame()
+            f.setObjectName("SKutu")
+            f.setStyleSheet(f"QFrame#SKutu {{ background: white; border: 1px solid #dfe3ee; border-left: 6px solid {renk}; border-radius: 10px; }}")
+            fl = QVBoxLayout(f)
+            fl.setContentsMargins(12, 8, 12, 8)
+            b = QLabel(f"{ck.SONUC_YAZI.get(durum, '')[:1]}  {baslik}")
+            b.setStyleSheet(f"font-weight:700; color:{renk}; background:transparent; border:none;")
+            a = QLabel(acik)
+            a.setWordWrap(True)
+            a.setStyleSheet("font-size:12px; color:#4a5168; background:transparent; border:none;")
+            fl.addWidget(b)
+            fl.addWidget(a)
+            self.saglik_satir.addWidget(f, 1)
+        self._kayitlar = ck.liste(self.ana.con, 300)
+        t = self.kayit_tablo
+        t.setRowCount(len(self._kayitlar))
+        for i, k in enumerate(self._kayitlar):
+            z = k["zaman"]
+            ar = ""
+            if k.get("ilk"):
+                f_ = lambda x: f"{x[8:10]}.{x[5:7]}.{x[:4]}"
+                ar = f_(k["ilk"]) + ("" if k.get("son") in (None, k["ilk"]) else " – " + f_(k["son"]))
+            deg = [f"{z[8:10]}.{z[5:7]}.{z[:4]} {z[11:16]}", k.get("pc") or "", k["tur"], ar, ck.SONUC_YAZI.get(k["sonuc"], k["sonuc"]),
+                   (k.get("ozet") or "").replace("\n", " ")]
+            for j, x in enumerate(deg):
+                it = QTableWidgetItem(x)
+                if j == 4:
+                    it.setForeground(QColor(ck.SONUC_RENK.get(k["sonuc"], "#333")))
+                if j == 5:
+                    it.setToolTip(k.get("ozet") or "")
+                t.setItem(i, j, it)
+
+    def _kayit_ayrinti(self, satir, _sutun):
+        import json as _j
+        from PySide6.QtWidgets import QMessageBox
+        if satir >= len(self._kayitlar):
+            return
+        k = self._kayitlar[satir]
+        ay = k.get("ayrinti") or ""
+        try:
+            d = _j.loads(ay)
+            ay = "\n".join(f"{a}: {b}" for a, b in d.items()) if isinstance(d, dict) else str(d)
+        except Exception:  # noqa: BLE001
+            pass
+        m = QMessageBox(self)
+        m.setWindowTitle("Çekim ayrıntısı")
+        m.setText(f"{k['tur']} · {k['zaman']}\nSonuç: {k['sonuc']}\n\n{k.get('ozet') or ''}")
+        if ay:
+            m.setDetailedText(ay)
+        m.exec()
 
     def yetki_uygula(self, yetkili):
         """Cormind çekme ve personel verisi çekme ayrı yetkilerdir; yalnızca verilen bölüm görünür."""
@@ -452,6 +556,10 @@ class VeriSayfasi(QWidget):
         self.yenile()
 
     def yenile(self):
+        try:
+            self.kayit_yenile()
+        except Exception:  # noqa: BLE001
+            pass
         kap = self.ana.kapsam()
         self.gun_tablo.setRowCount(0)
         if kap:

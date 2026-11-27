@@ -101,6 +101,9 @@ CREATE TABLE IF NOT EXISTS gorsel (
 """
 
 
+_SEMA_TAMAM: set = set()
+
+
 def ac(yol: str) -> sqlite3.Connection:
     """Veri tabanını açar (yoksa oluşturur). Ağ klasöründe çalışması için varsayılan günlük kipi kullanılır."""
     klasor = os.path.dirname(os.path.abspath(yol))
@@ -108,10 +111,14 @@ def ac(yol: str) -> sqlite3.Connection:
     con = sqlite3.connect(yol, timeout=30, check_same_thread=False)
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA cache_size = -65536")            # 64 MB önbellek: aynı sayfalar ağdan tekrar okunmasın
+    anahtar = os.path.abspath(yol)
+    if anahtar in _SEMA_TAMAM:                           # şema bu çalışmada zaten denetlendi: her bağlantıda (web isteklerinde)
+        return con                                       # yeniden yazma kilidi istenmesin
     con.executescript(SEMA)
     con.commit()
     if con.execute("SELECT 1 FROM gun_ozet LIMIT 1").fetchone() is None and con.execute("SELECT 1 FROM kayit LIMIT 1").fetchone():
         gun_ozet_yenile(con)                             # ilk kez: bir defalık tam sayım
+    _SEMA_TAMAM.add(anahtar)
     return con
 
 

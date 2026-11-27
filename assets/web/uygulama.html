@@ -89,7 +89,8 @@ table.tikli tr[data-i]{cursor:pointer}table.tikli tr[data-i]:hover td{background
 .pencere .tablokutu{flex:1;max-height:none}
 .pencere .grafik{flex:1;height:auto;min-height:300px}
 @media (max-width:900px){.kok{grid-template-columns:1fr}nav{position:static;height:auto}.kpi{grid-template-columns:1fr 1fr}.ikili{grid-template-columns:1fr}}
-#giris{position:fixed;inset:0;background:rgba(21,9,88,.55);display:none;align-items:center;justify-content:center;z-index:200}
+body:not(.hazir) .kok{visibility:hidden}
+#giris{position:fixed;inset:0;background:linear-gradient(160deg,#150958 0%,#2b3a8f 100%);display:none;align-items:center;justify-content:center;z-index:200}
 #giris .kutu{background:#fff;border-radius:12px;padding:24px 26px;width:min(360px,92vw);box-shadow:0 20px 60px rgba(21,9,88,.35)}
 #giris .kutu img{display:block;margin:0 auto 12px;max-width:200px}
 #giris input{width:100%;box-sizing:border-box;margin:6px 0 10px;padding:8px 10px;border:1px solid var(--cizgi);border-radius:6px;font-size:14px}
@@ -412,19 +413,21 @@ function kirilimGoster(tip){
   $('kirilim-baslik').innerHTML = esc(m) + ' · ' + esc(tip) + ' – vardiya ve operatör kırılımı <span class="not">hesaplanıyor…</span>';
   api('/api/kirilim', 'makine=' + encodeURIComponent(m) + '&tip=' + encodeURIComponent(tip)).then(function(d){
     if (secTip !== tip || secili !== m) return;
+    if (d.hata || !d.vardiya) { $('kirilim-baslik').innerHTML = esc(m) + ' · ' + esc(tip) + ' <span class="not" style="color:#d64541">hesaplanamadı: ' + esc(d.hata || 'yanıt boş') + ' · yeniden tıklayın</span>'; secTip = null; return; }
     var top = d.vardiya.reduce(function(s, x){ return s + x[1]; }, 0), rk = renk(tip, 0);
     $('kirilim-baslik').innerHTML = esc(m) + ' · ' + esc(tip) + ' – vardiya ve operatör kırılımı <span class="not">toplam ' + saat(top) + ' saat · aynı duruşa yeniden tıklarsanız kapanır</span>';
     ciz('g-kv', kirilimSecenek(d.vardiya.map(function(x){ return [x[0], x[1], '#150958']; })));
     ciz('g-ko', kirilimSecenek(d.operator.map(function(x){ return [x[0], x[1], x[0] === 'Operatör yok' ? '#B0B4C0' : rk]; })), opGoster);
     setTimeout(function(){ G['g-kv'].resize(); G['g-ko'].resize(); $('kirilim').scrollIntoView({behavior: 'smooth', block: 'nearest'}); }, 40);
-  });
+  }).catch(function(e){ if (secTip === tip) { $('kirilim-baslik').innerHTML = esc(m) + ' · ' + esc(tip) + ' <span class="not" style="color:#d64541">hesaplanamadı: ' + esc(e && e.message || e) + ' · yeniden tıklayın</span>'; secTip = null; } });
 }
 $('kirilim-kapat').onclick = kirilimKapat;
 function kirilimSecenek(l){
   var top = l.reduce(function(s, x){ return s + x[1]; }, 0) || 1, cok = l.length > 12;   // çok çubuk: ad eğik, değer ipucunda
-  return {tooltip: {trigger: 'item', ozel: true}, grid: {left: 56, right: 16, top: 34, bottom: cok ? 62 : 50},
+  var enb = l.reduce(function(s, x){ return Math.max(s, x[1]); }, 0);
+  return {tooltip: {trigger: 'item', ozel: true}, grid: {left: 56, right: 16, top: 48, bottom: cok ? 62 : 50},
     xAxis: {type: 'category', data: l.map(function(x){ return (!cok && x[0].length > 9) ? x[0].replace(' ', '\n') : x[0]; }), axisLabel: {interval: 0, fontWeight: 600, fontSize: cok ? 10 : 11, lineHeight: 14, rotate: cok ? 60 : 0}},
-    yAxis: {type: 'value', axisLabel: {formatter: '{value} sa'}},
+    yAxis: {type: 'value', max: enb > 0 ? +(enb * 1.3).toFixed(3) : null, axisLabel: {formatter: '{value} sa', showMaxLabel: false}, splitLine: {showMaxLine: false}},
     series: [{type: 'bar', barMaxWidth: 70, label: {show: !cok, position: 'top', fontWeight: 700},
       data: l.map(function(x){ return {value: +x[1].toFixed(3), anahtar: x[0], kisim: x[3] || '', itemStyle: x[4] ? {color: x[2], borderColor: '#150958', borderWidth: 3} : {color: x[2]}, tip: '<b>' + esc(x[0]) + '</b><br>' + saat(x[1]) + ' saat · %' + Math.round(100*x[1]/top),
         label: {formatter: saat(x[1]) + ' sa\n%' + Math.round(100*x[1]/top)}}; })}]};
@@ -611,9 +614,11 @@ function hGantAc(){
   var m = HD.m, l = hS2Olay(), no = HD.no;
   $('h-k4-bas').innerHTML = esc(m) + ' · ' + esc(HD.s1.k) + ' · ' + esc(HD.s2.k) + ' · zaman çizelgesi <span class="not">hazırlanıyor…</span>';
   hGoster('h-k4'); hListe(l);
-  var bitti = function(){ if (no !== HD.no || HD.m !== m) return; hGantCiz(l, true); };
+  var hata = function(e){ $('h-k4-bas').innerHTML = esc(m) + ' · zaman çizelgesi <span class="not" style="color:#d64541">çizilemedi: ' + esc(e && e.message || e) + '</span>'; };
+  var bitti = function(){ if (HD.m !== m) return; try { hGantCiz(l, true); } catch(e) { hata(e); } };
   if (HD.bl && HD.bl.m === m) { bitti(); return; }
-  api('/api/hatali/gant', 'makine=' + encodeURIComponent(m)).then(function(d){ HD.bl = {m: m, b: d.bloklar}; bitti(); });
+  api('/api/hatali/gant', 'makine=' + encodeURIComponent(m)).then(function(d){
+    if (d.hata) { hata(d.hata); return; } HD.bl = {m: m, b: d.bloklar || []}; bitti(); }).catch(hata);
 }
 function hListe(l){
   HD.liste = l;
@@ -630,7 +635,7 @@ var H_DESEN = (function(){ var c = document.createElement('canvas'); c.width = c
   x.beginPath(); x.moveTo(0, 8); x.lineTo(8, 0); x.moveTo(-2, 2); x.lineTo(2, -2); x.moveTo(6, 10); x.lineTo(10, 6); x.stroke(); return c; })();
 function hGantCiz(l, ilk){
   var m = HD.m, veri = [];
-  (HD.bl.b || []).forEach(function(b){ var a = zt(b[0]).getTime(), z = zt(b[1]).getTime();
+  (HD.bl.b || []).forEach(function(b){ if (!b[0] || !b[1]) return; var a = zt(b[0]).getTime(), z = zt(b[1]).getTime();
     veri.push({value: [0, a, z, b[2], b[3], b[4], 0], itemStyle: {color: bloKRenk(b[3], b[2]), opacity: 0.55}}); });
   // hatalı olaylar: kırmızı taralı yarı saydam çerçeve (kayıtların üstüne)
   l.forEach(function(o){ veri.push({value: [0, o.a, o.b, o.t, '', (o.op || 'operatör yok') + (o.urun || o.emri ? ' · iş: ' + (o.urun || o.emri) : '') + ' · ' + o.kaynak, 1],
@@ -717,7 +722,7 @@ $('ayrinti-kapat').onclick = ayrintiKapat;
 function saat(sa){ var dk = Math.round(sa*60); return Math.floor(dk/60) + ':' + String(dk%60).padStart(2,'0'); }
 var RENK = {"İŞ EMRİ PLAN YOK":"#f5c400","Çalışmıyor":"#ff8a1f","Kısa Duruş":"#4aa3ee","MAKİNA ARIZASI":"#8db600","Kurulum":"#1f6fd1","Belgelenmemiş Duruş":"#f4a3c0"};
 function renk(t, i){ return RENK[t] || ['#2a7f9e','#7b4fa8','#d64541','#e0b400','#3e9b2a','#8a5a2b','#6b7285','#4dd0c0'][i % 8]; }
-function renkAd(t){ var h = 0; for (var k = 0; k < t.length; k++) h = (h * 31 + t.charCodeAt(k)) >>> 0; return renk(t, h); }   // aynı ada hep aynı renk
+function renkAd(t){ t = String(t == null ? '' : t); var h = 0; for (var k = 0; k < t.length; k++) h = (h * 31 + t.charCodeAt(k)) >>> 0; return renk(t, h); }   // aynı ada hep aynı renk
 function dokumSecenek(l){
   var top = l.reduce(function(s, x){ return s + x[1]; }, 0) || 1;
   return {tooltip: {trigger: 'item', ozel: true}, grid: {left: 56, right: 20, top: 30, bottom: 70},
@@ -1260,7 +1265,7 @@ $('pv-ai').onclick = function(){ var a = gun(PV.ay); PV.ay = iso(new Date(a.getF
 // ------------------------------------------------------------------ kullanıcı girişi (Ayarlar'da kullanıcı varsa)
 var _fetch = window.fetch;
 window.fetch = function(){ return _fetch.apply(this, arguments).then(function(r){ if (r.status === 401) girisGoster(); return r; }); };
-function girisGoster(){ $('giris').style.display = 'flex'; setTimeout(function(){ $('g-ad').focus(); }, 50); }
+function girisGoster(){ document.body.classList.remove('hazir'); $('giris').style.display = 'flex'; setTimeout(function(){ $('g-ad').focus(); }, 50); }
 $('girisform').onsubmit = function(e){
   e.preventDefault(); $('g-hata').textContent = '';
   _fetch('/api/giris', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ad: $('g-ad').value, sifre: $('g-sifre').value})})
@@ -1290,8 +1295,9 @@ _fetch('/api/oturum').then(function(r){ return r.json(); }).then(function(o){
       document.querySelectorAll('.sayfa').forEach(function(s){ s.classList.toggle('ac', s.id === 's-' + ilk.dataset.s); });
       etkin = ilk.dataset.s;
     }
-    if (!ilk) { document.querySelector('main').innerHTML = '<div class="kart">Bu kullanıcıya tarayıcıda açık sayfa verilmemiş.</div>'; return; }
+    if (!ilk) { document.querySelector('main').innerHTML = '<div class="kart">Bu kullanıcıya tarayıcıda açık sayfa verilmemiş.</div>'; document.body.classList.add('hazir'); return; }
   }
+  document.body.classList.add('hazir');
   baslat();
 });
 </script>
