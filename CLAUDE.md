@@ -89,6 +89,10 @@ Bu dosya yalnızca geliştirici (Claude) içindir; program okumaz. Her önemli d
 - Pivot düz metni: `islemtipi=pivot1&tarih=GG-AA-YYYY&tarihbit=GG-AA-YYYY&sicilid=0&dinamik=1&ad=undefined&...` (Planlanan + Gerçekleşen = pivot1; sayfanın gönderdiği metin `prepare` sarılarak yakalanır, yalnızca tarihler değiştirilir). İstek: `GET meyerapi/api/TAPIVOT?Name=`+encodeURIComponent(prepare(...)) + sayfanın Authorization/Accept başlıkları ($http ile DEĞİL, başlıklar elle). Bir ay ≈2,3 sn, saatli tam hücre, sınır uyarısı yok.
 - Aynı yol personel listesi, izin bakiyesi (Dynamic), kişi kartı (PersonD) için de denenecek.
 
+## Sonraya kalanlar (27.11)
+- **Vardiya planını programdan personel sistemine yazmak** (şu an elle). Plan: kullanıcı Chrome'da bir vardiyayı elle kaydederken izlenir (hangi istek, düz metni `prepare` sarılarak), sonra tek kişi/tek gün deneme, sonra "Vardiya planla" ekranı. Yazma işi → dikkat, bilgi işlem haberdar olsun. Kullanıcı "sonra Chrome'dan yaparım, sen takip et" dedi.
+- Web adresi `http://kaliphane`: DNS kaydı (bilgi işlem) + port 80 ayarı (Ayarlar'a "web portu"). Kullanıcı "geç" dedi.
+
 ## Geçici köprü (kopru.py) — iş bitince sil
 - Gizli depo `81Miralay81/vp-kopru` (yerel klon `/home/claude/vp-kopru`). Ben `komut/<PC>.json` (ya da `komut/hepsi.json`) yazarım; program `sonuc/<PC>/<id>.json` yazar, bağlanınca `sonuc/<PC>/canli.json`.
 - Gönderme betiği: `scratchpad/kopru.sh '{"tur":"durum"}'` (PC=PC-KALIP18).
