@@ -79,6 +79,10 @@ Bu dosya yalnızca geliştirici (Claude) içindir; program okumaz. Her önemli d
 - **Gece doğrulaması** (`cormind.dogrulama_cek`, `cek` sonunda, aralık ≤ 6 gün): yalnızca kontrol edilen duruşları olan tezgâhlar için OperatorWork (gerçek giriş-çıkış → `cm_oturum`) ve Goods (iş hâlâ makinede mi, `updated_at` → `cm_is_durum`); doğrulanan makine-gün `cm_dogrulama`. `hd.tespit` doğrulanan günde gerçek parçaları kullanır (operatör oturumu ∩ duruş, iş atılana kadar; atılma ≥ duruş sonu ya da bilinmiyorsa "kesin değil"), Olay.kaynak "gercek"/"kayit". Sorgu alan adları canlı denenemedi (Cormind kapalıydı) — ilk gece sonucu çekim iletisinde "hatalı duruş kontrolü: …". Hesaptaki hariç işaretlemesi (HATALI_EK) hâlâ kayıt bilgisine göre.
 - Web: "Hatalı Duruşlar" sayfası (`#s-hatali`, yetki performans): `/api/hatali` olay listesi (kırılımlar tarayıcıda: makine → vardiya|duruş → operatör|iş → gant), `/api/hatali/gant?makine=` bloklar; vurgu kanvas desenli kırmızı çerçeve. Kalan izin gösterimi (a/b/c) kararı bekliyor.
 
+## Bekleyen (27.11)
+- **Çekim kaydı** ekranı (Veri Aktar içinde; sağlık özeti + son 90 gün çekim listesi: Cormind gece / personel sabah-akşam / elle, sonuç ✓⚠✗, ayrıntı; veri tabanında). **Web'de ASLA olmayacak** (kullanıcı kararı). "başla" bekleniyor.
+- Personel listesi otomatik isteği 25.11'den beri BOŞ LİSTE dönüyor ("personel 0/1 istek"); ekran yolu sağlam. İncelenmesi soruldu, cevap bekleniyor.
+
 ## Geçici köprü (kopru.py) — iş bitince sil
 - Gizli depo `81Miralay81/vp-kopru` (yerel klon `/home/claude/vp-kopru`). Ben `komut/<PC>.json` (ya da `komut/hepsi.json`) yazarım; program `sonuc/<PC>/<id>.json` yazar, bağlanınca `sonuc/<PC>/canli.json`.
 - Gönderme betiği: `scratchpad/kopru.sh '{"tur":"durum"}'` (PC=PC-KALIP18).
