@@ -584,9 +584,10 @@ class Sunucu:
     def api_plan_gonder(self, h, q):
         v = self._plan_govde(q)
         self._json(h, self._plan("gonder", {"pzt": self._plan_pzt({"pzt": [v.get("pzt", "")]}), "isler": v.get("isler") or [],
-                                            "kullanici": self._plan_kul(h)}))
+                                            "kullanici": self._plan_kul(h), "geri": bool(v.get("geri"))}))
 
     def api_plan_geri(self, h, q):
+        """Son gönderimin eski hali: tarayıcı bunu turuncu (gönderilecek) olarak hazırlar, kullanıcı onaylayıp gönderir."""
         from .plan_isleri import geri_al_isleri
         v = self._plan_govde(q)
         pzt = self._plan_pzt({"pzt": [v.get("pzt", "")]})
@@ -597,11 +598,9 @@ class Sunucu:
             con.close()
         if not parti or not isler:
             return self._json(h, {"hata": "Bu haftada geri alınacak gönderim yok."})
-        if not v.get("onay"):
-            return self._json(h, {"soru": f"Son gönderim ({parti[6:8]}.{parti[4:6]} {parti[8:10]}:{parti[10:12]}) geri alınsın mı? {len(isler)} gün eski haline döner."
-                                          + (f" {len(atla)} gün tanınmayan mesai, elle düzeltilmeli." if atla else "")})
-        self._json(h, self._plan("gonder", {"pzt": pzt, "isler": [dict(x, gun=x["gun"].isoformat()) for x in isler],
-                                            "kullanici": self._plan_kul(h), "geri": True}))
+        self._json(h, {"parti": f"{parti[6:8]}.{parti[4:6]} {parti[8:10]}:{parti[10:12]}",
+                       "isler": [{"sid": x["sid"], "gun": x["gun"].isoformat(), "eski_hal": x["yeni"]} for x in isler],
+                       "atla": sorted({x["yeni"] for x in atla})})
 
     def api_hatali(self, h, q):
         """Hatalı Duruşlar sayfası: seçilen aralıktaki hatalı duruş olayları (kırılımlar tarayıcıda yapılır)."""

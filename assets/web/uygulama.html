@@ -702,7 +702,7 @@ document.querySelectorAll('#h-arac button').forEach(function(b){ b.onclick = fun
 var PL = {pzt: null, kisiler: [], secim: {}, elle: {}, sonuc: {}, kural: null, secilebilir: [], tanimli: [], donus: {}, mesgul: false, isler: []};
 var PL_RENK = {'24:00-08:00': '#E3E0F5', '08:00-16:00': '#DDEBFA', '(CUMA) 08:00-16:00': '#CFE2F8', '16:00-24:00': '#FBE8D3'};
 var PL_GUN = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
-function plPzt(d){ var x = new Date(d); var g = (x.getDay() + 6) % 7; x.setDate(x.getDate() - g); return x; }
+function plPzt(d){ var x = new Date(d); x.setHours(0, 0, 0, 0); var g = (x.getDay() + 6) % 7; x.setDate(x.getDate() - g); return x; }
 if (!PL.pzt) PL.pzt = plPzt(ekle(new Date(), 7));
 function plHaftaYaz(){ $('pl-hafta').textContent = trT(iso(PL.pzt)) + ' – ' + trT(iso(ekle(PL.pzt, 6))); }
 function plMesgul(e, m){ PL.mesgul = e; ['pl-oku','pl-don','pl-aynen','pl-gonder','pl-geri-al','pl-geri','pl-ileri'].forEach(function(i){ $(i).disabled = e; }); if (m) $('pl-durum').textContent = m; }
@@ -719,7 +719,7 @@ function plOku(){
     plMesgul(false);
     PL.kural = d.kural; PL.secilebilir = d.secilebilir || []; PL.tanimli = d.tanimli || []; PL.donus = d.donus || {};
     if (d.hata) { $('pl-durum').textContent = 'Okunamadı: ' + d.hata; return; }
-    PL.kisiler = d.kisiler || []; PL.secim = {}; PL.elle = {}; PL.sonuc = {};
+    PL.kisiler = d.kisiler || []; PL.secim = {}; PL.elle = {}; PL.sonuc = {}; PL.isaretle = {}; PL.geri = false;
     plCiz(); $('pl-durum').textContent = PL.kisiler.length + ' kişi okundu. Değiştireceğiniz kişinin "Bu hafta" seçimini yapın, satırını işaretleyip gönderin.';
   }).catch(function(e){ plMesgul(false, 'Okunamadı: ' + e); });
 }
@@ -736,7 +736,7 @@ function plCiz(){
   var h = '<tr><th>✓</th><th>Personel</th><th>Dönüş</th><th>Bu hafta</th>' + PL_GUN.map(function(g, i){ return '<th>' + g + ' ' + trT(iso(ekle(PL.pzt, i))).slice(0, 5) + '</th>'; }).join('') + '</tr>';
   PL.kisiler.forEach(function(k, i){
     var v = plVardiya(k.gun), s = PL.secim[k.sicilid] || 0, hd = plHedef(k);
-    h += '<tr data-i="' + i + '"><td><input type="checkbox" class="pl-c" data-s="' + k.sicilid + '"></td><td><b>' + esc(k.ad) + '</b><br><span class="not">' + esc(k.sicilno) + (v ? ' · şu an ' + v + '. vardiya' : '') + '</span></td>' +
+    h += '<tr data-i="' + i + '"><td><input type="checkbox" class="pl-c" data-s="' + k.sicilid + '"' + ((PL.isaretle || {})[k.sicilid] ? ' checked' : '') + '></td><td><b>' + esc(k.ad) + '</b><br><span class="not">' + esc(k.sicilno) + (v ? ' · şu an ' + v + '. vardiya' : '') + '</span></td>' +
       '<td><select class="pl-d" data-s="' + k.sicilid + '"><option value="doner">döner</option><option value="sabit"' + (PL.donus[k.sicilid] === 'sabit' ? ' selected' : '') + '>sabit</option></select></td>' +
       '<td><select class="pl-v" data-s="' + k.sicilid + '">' + ['değiştirme', '1. vardiya (00–08)', '2. vardiya (08–16)', '3. vardiya (16–24)'].map(function(t, j){ return '<option value="' + j + '"' + (s === j ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</select></td>';
     hd.forEach(function(a, j){ var tatil = /^Hafta Tatili/.test(a), r = PL.sonuc[k.sicilid + ':' + j], cls = 'g' + (r ? ' ' + r : (a !== k.gun[j] ? ' deg' : ''));
@@ -778,7 +778,8 @@ $('pl-onay-gonder').onclick = function(){
   var sec = []; document.querySelectorAll('.pl-oc').forEach(function(c){ if (c.checked) sec.push(PL.isler[+c.dataset.i]); });
   $('pl-onay').classList.remove('ac'); if (!sec.length) return;
   plMesgul(true, sec.length + ' gün gönderiliyor ve kontrol ediliyor… (bu birkaç dakika sürebilir)');
-  plPost('/api/plan/gonder', {pzt: iso(PL.pzt), isler: sec}).then(plSonucIsle).catch(function(e){ plMesgul(false, 'Gönderilemedi: ' + e); });
+  var geri = !!PL.geri; PL.geri = false; PL.isaretle = {};
+  plPost('/api/plan/gonder', {pzt: iso(PL.pzt), isler: sec, geri: geri}).then(plSonucIsle).catch(function(e){ plMesgul(false, 'Gönderilemedi: ' + e); });
 };
 $('pl-onay-vaz').onclick = $('pl-onay-kapat').onclick = function(){ $('pl-onay').classList.remove('ac'); };
 $('pl-oku').onclick = plOku;
@@ -788,9 +789,15 @@ $('pl-gonder').onclick = plGonderSor;
 $('pl-geri').onclick = function(){ if (PL.mesgul) return; PL.pzt = ekle(PL.pzt, -7); PL.kisiler = []; plHaftaYaz(); plCiz(); $('pl-durum').textContent = 'Haftayı görmek için "Personel sisteminden oku"ya basın.'; };
 $('pl-ileri').onclick = function(){ if (PL.mesgul) return; PL.pzt = ekle(PL.pzt, 7); PL.kisiler = []; plHaftaYaz(); plCiz(); $('pl-durum').textContent = 'Haftayı görmek için "Personel sisteminden oku"ya basın.'; };
 $('pl-geri-al').onclick = function(){
+  if (!PL.kisiler.length) { $('pl-durum').textContent = 'Önce bu haftayı okuyun ("Personel sisteminden oku").'; return; }
   plPost('/api/plan/geri', {pzt: iso(PL.pzt)}).then(function(d){
     if (d.hata) { $('pl-durum').textContent = d.hata; return; }
-    if (d.soru && confirm(d.soru)) { plMesgul(true, 'Geri alınıyor…'); plPost('/api/plan/geri', {pzt: iso(PL.pzt), onay: 1}).then(plSonucIsle); }
+    PL.isaretle = {};
+    d.isler.forEach(function(x){ var j = Math.round((gun(x.gun) - PL.pzt) / 864e5); PL.secim[x.sid] = null;
+      (PL.elle[x.sid] = PL.elle[x.sid] || {})[j] = x.eski_hal; delete PL.sonuc[x.sid + ':' + j]; PL.isaretle[x.sid] = 1; });
+    PL.geri = true; plCiz();
+    $('pl-durum').textContent = 'Son gönderimin (' + d.parti + ') eski hali turuncu olarak hazırlandı: ' + d.isler.length + ' gün. Kontrol edip "Personel sistemine gönder"e basın; kaydedilen günler yeşile döner.' +
+      (d.atla && d.atla.length ? ' Tanınmayan eski mesai (' + d.atla.join(', ') + ') elle düzeltilmeli.' : '');
   });
 };
 // şüpheli mola zaman çizelgesi (SVG)

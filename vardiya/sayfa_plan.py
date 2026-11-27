@@ -135,6 +135,7 @@ class PlanSayfasi(QWidget):
         self.pzt += timedelta(days=gun)
         self.l_hafta.setText(f"{self.pzt:%d.%m.%Y} – {self.pzt + timedelta(days=6):%d.%m.%Y}")
         self.kisiler, self.secim, self.elle, self.sonuc = [], {}, {}, {}
+        self._isaretle, self._geri_hazir = set(), False
         self._ciz()
         self.durum.setText("Haftayı görmek için \"Personel sisteminden oku\"ya basın.")
 
@@ -159,6 +160,7 @@ class PlanSayfasi(QWidget):
             self.ham = {int(r["ysicilid"]): r for r in d if str(r.get("ysicilid", "")).isdigit()}
             self.secim = {k["sicilid"]: None for k in self.kisiler}
             self.elle, self.sonuc = {}, {}
+            self._isaretle, self._geri_hazir = set(), False
             self._ciz()
             self.durum.setText(f"{len(self.kisiler)} kişi okundu ({datetime.now():%H:%M}). Değiştirmek istediğiniz kişinin "
                                "\"Bu hafta\" seçimini yapın, satırını işaretleyip gönderin.")
@@ -196,6 +198,7 @@ class PlanSayfasi(QWidget):
             sid = k["sicilid"]
             cb = QCheckBox()
             cb.setProperty("sid", sid)
+            cb.setChecked(sid in getattr(self, "_isaretle", set()))
             w = QWidget()
             l = QHBoxLayout(w)
             l.setContentsMargins(8, 0, 0, 0)
@@ -342,7 +345,8 @@ class PlanSayfasi(QWidget):
             return
         secili = [x for i, x in enumerate(isler) if t.item(i, 0).checkState() == Qt.Checked]
         if secili:
-            self._gonder(secili, "gonderim")
+            self._gonder(secili, "geri" if getattr(self, "_geri_hazir", False) else "gonderim")
+            self._geri_hazir = False
 
     def _gonder(self, isler: List[dict], tur: str):
         w = self._pencere_gerek()
@@ -364,6 +368,10 @@ class PlanSayfasi(QWidget):
         pi.gonder(w, self._con(), self.pzt, isler, kul + " (program)", self.durum.setText, bitti, geri=(tur == "geri"))
 
     def _geri_al(self):
+        """Son gönderimin eski halini tabloya turuncu (gönderilecek) olarak hazırlar; kullanıcı kontrol edip gönderir."""
+        if not self.kisiler:
+            self.durum.setText("Önce bu haftayı okuyun (\"Personel sisteminden oku\").")
+            return
         isler, atla, parti = pi.geri_al_isleri(self._con(), self.pzt)
         if not parti:
             self.durum.setText("Geri alınacak gönderim yok.")
@@ -371,8 +379,18 @@ class PlanSayfasi(QWidget):
         if not isler:
             self.durum.setText("Son gönderim bu haftaya ait değil ya da geri alınacak gün yok (önce o haftaya gidin).")
             return
-        metin = f"Son gönderim ({parti[6:8]}.{parti[4:6]} {parti[8:10]}:{parti[10:12]}) geri alınsın mı? {len(isler)} gün eski haline döner."
+        sidler = set()
+        for x in isler:
+            sid, j = x["sid"], (x["gun"] - self.pzt).days
+            self.secim[sid] = None
+            self.elle.setdefault(sid, {})[j] = x["yeni"]          # x["yeni"]: gönderimden önceki (eski) hali
+            self.sonuc.pop((sid, j), None)
+            sidler.add(sid)
+        self._isaretle = sidler
+        self._geri_hazir = True
+        self._ciz()
+        metin = (f"Son gönderimin ({parti[6:8]}.{parti[4:6]} {parti[8:10]}:{parti[10:12]}) eski hali turuncu olarak hazırlandı: {len(isler)} gün. "
+                 "Kontrol edip \"Personel sistemine gönder\"e basın; kaydedilen günler yeşile döner.")
         if atla:
-            metin += f"\n\n{len(atla)} günün eski hali programın tanımadığı bir mesai ({', '.join(sorted({x['yeni'] for x in atla}))}); onları elle düzeltin."
-        if QMessageBox.question(self, "Geri al", metin) == QMessageBox.Yes:
-            self._gonder(isler, "geri")
+            metin += f" {len(atla)} günün eski hali tanınmayan bir mesai ({', '.join(sorted({x['yeni'] for x in atla}))}); onları elle düzeltin."
+        self.durum.setText(metin)
