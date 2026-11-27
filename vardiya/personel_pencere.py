@@ -97,6 +97,32 @@ _YAKALA = r"""
     x.onerror = function(){ console.log('VPPVT|' + id + '|0'); };
     x.send(b == null ? null : b); return true;
   };
+  // Doğrudan istek yolu: sayfanın kendi şifreleme işlevi (prepare) çağrılır; anahtar sayfada kalır, programa geçmez.
+  function sar(){
+    try {
+      var r = angular.element(document.body).injector().get('$rootScope');
+      if (!r || typeof r.prepare !== 'function' || r.__vpSarili) return r;
+      var f = r.prepare;
+      r.prepare = function(p){ try { if (/^islemtipi=pivot1&/.test(String(p))) window.__vpPivotDuz = String(p); } catch(e) {} return f.apply(this, arguments); };
+      r.__vpSarili = true; return r;
+    } catch(e) { return null; }
+  }
+  setInterval(sar, 2000);
+  window.__vpDogrudan = function(bas, bit){
+    var r = sar();
+    if (!r || typeof r.prepare !== 'function') return 'prepare yok';
+    var hb = (window.__vpBY || {})['https://meyerapi.teknorot.com/api/tapivot'] || window.__vpB;
+    if (!hb || !Object.keys(hb).length) return 'başlık yok';
+    var duz = window.__vpPivotDuz || 'islemtipi=pivot1&tarih=&tarihbit=&sicilid=0&dinamik=1&ad=undefined&soyad=undefined&sicilno=undefined&firma=0&bolum=0&pozisyon=0&gorev=0&altfirma=0&yaka=0&direktorluk=0&okod1=&okod2=&okod3=&okod4=&okod5=&okod6=&okod7=';
+    duz = duz.replace(/tarih=[^&]*/, 'tarih=' + bas).replace(/tarihbit=[^&]*/, 'tarihbit=' + bit);
+    var x = new XMLHttpRequest();
+    x.open('GET', 'https://meyerapi.teknorot.com/api/TAPIVOT?Name=' + encodeURIComponent(r.prepare(duz)), true);
+    for (var k in hb) { if (/^content-type$/i.test(k)) continue; try { x.setRequestHeader(k, hb[k]); } catch(e) {} }
+    x.addEventListener('load', function(){ var t = ''; try { t = x.responseText || ''; } catch(e) {}
+      console.log('VPPVD|' + (x.status >= 200 && x.status < 300 && t.indexOf('basarisiz') < 0 && t.length > 50 ? 'ok' : 'hata') + '|' + x.status + '|' + t.length); });
+    x.onerror = function(){ console.log('VPPVD|hata|0|0'); };
+    x.send(null); return 'gonderildi';
+  };
   window.__vpDurum = function(){
     var e = document.querySelector('input[type=password]');
     return {hazir: Object.keys(window.__vpB).length > 0, giris: !!(e && e.offsetParent !== null), basliklar: Object.keys(window.__vpB)};
@@ -610,6 +636,8 @@ class PersonelVeriPenceresi(QDialog):
                     ust_.tani(f"teşhis: {p_[1] if len(p_) > 1 else '?'} isteğini hazırlayan işlevler: {p_[2][:600] if len(p_) > 2 else '?'}")
                 elif mesaj.startswith("VPPVF|"):
                     ust_.tani("izin formu yolu: " + mesaj[6:][:400])
+                elif mesaj.startswith("VPPVD|"):
+                    ust_._dogrudan_yanit(mesaj)
         self.web = QWebEngineView()
         self.sayfa = _Sayfa(self.profil, self.web)
         self.web.setPage(self.sayfa)
@@ -1095,6 +1123,23 @@ class PersonelVeriPenceresi(QDialog):
         a, b = self._ekran_aylar[0]
         self._ekran_js = True
         sira = self._ekran_say[1] - len(self._ekran_aylar) + 1
+        if not getattr(self, "_dogrudan_kapali", False):
+            self.bilgi.setText(f"Doğrudan istekle alınıyor ({sira}/{self._ekran_say[1]}): {a:%d.%m.%Y} – {b:%d.%m.%Y}")
+
+            def dsonuc(r, a=a, b=b, sira=sira):
+                self._ekran_js = False
+                if r == "gonderildi":
+                    self._ekran_aylar.pop(0)
+                    self._ekran_deneme += 1
+                    self._ekran_bekle = (a, b)
+                    self._ekran_dogrudan = (a, b)
+                    self._ekran_zaman = time.time()
+                    self._ekran_log = sira == 1
+                else:
+                    self._dogrudan_kapali = True
+                    self.tani(f"doğrudan istek kullanılamadı ({r}); ekran yoluna geçiliyor")
+            self.sayfa.runJavaScript(f"window.__vpDogrudan ? window.__vpDogrudan({json.dumps(f'{a:%d-%m-%Y}')}, {json.dumps(f'{b:%d-%m-%Y}')}) : 'işlev yok'", 0, dsonuc)
+            return
         self.bilgi.setText(f"Ekran yoluyla alınıyor ({sira}/{self._ekran_say[1]}): {a:%d.%m.%Y} – {b:%d.%m.%Y}")
 
         def sonuc(r, a=a, b=b, sira=sira):
@@ -1137,6 +1182,23 @@ class PersonelVeriPenceresi(QDialog):
                                   "Pivot ekranını açık bırakıp yeniden deneyin.")
         self.sayfa.runJavaScript(_EKRAN_DONEM % (json.dumps(f"{a:%d-%m-%Y}"), json.dumps(f"{b:%d-%m-%Y}"),
                                                  json.dumps(self._ekran_sayfa)), 0, sonuc)
+
+    def _dogrudan_yanit(self, mesaj: str):
+        """Doğrudan istek sonucu: başarısızsa bu çekimde ekran yoluna geçilir ve ay yeniden sıraya konur."""
+        p = mesaj.split("|")
+        ok = len(p) > 1 and p[1] == "ok"
+        ab = getattr(self, "_ekran_dogrudan", None)
+        if ok:
+            if ab:
+                self.tani(f"doğrudan istek {ab[0]:%m.%Y}: yanıt geldi ({p[3] if len(p) > 3 else '?'} bayt)")
+            return
+        self._dogrudan_kapali = True
+        self.tani(f"doğrudan istek başarısız (durum {p[2] if len(p) > 2 else '?'}); bu çekimde ekran yolu kullanılacak")
+        if ab and getattr(self, "_ekran_bekle", None) == ab:
+            self._ekran_bekle = None
+            self._ekran_deneme = 0
+            self._ekran_aylar.insert(0, ab)
+        self._ekran_dogrudan = None
 
     def _ekran_yanit(self, meta: dict):
         """Ekran yolunda beklenen ayın listesi geldi mi (gelen dönem beklenenle örtüşüyorsa)."""
