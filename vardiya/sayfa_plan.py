@@ -1,6 +1,6 @@
 """Vardiya Planla: mavi yaka personelin haftalık vardiyasını hazırlayıp personel sistemine yazar.
 
-Yetki: "plan" (Ayarlar > Kullanıcılar; yönetici her zaman görür). Yalnızca programda, web'de yok.
+Yetki: "plan" (Ayarlar > Kullanıcılar; yönetici her zaman görür). Web'de de aynı yetkiyle açılır (uygulama.html #s-plan).
 Okuma ve yazma açık Personel Veri penceresinin sayfası üzerinden yapılır (oturum ve şifreleme sayfada kalır).
 Gönderdikten sonra hafta personel sisteminden yeniden okunur: başında "*" kalmayan ve istenen mesaiyi gösteren gün
 kaydedilmiş sayılır (yeşil); olmayan kırmızı kalır. Her gönderim "plan_gecmis" tablosuna yazılır; "Geri al" son
@@ -17,14 +17,12 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QDialog, QHBoxLayout, QHeaderView, QLabel,
                                QMenu, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
 
-from . import vardiya_plan as vp
+from . import plan_isleri as pi, vardiya_plan as vp
 from .sayfa_ortak import etiket, kart
 
 RENK = {"24:00-08:00": "#E3E0F5", "08:00-16:00": "#DDEBFA", "(CUMA) 08:00-16:00": "#CFE2F8", "16:00-24:00": "#FBE8D3"}
 RENK_TATIL = "#5f6f86"
 YESIL, KIRMIZI, TURUNCU = "#3e9b2a", "#d64541", "#e0702a"
-SEMA = """CREATE TABLE IF NOT EXISTS plan_gecmis (id INTEGER PRIMARY KEY AUTOINCREMENT, parti TEXT NOT NULL, zaman TEXT NOT NULL,
-    kullanici TEXT, sicilid INTEGER NOT NULL, ad TEXT, gun TEXT NOT NULL, eski TEXT, yeni TEXT, sonuc TEXT)"""
 
 
 def _gun_api(g: date) -> str:
@@ -96,7 +94,7 @@ class PlanSayfasi(QWidget):
     # ------------------------------------------------------------------ yardımcılar
     def _con(self):
         c = self.ana.con
-        c.execute(SEMA)
+        c.execute(pi.SEMA)
         return c
 
     def _donus(self) -> Dict[str, str]:
@@ -110,11 +108,7 @@ class PlanSayfasi(QWidget):
         vt.ayar_yaz(self.ana.con, "plan_donus", d)
 
     def _pencere(self):
-        from . import personel_pencere as pp
-        for w in pp.acik_pencereler():
-            if not w.otomatik:
-                return w
-        return None
+        return pi.pencere()
 
     def _pencere_gerek(self) -> Optional[object]:
         w = self._pencere()
@@ -126,10 +120,7 @@ class PlanSayfasi(QWidget):
         return w
 
     def _beyazlar(self) -> set:
-        try:
-            return {r[0] for r in self.ana.con.execute("SELECT sicilid FROM pv_personel WHERE upper(coalesce(yaka,'')) LIKE '%BEYAZ%'")}
-        except Exception:  # noqa: BLE001
-            return set()
+        return pi.beyazlar(self.ana.con)
 
     def _mesgul(self, e: bool, metin: str = ""):
         self._is = e
@@ -153,18 +144,7 @@ class PlanSayfasi(QWidget):
         if w is None:
             self._mesgul(False, "Personel Veri penceresi açık değil.")
             return
-        cagri = f"window.__vpPlanOku ? window.__vpPlanOku(@ID, {json.dumps(_gun_api(pzt))}, {json.dumps(_gun_api(pzt + timedelta(days=6)))}) : ''"
-
-        def gelen(durum, metin):
-            try:
-                d = json.loads(metin) if durum == 200 else None
-            except ValueError:
-                d = None
-            if not isinstance(d, list) or (d and isinstance(d[0], dict) and d[0].get("sunucucevap") == "basarisiz"):
-                bitince(None, f"okunamadı ({durum}: {str(metin)[:120]})")
-                return
-            bitince(d, "")
-        w.plan_istek(cagri, gelen)
+        pi.oku(w, pzt, bitince)
 
     def oku(self):
         self._mesgul(True, "Personel sisteminden okunuyor…")
@@ -196,17 +176,12 @@ class PlanSayfasi(QWidget):
             if d is None:
                 self.durum.setText("Geçen hafta okunamadı: " + hata)
                 return
-            gecen = {k["sicilid"]: vp.vardiya_tahmin(k["gun"]) for k in vp.plan_satirlari(d, onceki)}
-            donus = self._donus()
+            yeni = pi.aktarim(vp.plan_satirlari(d, onceki), self._donus(), dondur)
             n = 0
             for k in self.kisiler:
-                v = gecen.get(k["sicilid"])
-                if not v:
-                    continue
-                if dondur and donus.get(str(k["sicilid"]), "doner") == "doner":
-                    v = vp.dondur(v)
-                self.secim[k["sicilid"]] = v
-                n += 1
+                if k["sicilid"] in yeni:
+                    self.secim[k["sicilid"]] = yeni[k["sicilid"]]
+                    n += 1
             self._ciz()
             self.durum.setText(f"{n} kişinin vardiyası geçen haftadan {'döndürülerek ' if dondur else ''}aktarıldı (henüz gönderilmedi). "
                                "Elle değiştirdiğiniz günler korunur.")
@@ -373,90 +348,30 @@ class PlanSayfasi(QWidget):
         w = self._pencere_gerek()
         if w is None:
             return
-        parti = datetime.now().strftime("%Y%m%d%H%M%S") + ("-geri" if tur == "geri" else "")
         kul = (getattr(self.ana, "kullanici", None) or {}).get("ad", "")
-        con = self._con()
-        sira = list(isler)
-        hatali = []
         self._mesgul(True)
 
-        def sonraki():
-            if not sira:
-                con.commit()
-                self.durum.setText(f"{len(isler)} gün gönderildi{', ' + str(len(hatali)) + ' istek hata verdi' if hatali else ''}; "
-                                   "personel sisteminden yeniden okunup kontrol ediliyor…")
-                QTimer.singleShot(800, lambda: self._dogrula(isler, parti))
-                return
-            x = sira.pop(0)
-            self.durum.setText(f"Gönderiliyor {len(isler) - len(sira)}/{len(isler)}: {x['ad']} {x['gun']:%d.%m} → {x['yeni']}")
-            ekstra = json.dumps([{"sicilid": x["sid"], "tarih": x["gun"].isoformat()}])
-            cagri = (f"window.__vpPlanYaz ? window.__vpPlanYaz(@ID, {json.dumps(_gun_api(self.pzt))}, "
-                     f"{json.dumps(_gun_api(self.pzt + timedelta(days=6)))}, {vp.MESAI[x['yeni']]}, {json.dumps(ekstra)}) : ''")
-
-            def gelen(durum, metin, x=x):
-                ok = durum == 200 and "basarisiz" not in (metin or "")[:300]
-                if not ok:
-                    hatali.append(x)
-                con.execute("INSERT INTO plan_gecmis (parti, zaman, kullanici, sicilid, ad, gun, eski, yeni, sonuc) VALUES (?,?,?,?,?,?,?,?,?)",
-                            (parti, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), kul, x["sid"], x["ad"], x["gun"].isoformat(),
-                             x["eski"], x["yeni"], "gonderildi" if ok else f"istek hatası {durum}"))
-                QTimer.singleShot(150, sonraki)
-            w.plan_istek(cagri, gelen)
-        sonraki()
-
-    def _dogrula(self, isler: List[dict], parti: str):
-        def bitti(d, hata):
-            self._mesgul(False)
-            if d is None:
-                self.durum.setText("Gönderildi ama doğrulama için okunamadı: " + hata + " · \"Personel sisteminden oku\" ile yeniden bakın.")
-                return
-            ham = {}
-            for r in d:
-                try:
-                    ham[int(r.get("ysicilid"))] = r
-                except (TypeError, ValueError):
-                    pass
-            ok = hata_ = 0
-            con = self._con()
-            for x in isler:
-                g = x["gun"]
-                deger = str((ham.get(x["sid"]) or {}).get(f"y{g.year}x{g.month:02d}x{g.day:02d}") or "")
-                ilk = deger.split("<br>")[0].split(",")[0].strip()
-                kayitli = bool(ilk) and not ilk.startswith("*") and vp.hucre_ad(ilk) == x["yeni"]
-                j = (g - self.pzt).days
-                self.sonuc[(x["sid"], j)] = "ok" if kayitli else "hata"
-                ok, hata_ = ok + kayitli, hata_ + (not kayitli)
-                con.execute("UPDATE plan_gecmis SET sonuc=? WHERE parti=? AND sicilid=? AND gun=?",
-                            ("doğrulandı" if kayitli else f"kaydedilmedi (sistemde: {ilk or 'boş'})", parti, x["sid"], g.isoformat()))
-            con.commit()
-            beyaz = self._beyazlar()
-            yeni = {k["sicilid"]: k for k in vp.plan_satirlari(d, self.pzt) if k["sicilid"] not in beyaz}
-            for k in self.kisiler:
-                if k["sicilid"] in yeni:
-                    k["gun"] = yeni[k["sicilid"]]["gun"]
+        def bitti(sonuc, yeni, ozet):
+            self._mesgul(False, ozet)
+            self.sonuc.update(sonuc)
+            if yeni:
+                d = {k["sicilid"]: k for k in yeni}
+                for k in self.kisiler:
+                    if k["sicilid"] in d:
+                        k["gun"] = d[k["sicilid"]]["gun"]
             for i in range(len(self.kisiler)):
                 self._gunleri_ciz(i)
-            self.durum.setText(f"Kontrol: {ok} gün kayıtlı (yeşil)" + (f", {hata_} gün KAYDEDİLEMEDİ (kırmızı) — o günlere tekrar bakın" if hata_ else "")
-                               + f" · {datetime.now():%H:%M}")
-        self._oku_hafta(self.pzt, bitti)
+        pi.gonder(w, self._con(), self.pzt, isler, kul + " (program)", self.durum.setText, bitti, geri=(tur == "geri"))
 
     def _geri_al(self):
-        con = self._con()
-        r = con.execute("SELECT parti FROM plan_gecmis WHERE parti NOT LIKE '%-geri' ORDER BY id DESC LIMIT 1").fetchone()
-        if not r:
+        isler, atla, parti = pi.geri_al_isleri(self._con(), self.pzt)
+        if not parti:
             self.durum.setText("Geri alınacak gönderim yok.")
             return
-        satir = con.execute("SELECT sicilid, ad, gun, eski, yeni FROM plan_gecmis WHERE parti=? AND sonuc NOT LIKE 'istek hatası%'", (r[0],)).fetchall()
-        isler, atla = [], []
-        for sid, ad, gun, eski, yeni in satir:
-            g = date.fromisoformat(gun)
-            if vp.hafta_basi(g) != self.pzt:
-                continue
-            (isler if eski in vp.MESAI else atla).append({"sid": sid, "ad": ad, "gun": g, "eski": yeni, "yeni": eski})
         if not isler:
             self.durum.setText("Son gönderim bu haftaya ait değil ya da geri alınacak gün yok (önce o haftaya gidin).")
             return
-        metin = f"Son gönderim ({r[0][6:8]}.{r[0][4:6]} {r[0][8:10]}:{r[0][10:12]}) geri alınsın mı? {len(isler)} gün eski haline döner."
+        metin = f"Son gönderim ({parti[6:8]}.{parti[4:6]} {parti[8:10]}:{parti[10:12]}) geri alınsın mı? {len(isler)} gün eski haline döner."
         if atla:
             metin += f"\n\n{len(atla)} günün eski hali programın tanımadığı bir mesai ({', '.join(sorted({x['yeni'] for x in atla}))}); onları elle düzeltin."
         if QMessageBox.question(self, "Geri al", metin) == QMessageBox.Yes:

@@ -80,6 +80,14 @@ class Sunucu:
         self.httpd: Optional[ThreadingHTTPServer] = None
         self.cekim = {"durum": "bos", "metin": "", "yuzde": 0, "dur": False}
         self._kilit = threading.Lock()
+        self.plan_kopru = None
+        try:
+            from PySide6.QtWidgets import QApplication
+            if QApplication.instance() is not None:
+                from .plan_isleri import PlanKoprusu
+                self.plan_kopru = PlanKoprusu(db_yolu)     # ana iş parçacığında kurulur (web istekleri buraya taşınır)
+        except Exception:  # noqa: BLE001
+            self.plan_kopru = None
 
     # -------------------------------------------------------------- yaşam döngüsü
     def baslat(self) -> str:
@@ -156,6 +164,8 @@ class Sunucu:
                  "/api/rapor/bilgi": self.api_rapor_bilgi, "/api/rapor/sayfa.png": self.api_rapor_sayfa,
                  "/api/rapor.pdf": self.api_rapor_pdf, "/api/operator": self.api_operator, "/api/operator/ayrinti": self.api_operator_ayrinti, "/api/operator/cakisma": self.api_operator_cakisma, "/api/duran": self.api_duran, "/api/kirilim": self.api_kirilim,
                  "/api/hatali": self.api_hatali, "/api/hatali/gant": self.api_hatali_gant,
+                 "/api/plan/oku": self.api_plan_oku, "/api/plan/aktar": self.api_plan_aktar, "/api/plan/donus": self.api_plan_donus,
+                 "/api/plan/gonder": self.api_plan_gonder, "/api/plan/geri": self.api_plan_geri,
                  "/api/kayitlar": self.api_kayitlar, "/api/personel": self.api_personel,
                  "/api/kirilim/operator": self.api_kirilim_operator, "/api/personel/hafta": self.api_personel_hafta, "/api/personel/kart": self.api_personel_kart, "/api/personel/foto": self.api_personel_foto, "/api/cormind/cek": self.api_cek, "/api/cormind/durum": self.api_cek_durum,
                  "/api/cormind/durdur": self.api_cek_durdur, "/api/outlook": self.api_outlook}.get(yol)
@@ -164,6 +174,7 @@ class Sunucu:
             if yontem == "POST":
                 n = int(h.headers.get("Content-Length") or 0)
                 govde = h.rfile.read(n) if n else b""
+                q["__govde"] = [govde.decode("utf-8", "replace")]
                 try:
                     q.update({k: [str(v)] for k, v in json.loads(govde or b"{}").items()})
                 except ValueError:
@@ -180,6 +191,7 @@ class Sunucu:
     # -------------------------------------------------------------- kullanıcı oturumu (Ayarlar'da kullanıcı varsa zorunlu)
     YETKI = {"/api/performans": "performans", "/api/tablo.png": "performans", "/api/kirilim": "performans", "/api/kirilim/operator": "performans", "/api/duran": "performans",
              "/api/hatali": "performans", "/api/hatali/gant": "performans",
+             "/api/plan/oku": "plan", "/api/plan/aktar": "plan", "/api/plan/donus": "plan", "/api/plan/gonder": "plan", "/api/plan/geri": "plan",
              "/api/rapor/bilgi": "rapor", "/api/rapor/sayfa.png": "rapor", "/api/rapor.pdf": "rapor", "/api/outlook": "rapor",
              "/api/operator": "operator", "/api/operator/ayrinti": "operator", "/api/operator/cakisma": "operator",
              "/api/kayitlar": "kayitlar", "/api/personel": "personel", "/api/personel/hafta": "personel",
@@ -507,6 +519,89 @@ class Sunucu:
                              "en_cok": [(t, hm(sn)) for t, sn in sorted(r.durus_tipleri.items(), key=lambda x: -x[1])[:3]]})
         from .operator import AYRINTI_ACIKLAMA, SUTUN_ACIKLAMA
         self._json(h, {"ilk": ilk, "son": son, "satirlar": satirlar, "aciklama": SUTUN_ACIKLAMA, "ayrinti_aciklama": AYRINTI_ACIKLAMA})
+
+    # -------------------------------------------------------------- Vardiya Planla (yetki "plan")
+    def _plan(self, tur: str, arg: dict) -> dict:
+        if self.plan_kopru is None:
+            return {"hata": "Vardiya planı bu çalışmada kullanılamıyor."}
+        return self.plan_kopru.calistir(tur, arg)
+
+    def _plan_pzt(self, q) -> str:
+        from . import vardiya_plan as vp
+        g = (q.get("pzt") or [""])[0]
+        try:
+            return vp.hafta_basi(date.fromisoformat(g)).isoformat()
+        except ValueError:
+            return vp.hafta_basi(date.today() + timedelta(days=7)).isoformat()
+
+    def _plan_govde(self, q) -> dict:
+        try:
+            return json.loads((q.get("__govde") or ["{}"])[0] or "{}")
+        except ValueError:
+            return {}
+
+    def api_plan_oku(self, h, q):
+        from . import vardiya_plan as vp
+        pzt = self._plan_pzt(q)
+        r = self._plan("oku", {"pzt": pzt})
+        con = self._con()
+        try:
+            donus = dict(vt.ayar_oku(con).get("plan_donus") or {})
+        finally:
+            con.close()
+        r.update(pzt=pzt, donus=donus, kural={v: vp.kural(v) for v in (1, 2, 3)}, secilebilir=vp.SECILEBILIR,
+                 tanimli=list(vp.MESAI), vardiya_ad=vp.VARDIYA_AD)
+        self._json(h, r)
+
+    def api_plan_aktar(self, h, q):
+        from .plan_isleri import aktarim
+        pzt = self._plan_pzt(q)
+        r = self._plan("oku", {"pzt": pzt, "onceki": True})
+        if "kisiler" in r:
+            con = self._con()
+            try:
+                donus = dict(vt.ayar_oku(con).get("plan_donus") or {})
+            finally:
+                con.close()
+            r = {"secim": aktarim(r["kisiler"], donus, (q.get("dondur") or ["1"])[0] == "1")}
+        self._json(h, r)
+
+    def api_plan_donus(self, h, q):
+        v = self._plan_govde(q)
+        con = self._con()
+        try:
+            d = dict(vt.ayar_oku(con).get("plan_donus") or {})
+            d[str(int(v.get("sicilid")))] = "sabit" if v.get("deger") == "sabit" else "doner"
+            vt.ayar_yaz(con, "plan_donus", d)
+        finally:
+            con.close()
+        self._json(h, {"tamam": True})
+
+    def _plan_kul(self, h) -> str:
+        k = self._oturum_kullanici(h)
+        return ((k or {}).get("ad") or "?") + " (web)"
+
+    def api_plan_gonder(self, h, q):
+        v = self._plan_govde(q)
+        self._json(h, self._plan("gonder", {"pzt": self._plan_pzt({"pzt": [v.get("pzt", "")]}), "isler": v.get("isler") or [],
+                                            "kullanici": self._plan_kul(h)}))
+
+    def api_plan_geri(self, h, q):
+        from .plan_isleri import geri_al_isleri
+        v = self._plan_govde(q)
+        pzt = self._plan_pzt({"pzt": [v.get("pzt", "")]})
+        con = self._con()
+        try:
+            isler, atla, parti = geri_al_isleri(con, date.fromisoformat(pzt))
+        finally:
+            con.close()
+        if not parti or not isler:
+            return self._json(h, {"hata": "Bu haftada geri alınacak gönderim yok."})
+        if not v.get("onay"):
+            return self._json(h, {"soru": f"Son gönderim ({parti[6:8]}.{parti[4:6]} {parti[8:10]}:{parti[10:12]}) geri alınsın mı? {len(isler)} gün eski haline döner."
+                                          + (f" {len(atla)} gün tanınmayan mesai, elle düzeltilmeli." if atla else "")})
+        self._json(h, self._plan("gonder", {"pzt": pzt, "isler": [dict(x, gun=x["gun"].isoformat()) for x in isler],
+                                            "kullanici": self._plan_kul(h), "geri": True}))
 
     def api_hatali(self, h, q):
         """Hatalı Duruşlar sayfası: seçilen aralıktaki hatalı duruş olayları (kırılımlar tarayıcıda yapılır)."""

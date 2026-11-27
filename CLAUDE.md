@@ -90,9 +90,9 @@ Bu dosya yalnızca geliştirici (Claude) içindir; program okumaz. Her önemli d
 - Aynı yol personel listesi, izin bakiyesi (Dynamic), kişi kartı (PersonD) için de denenecek.
 
 ## Vardiya Planla (27.11, yan dalda)
-- `vardiya_plan.py` (kurallar, MESAI id'leri, dönüş, `plan_satirlari`, `degisiklikler`), `sayfa_plan.py` (menü "Vardiya Planla", yetki **"plan"** — yalnız yönetici ya da yetki verilen; web'de YOK). Okuma/yazma açık (elle) Personel Veri penceresi üzerinden: `PersonelVeriPenceresi.plan_istek(cagri, bitince)`; sayfada `__vpPlanOku(id,bas,bit)` (GET TAPIVOT pivot0), `__vpPlanYaz(id,bas,bit,xid,extraJson)` (POST TAPIVOT {Param,Extra}), `__vpIsAl(id)`; bu XHR'ler `__vpAtla` ile yakalanmaz.
+- `vardiya_plan.py` (kurallar, MESAI id'leri, dönüş, `plan_satirlari`, `degisiklikler`), `sayfa_plan.py` (menü "Vardiya Planla", yetki **"plan"** — yalnız yönetici ya da yetki verilen). Okuma/yazma açık (elle) Personel Veri penceresi üzerinden: `PersonelVeriPenceresi.plan_istek(cagri, bitince)`; sayfada `__vpPlanOku(id,bas,bit)` (GET TAPIVOT pivot0), `__vpPlanYaz(id,bas,bit,xid,extraJson)` (POST TAPIVOT {Param,Extra}), `__vpIsAl(id)`; bu XHR'ler `__vpAtla` ile yakalanmaz.
 - Gönderimden sonra hafta yeniden okunur: hücre `*` ile başlamıyor ve istenen mesai ise yeşil (doğrulandı), değilse kırmızı. `plan_gecmis` tablosu (parti, eski, yeni, sonuc); "Son gönderimi geri al". Dönüş işaretleri ayar `plan_donus` {sicilid: "doner"|"sabit"}. Beyaz yaka listeye girmez.
-- Kullanıcı istedi: "plan" yetkisi verilen kullanıcıya **web'de de** görünsün (web istekleri programdaki açık Personel Veri penceresi üzerinden yazar; kimin gönderdiği plan_gecmis'e yazılmalı). Başla bekleniyor.
+- Web'de de var (`#s-plan`, yetki "plan"): `/api/plan/oku|aktar|donus|gonder|geri` → `plan_isleri.PlanKoprusu` (Sunucu'da ana iş parçacığında kurulur, Qt sinyaliyle taşır, sonucu bekler). Ortak işler `plan_isleri.py` (oku, gonder+dogrula, geri_al_isleri, aktarim); masaüstü de bunları kullanır. plan_gecmis.kullanici: "ad (program)" / "ad (web)".
 - pivot0 GET okuma canlı denenmedi (ilk kullanımda "okunamadı" çıkarsa düz metni sayfadan yakalayıp düzelt).
 
 ## Sonraya kalanlar (27.11)

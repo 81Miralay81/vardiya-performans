@@ -75,6 +75,12 @@ td.s{text-align:right;white-space:nowrap}
 .pd-kutu .a{font-size:12px;font-weight:700;color:var(--r)}.pd-kutu .v{font-size:24px;font-weight:800;color:#1f2433}.pd-kutu .y{font-size:12px;color:var(--soluk)}
 .pd-formul{background:#f5f6fa;border-radius:8px;padding:8px 12px;font-size:12px;color:var(--soluk);margin-top:10px}
 .pd-ust{display:flex;gap:24px;align-items:center;flex-wrap:wrap}.pd-ust svg path{cursor:pointer;transition:transform .15s}
+#pl-tablo td.g{cursor:pointer;font-weight:600;font-size:12px;text-align:center;white-space:nowrap;border-radius:6px}
+#pl-tablo td.g.deg{background:#FFC999!important;color:#9a4300!important;font-weight:800}
+#pl-tablo td.g.ok{background:#D9F2CF!important;color:#2f7d1f!important}
+#pl-tablo td.g.hata{background:#F9D6D5!important;color:#c0392b!important}
+#pl-menu{position:absolute;z-index:80;background:#fff;border:1px solid var(--cizgi);border-radius:8px;box-shadow:0 8px 24px rgba(21,9,88,.2);display:none;padding:4px}
+#pl-menu div{padding:6px 12px;cursor:pointer;font-size:13px;border-radius:5px}#pl-menu div:hover{background:#f0f2f8}
 .modal{position:fixed;inset:0;background:rgba(21,9,88,.35);z-index:60;display:none;align-items:center;justify-content:center;padding:12px}
 .modal.ac{display:flex}
 .modal.ust{z-index:70;background:rgba(21,9,88,.25)}
@@ -119,6 +125,7 @@ nav a.cikis{margin-top:8px;font-size:12px;opacity:.8}
   <div class="ad">Vardiya Performans</div>
   <a data-s="performans" class="sec">Performans</a>
   <a data-s="hatali">Hatalı Duruşlar</a>
+  <a data-s="plan">Vardiya Planla</a>
   <a data-s="rapor">Raporlar</a>
   <a data-s="operator">Operatör</a>
   <a data-s="personel" style="display:none">Personel Durum</a>
@@ -275,6 +282,26 @@ nav a.cikis{margin-top:8px;font-size:12px;opacity:.8}
       <div class="tablokutu" style="max-height:40vh;margin-top:8px"><table id="h-tablo"></table></div></div>
   </section>
 
+  <!-- VARDİYA PLANLA (yetki "plan") -->
+  <section class="sayfa" id="s-plan">
+    <div class="kart" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <button id="pl-geri">◀</button><b id="pl-hafta" style="color:var(--lac);font-size:15px"></b><button id="pl-ileri">▶</button>
+      <span style="flex:1"></span>
+      <button id="pl-oku">Personel sisteminden oku</button><button id="pl-don">Geçen haftadan döndürerek aktar (3→2→1)</button>
+      <button id="pl-aynen">Döndürmeden aktar</button><button id="pl-gonder" class="ana">Personel sistemine gönder</button><button id="pl-geri-al">Son gönderimi geri al</button>
+    </div>
+    <div class="not" id="pl-durum" style="margin:6px 2px 10px">Haftayı görmek için "Personel sisteminden oku"ya basın.</div>
+    <div class="kart"><div class="tablokutu"><table id="pl-tablo"></table></div>
+      <div class="not" style="margin-top:8px">Bir güne tıklayın: başka mesaiye çevirin ya da kurala döndürün. Turuncu: gönderilince değişecek · yeşil: personel sisteminde kayıtlı (doğrulandı) · kırmızı: kaydedilemedi. Gönderim programın açık olduğu bilgisayardaki Personel Veri penceresi üzerinden yapılır.</div></div>
+    <div id="pl-menu"></div>
+    <div class="modal" id="pl-onay"><div class="pencere" style="width:min(760px,96vw);height:auto;max-height:90vh">
+      <header><h3>Personel sistemine gönderilecek</h3><button class="kapat" id="pl-onay-kapat">✕</button></header>
+      <div style="padding:12px 16px;overflow:auto"><div id="pl-onay-bas" class="not"></div><div class="tablokutu"><table id="pl-onay-t"></table></div>
+        <div class="not" style="margin:8px 0">Gönderdikten sonra hafta personel sisteminden yeniden okunur ve her gün kontrol edilir. "Son gönderimi geri al" eski haline döndürür.</div>
+        <div style="text-align:right"><button id="pl-onay-vaz">Vazgeç</button> <button class="ana" id="pl-onay-gonder">Gönder</button></div></div>
+    </div></div>
+  </section>
+
   <!-- KAYITLAR -->
   <section class="sayfa" id="s-kayit">
     <div class="kart donem">
@@ -357,7 +384,7 @@ function donemNot(){
   var a = gun($('ilk').value), b = gun($('son').value), n = Math.round((b - a) / 864e5) + 1;
   $('donemnot').textContent = n > 31 ? n + ' gün seçildi: bir aydan uzun aralıkta hesap biraz sürebilir, lütfen bekleyin…' : n + ' gün';
 }
-function yenile(){ donemNot(); ({performans: performans, hatali: hatali, rapor: function(){ $('rhazirla').click(); }, operator: operator, personel: personel, kayit: function(){}, veri: function(){}})[etkin](); }
+function yenile(){ donemNot(); ({performans: performans, hatali: hatali, plan: plan, rapor: function(){ $('rhazirla').click(); }, operator: operator, personel: personel, kayit: function(){}, veri: function(){}})[etkin](); }
 
 // ------------------------------------------------------------------ büyüteç
 document.addEventListener('click', function(e){
@@ -671,6 +698,101 @@ document.querySelectorAll('#h-arac button').forEach(function(b){ b.onclick = fun
   var o = c.getOption().dataZoom[0], w0 = o.startValue, w1 = o.endValue; if (typeof w0 !== 'number') { w0 = HD.t0; w1 = HD.t1; }
   var orta = (w0 + w1) / 2, gen = k === 'gun' ? 864e5 : 36e5;
   c.dispatchAction({type: 'dataZoom', startValue: Math.max(HD.t0, orta - gen / 2), endValue: Math.min(HD.t1, orta + gen / 2)}); }; });
+// ------------------------------------------------------------------ vardiya planla
+var PL = {pzt: null, kisiler: [], secim: {}, elle: {}, sonuc: {}, kural: null, secilebilir: [], tanimli: [], donus: {}, mesgul: false, isler: []};
+var PL_RENK = {'24:00-08:00': '#E3E0F5', '08:00-16:00': '#DDEBFA', '(CUMA) 08:00-16:00': '#CFE2F8', '16:00-24:00': '#FBE8D3'};
+var PL_GUN = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
+function plPzt(d){ var x = new Date(d); var g = (x.getDay() + 6) % 7; x.setDate(x.getDate() - g); return x; }
+if (!PL.pzt) PL.pzt = plPzt(ekle(new Date(), 7));
+function plHaftaYaz(){ $('pl-hafta').textContent = trT(iso(PL.pzt)) + ' – ' + trT(iso(ekle(PL.pzt, 6))); }
+function plMesgul(e, m){ PL.mesgul = e; ['pl-oku','pl-don','pl-aynen','pl-gonder','pl-geri-al','pl-geri','pl-ileri'].forEach(function(i){ $(i).disabled = e; }); if (m) $('pl-durum').textContent = m; }
+function plGet(yol){ return fetch(yol).then(function(r){ return r.json(); }); }
+function plPost(yol, v){ return fetch(yol, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(v)}).then(function(r){ return r.json(); }); }
+function plan(){ plHaftaYaz(); if (!PL.kisiler.length) plCiz(); }
+function plVardiya(gunler){ var say = {}; gunler.slice(0, 6).forEach(function(a){ var v = {'24:00-08:00': 1, '08:00-16:00': 2, '(CUMA) 08:00-16:00': 2, '16:00-24:00': 3}[a]; if (v) say[v] = (say[v] || 0) + 1; });
+  var en = null; for (var k in say) if (!en || say[k] > say[en]) en = k; return en && say[en] >= 3 ? +en : null; }
+function plHedef(k){ var s = PL.secim[k.sicilid], h = s && PL.kural ? PL.kural[s].slice() : k.gun.slice(), e = PL.elle[k.sicilid] || {};
+  for (var j in e) h[+j] = e[j]; return h; }
+function plOku(){
+  plMesgul(true, 'Personel sisteminden okunuyor… (programın açık olduğu bilgisayar üzerinden)');
+  plGet('/api/plan/oku?pzt=' + iso(PL.pzt)).then(function(d){
+    plMesgul(false);
+    PL.kural = d.kural; PL.secilebilir = d.secilebilir || []; PL.tanimli = d.tanimli || []; PL.donus = d.donus || {};
+    if (d.hata) { $('pl-durum').textContent = 'Okunamadı: ' + d.hata; return; }
+    PL.kisiler = d.kisiler || []; PL.secim = {}; PL.elle = {}; PL.sonuc = {};
+    plCiz(); $('pl-durum').textContent = PL.kisiler.length + ' kişi okundu. Değiştireceğiniz kişinin "Bu hafta" seçimini yapın, satırını işaretleyip gönderin.';
+  }).catch(function(e){ plMesgul(false, 'Okunamadı: ' + e); });
+}
+function plAktar(dondur){
+  if (!PL.kisiler.length) { $('pl-durum').textContent = 'Önce bu haftayı okuyun.'; return; }
+  plMesgul(true, 'Geçen hafta okunuyor…');
+  plGet('/api/plan/aktar?pzt=' + iso(PL.pzt) + '&dondur=' + (dondur ? 1 : 0)).then(function(d){
+    plMesgul(false); if (d.hata) { $('pl-durum').textContent = 'Geçen hafta okunamadı: ' + d.hata; return; }
+    var n = 0; PL.kisiler.forEach(function(k){ var v = d.secim[k.sicilid]; if (v) { PL.secim[k.sicilid] = v; n++; } });
+    plCiz(); $('pl-durum').textContent = n + ' kişinin vardiyası geçen haftadan ' + (dondur ? 'döndürülerek ' : '') + 'aktarıldı (henüz gönderilmedi).';
+  });
+}
+function plCiz(){
+  var h = '<tr><th>✓</th><th>Personel</th><th>Dönüş</th><th>Bu hafta</th>' + PL_GUN.map(function(g, i){ return '<th>' + g + ' ' + trT(iso(ekle(PL.pzt, i))).slice(0, 5) + '</th>'; }).join('') + '</tr>';
+  PL.kisiler.forEach(function(k, i){
+    var v = plVardiya(k.gun), s = PL.secim[k.sicilid] || 0, hd = plHedef(k);
+    h += '<tr data-i="' + i + '"><td><input type="checkbox" class="pl-c" data-s="' + k.sicilid + '"></td><td><b>' + esc(k.ad) + '</b><br><span class="not">' + esc(k.sicilno) + (v ? ' · şu an ' + v + '. vardiya' : '') + '</span></td>' +
+      '<td><select class="pl-d" data-s="' + k.sicilid + '"><option value="doner">döner</option><option value="sabit"' + (PL.donus[k.sicilid] === 'sabit' ? ' selected' : '') + '>sabit</option></select></td>' +
+      '<td><select class="pl-v" data-s="' + k.sicilid + '">' + ['değiştirme', '1. vardiya (00–08)', '2. vardiya (08–16)', '3. vardiya (16–24)'].map(function(t, j){ return '<option value="' + j + '"' + (s === j ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</select></td>';
+    hd.forEach(function(a, j){ var tatil = /^Hafta Tatili/.test(a), r = PL.sonuc[k.sicilid + ':' + j], cls = 'g' + (r ? ' ' + r : (a !== k.gun[j] ? ' deg' : ''));
+      h += '<td class="' + cls + '" data-j="' + j + '" title="personel sisteminde: ' + esc(k.gun[j] || '-') + '" style="background:' + (tatil ? '#5f6f86' : (PL_RENK[a] || '#F1F2F6')) + ';color:' + (tatil ? '#fff' : '#1f2433') + '">' + esc(a || '-') + '</td>'; });
+    h += '</tr>'; });
+  $('pl-tablo').innerHTML = h;
+  document.querySelectorAll('.pl-v').forEach(function(e){ e.onchange = function(){ var sid = +e.dataset.s; PL.secim[sid] = +e.value || null; for (var j = 0; j < 7; j++) delete PL.sonuc[sid + ':' + j]; plCiz(); }; });
+  document.querySelectorAll('.pl-d').forEach(function(e){ e.onchange = function(){ PL.donus[e.dataset.s] = e.value; plPost('/api/plan/donus', {sicilid: +e.dataset.s, deger: e.value}); }; });
+  document.querySelectorAll('#pl-tablo td.g').forEach(function(td){ td.onclick = function(ev){ ev.stopPropagation(); plMenu(td); }; });
+}
+function plMenu(td){
+  var i = +td.parentNode.dataset.i, j = +td.dataset.j, k = PL.kisiler[i], m = $('pl-menu');
+  m.innerHTML = PL.secilebilir.map(function(a){ return '<div data-a="' + esc(a) + '">' + esc(a) + '</div>'; }).join('') + '<div data-a="" style="border-top:1px solid #eee;color:#6b7285">Kurala döndür</div>';
+  var r = td.getBoundingClientRect(); m.style.left = (r.left + window.scrollX) + 'px'; m.style.top = (r.bottom + window.scrollY + 2) + 'px'; m.style.display = 'block';
+  m.querySelectorAll('div').forEach(function(d){ d.onclick = function(){ var e = PL.elle[k.sicilid] = PL.elle[k.sicilid] || {}; if (d.dataset.a) e[j] = d.dataset.a; else delete e[j];
+    delete PL.sonuc[k.sicilid + ':' + j]; m.style.display = 'none'; plCiz(); }; });
+}
+document.addEventListener('click', function(){ $('pl-menu').style.display = 'none'; });
+function plGonderSor(){
+  var isaret = {}; document.querySelectorAll('.pl-c').forEach(function(c){ if (c.checked) isaret[c.dataset.s] = 1; });
+  if (!Object.keys(isaret).length) { $('pl-durum').textContent = 'Göndermek için önce kişilerin satırını işaretleyin (✓).'; return; }
+  PL.isler = [];
+  PL.kisiler.forEach(function(k){ if (!isaret[k.sicilid]) return; plHedef(k).forEach(function(y, j){ if (y && y !== k.gun[j] && PL.tanimli.indexOf(y) >= 0) PL.isler.push({sid: k.sicilid, ad: k.ad, gun: iso(ekle(PL.pzt, j)), eski: k.gun[j], yeni: y}); }); });
+  if (!PL.isler.length) { $('pl-durum').textContent = 'İşaretli kişilerde değişecek gün yok.'; return; }
+  $('pl-onay-bas').innerHTML = '<b>' + Object.keys(isaret).length + ' kişi · ' + PL.isler.length + ' gün</b> · hafta ' + $('pl-hafta').textContent;
+  $('pl-onay-t').innerHTML = '<tr><th>✓</th><th>Personel</th><th>Gün</th><th>Şu anki</th><th>Yeni</th></tr>' + PL.isler.map(function(x, i){ var g = gun(x.gun);
+    return '<tr><td><input type="checkbox" class="pl-oc" data-i="' + i + '" checked></td><td>' + esc(x.ad) + '</td><td>' + PL_GUN[(g.getDay() + 6) % 7] + ' ' + trT(x.gun).slice(0, 5) + '</td><td style="color:#8a90a2">' + esc(x.eski || '-') + '</td><td style="color:#c05a00;font-weight:700">' + esc(x.yeni) + '</td></tr>'; }).join('');
+  $('pl-onay-gonder').textContent = 'Gönder (' + PL.isler.length + ' gün)';
+  $('pl-onay').classList.add('ac');
+}
+function plSonucIsle(d){
+  plMesgul(false);
+  if (d.hata) { $('pl-durum').textContent = 'Gönderilemedi: ' + d.hata; return; }
+  (d.sonuc || []).forEach(function(x){ PL.sonuc[x[0] + ':' + x[1]] = x[2]; });
+  if (d.kisiler) { var m = {}; d.kisiler.forEach(function(k){ m[k.sicilid] = k; }); PL.kisiler.forEach(function(k){ if (m[k.sicilid]) k.gun = m[k.sicilid].gun; }); }
+  plCiz(); $('pl-durum').textContent = d.ozet || 'Gönderildi.';
+}
+$('pl-onay-gonder').onclick = function(){
+  var sec = []; document.querySelectorAll('.pl-oc').forEach(function(c){ if (c.checked) sec.push(PL.isler[+c.dataset.i]); });
+  $('pl-onay').classList.remove('ac'); if (!sec.length) return;
+  plMesgul(true, sec.length + ' gün gönderiliyor ve kontrol ediliyor… (bu birkaç dakika sürebilir)');
+  plPost('/api/plan/gonder', {pzt: iso(PL.pzt), isler: sec}).then(plSonucIsle).catch(function(e){ plMesgul(false, 'Gönderilemedi: ' + e); });
+};
+$('pl-onay-vaz').onclick = $('pl-onay-kapat').onclick = function(){ $('pl-onay').classList.remove('ac'); };
+$('pl-oku').onclick = plOku;
+$('pl-don').onclick = function(){ plAktar(true); };
+$('pl-aynen').onclick = function(){ plAktar(false); };
+$('pl-gonder').onclick = plGonderSor;
+$('pl-geri').onclick = function(){ if (PL.mesgul) return; PL.pzt = ekle(PL.pzt, -7); PL.kisiler = []; plHaftaYaz(); plCiz(); $('pl-durum').textContent = 'Haftayı görmek için "Personel sisteminden oku"ya basın.'; };
+$('pl-ileri').onclick = function(){ if (PL.mesgul) return; PL.pzt = ekle(PL.pzt, 7); PL.kisiler = []; plHaftaYaz(); plCiz(); $('pl-durum').textContent = 'Haftayı görmek için "Personel sisteminden oku"ya basın.'; };
+$('pl-geri-al').onclick = function(){
+  plPost('/api/plan/geri', {pzt: iso(PL.pzt)}).then(function(d){
+    if (d.hata) { $('pl-durum').textContent = d.hata; return; }
+    if (d.soru && confirm(d.soru)) { plMesgul(true, 'Geri alınıyor…'); plPost('/api/plan/geri', {pzt: iso(PL.pzt), onay: 1}).then(plSonucIsle); }
+  });
+};
 // şüpheli mola zaman çizelgesi (SVG)
 function supheliKapat(){ $('supheli').style.display = 'none'; }
 $('supheli-kapat').onclick = supheliKapat;
@@ -1274,7 +1396,7 @@ $('girisform').onsubmit = function(e){
     .then(function(r){ return r.json().then(function(d){ return [r.ok, d]; }); })
     .then(function(x){ if (x[0]) location.reload(); else { $('g-hata').textContent = x[1].hata || 'Giriş yapılamadı'; $('g-sifre').value = ''; } });
 };
-var YETKI = {performans: 'performans', hatali: 'performans', rapor: 'rapor', operator: 'operator', personel: 'personel', kayit: 'kayitlar', veri: 'veri'};
+var YETKI = {performans: 'performans', hatali: 'performans', plan: 'plan', rapor: 'rapor', operator: 'operator', personel: 'personel', kayit: 'kayitlar', veri: 'veri'};
 function baslat(){
   durumAl().then(function(d){
     var son = d.kapsam_son ? gun(d.kapsam_son) : new Date();
